@@ -7,22 +7,14 @@ import {
   selectVscodeLmModel,
 } from "./vscode-lm-provider";
 
-// Dynamic imports for ESM-only pi packages
-let piAi: any;
-let piAgentCore: any;
-let piCodingAgent: any;
+import * as piAi from "@mariozechner/pi-ai";
+import * as piAgentCore from "@mariozechner/pi-agent-core";
+import * as piCodingAgent from "@mariozechner/pi-coding-agent";
+
 let vscodeLmRegistered = false;
 let _log: vscode.OutputChannel;
 
 async function loadPiModules() {
-  if (!piAi) {
-    const importModule = Function('specifier', 'return import(specifier)');
-    [piAi, piAgentCore, piCodingAgent] = await Promise.all([
-      importModule("@mariozechner/pi-ai"),
-      importModule("@mariozechner/pi-agent-core"),
-      importModule("@mariozechner/pi-coding-agent"),
-    ]);
-  }
   if (!vscodeLmRegistered && _log) {
     piAi.registerBuiltInApiProviders();
     await registerVscodeLmProvider(piAi, _log);

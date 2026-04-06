@@ -2,7 +2,7 @@
   "name": "codespark-agent",
   "displayName": "CodeSpark",
   "description": "The inline agent for writing code.",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "publisher": "codespark",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -85,7 +85,17 @@
       "properties": {
         "codeSpark.provider": {
           "type": "string",
-          "enum": ["copilot", "anthropic", "openai", "google", "openrouter", "groq", "xai", "mistral", "together"],
+          "enum": [
+            "copilot",
+            "anthropic",
+            "openai",
+            "google",
+            "openrouter",
+            "groq",
+            "xai",
+            "mistral",
+            "together"
+          ],
           "default": "copilot",
           "markdownDescription": "AI provider. **Copilot** uses your GitHub Copilot subscription (no API key needed). All others require an API key."
         },
@@ -103,9 +113,10 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./",
+    "vscode:prepublish": "npm run build",
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "compile": "tsc -p ./ --noEmit",
     "lint": "eslint src --ext ts",
     "package": "npx @vscode/vsce package",
     "publish": "npx @vscode/vsce publish"
@@ -113,6 +124,7 @@
   "devDependencies": {
     "@types/node": "^20.11.0",
     "@types/vscode": "^1.91.0",
+    "esbuild": "^0.28.0",
     "typescript": "^5.3.3"
   },
   "dependencies": {
