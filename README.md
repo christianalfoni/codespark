@@ -8,6 +8,8 @@ Project-level agents like Claude Code, Copilot Agent, and Cursor are powerful. T
 
 When it's time to actually write code, you want something different. Short sessions. Fast momentum. Full ownership of every change. You want to stay in your editor, point at the code, and say what needs to happen.
 
+![CodeSpark in action](./media/screenshot.png)
+
 You don't need to own every keystroke — but you do need to own the expression of your intent. And that happens at the file level, where you're closest to the code — not from a project-wide prompt.
 
 That's what an inline agent is. It's scoped to your file, powered by deterministic context, and designed for you to stay in control. You make the decisions. You own the output. The agent just writes it fast.
