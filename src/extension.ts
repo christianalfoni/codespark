@@ -35,12 +35,12 @@ export function activate(context: vscode.ExtensionContext) {
   statusBarItem.command = "codeSpark.openInstructions";
   context.subscriptions.push(statusBarItem);
 
-  let currentInstructions: ResolvedInstructions = { root: undefined, local: undefined, referencedFiles: [] };
+  let currentInstructions: ResolvedInstructions = { root: undefined, local: [], referencedFiles: [] };
 
   function updateActiveInstructions() {
     const editor = vscode.window.activeTextEditor;
     if (!editor) {
-      currentInstructions = { root: undefined, local: undefined, referencedFiles: [] };
+      currentInstructions = { root: undefined, local: [], referencedFiles: [] };
       statusBarItem.hide();
       return;
     }
@@ -51,8 +51,8 @@ export function activate(context: vscode.ExtensionContext) {
     if (currentInstructions.root) {
       labels.push("root");
     }
-    if (currentInstructions.local) {
-      labels.push(vscode.workspace.asRelativePath(currentInstructions.local.uri));
+    for (const loc of currentInstructions.local) {
+      labels.push(vscode.workspace.asRelativePath(loc.uri));
     }
 
     if (labels.length > 0) {
@@ -86,7 +86,7 @@ export function activate(context: vscode.ExtensionContext) {
   // Command to open the active CLAUDE.md file (prefers local, falls back to root)
   context.subscriptions.push(
     vscode.commands.registerCommand("codeSpark.openInstructions", () => {
-      const target = currentInstructions.local ?? currentInstructions.root;
+      const target = currentInstructions.local[0] ?? currentInstructions.root;
       if (target) {
         vscode.window.showTextDocument(target.uri);
       } else {
@@ -198,8 +198,8 @@ export function activate(context: vscode.ExtensionContext) {
       if (instructions.root) {
         log.appendLine(`[context] Root CLAUDE.md: ${vscode.workspace.asRelativePath(instructions.root.uri)}`);
       }
-      if (instructions.local) {
-        log.appendLine(`[context] Local CLAUDE.md: ${vscode.workspace.asRelativePath(instructions.local.uri)}`);
+      for (const loc of instructions.local) {
+        log.appendLine(`[context] Local CLAUDE.md: ${vscode.workspace.asRelativePath(loc.uri)}`);
       }
 
       // Add fade effect now that the LLM is working (gutter already visible from prompt phase)
@@ -224,8 +224,8 @@ export function activate(context: vscode.ExtensionContext) {
         if (instructions.root) {
           instructionParts.push(instructions.root.content);
         }
-        if (instructions.local && instructions.local.uri.fsPath !== instructions.root?.uri.fsPath) {
-          instructionParts.push(instructions.local.content);
+        for (const loc of instructions.local) {
+          instructionParts.push(loc.content);
         }
         instructionContent = instructionParts.length > 0 ? instructionParts.join("\n\n---\n\n") : undefined;
 

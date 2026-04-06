@@ -82,7 +82,8 @@ function buildDirTree(absDir: string, indent: string = "  "): string[] {
 
 export interface ResolvedInstructions {
   root: { uri: vscode.Uri; content: string } | undefined;
-  local: { uri: vscode.Uri; content: string } | undefined;
+  /** All intermediate instruction files between the file's directory and the root (closest first) */
+  local: { uri: vscode.Uri; content: string }[];
   /** Absolute paths to files referenced by markdown links in CLAUDE.md files */
   referencedFiles: string[];
 }
@@ -96,7 +97,7 @@ export interface ResolvedInstructions {
 export function findInstructionsForFile(fileUri: vscode.Uri): ResolvedInstructions {
   const workspaceFolder = vscode.workspace.getWorkspaceFolder(fileUri);
   if (!workspaceFolder) {
-    return { root: undefined, local: undefined, referencedFiles: [] };
+    return { root: undefined, local: [], referencedFiles: [] };
   }
 
   const rootPath = workspaceFolder.uri.fsPath;
@@ -121,12 +122,11 @@ export function findInstructionsForFile(fileUri: vscode.Uri): ResolvedInstructio
     }
   }
 
-  // Traverse up from file to find closest instruction file
-  let local: ResolvedInstructions["local"];
+  // Traverse up from file's directory to root, collecting all intermediate instruction files
+  const local: ResolvedInstructions["local"] = [];
   let dir = path.dirname(fileUri.fsPath);
 
   while (dir.startsWith(rootPath)) {
-    let found = false;
     for (const filename of INSTRUCTION_FILENAMES) {
       const candidate = path.join(dir, filename);
       if (fs.existsSync(candidate)) {
@@ -134,18 +134,14 @@ export function findInstructionsForFile(fileUri: vscode.Uri): ResolvedInstructio
           try {
             const raw = fs.readFileSync(candidate, "utf-8");
             const { content, referencedFiles } = processLinks(raw, path.dirname(candidate));
-            local = { uri: vscode.Uri.file(candidate), content };
+            local.push({ uri: vscode.Uri.file(candidate), content });
             allReferencedFiles.push(...referencedFiles);
           } catch {
             // ignore
           }
         }
-        found = true;
-        break;
+        break; // only one instruction file per directory
       }
-    }
-    if (found) {
-      break;
     }
 
     const parent = path.dirname(dir);

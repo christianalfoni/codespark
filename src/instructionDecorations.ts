@@ -23,7 +23,7 @@ export class InstructionFileDecorationProvider
     const workspaceFolder = vscode.workspace.getWorkspaceFolder(editorUri);
     if (!workspaceFolder) {
       this.refresh();
-      return { root: undefined, local: undefined, referencedFiles: [] };
+      return { root: undefined, local: [], referencedFiles: [] };
     }
 
     const instructions = findInstructionsForFile(editorUri);
@@ -32,8 +32,8 @@ export class InstructionFileDecorationProvider
     if (instructions.root) {
       this.inlinedFileUris.add(instructions.root.uri.fsPath);
     }
-    if (instructions.local) {
-      this.inlinedFileUris.add(instructions.local.uri.fsPath);
+    for (const loc of instructions.local) {
+      this.inlinedFileUris.add(loc.uri.fsPath);
     }
 
     // Track referenced files/directories from CLAUDE.md links

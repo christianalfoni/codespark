@@ -24,7 +24,8 @@ These same files also improve your project-level agents — giving them better g
 
 1. Install the extension
 2. Choose a provider in settings: **Copilot** (default, uses your GitHub Copilot subscription) or bring your own API key for Anthropic, OpenAI, Google, Mistral, Groq, xAI, OpenRouter, or Together
-3. Open a file, press `CMD+I`, type an instruction
+3. Add `CLAUDE.md` or `AGENT.md` files to guide CodeSpark. Place one in your project root for general conventions, and additional ones in subdirectories to describe the patterns, dependencies, and guidelines specific to each domain of your codebase
+4. Open a file, press `CMD+I`, type an instruction
 
 Invoke with `CMD+I` (`Ctrl+I` on Windows/Linux), type your instruction, and the edit lands directly in your file.
 

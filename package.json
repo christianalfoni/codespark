@@ -4,12 +4,28 @@
   "description": "The inline agent for writing code.",
   "version": "0.0.1",
   "publisher": "codespark",
+  "license": "MIT",
   "icon": "media/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/christianalfoni/codespark"
+  },
+  "keywords": [
+    "ai",
+    "inline",
+    "agent",
+    "code generation",
+    "copilot",
+    "anthropic",
+    "openai"
+  ],
   "engines": {
     "vscode": "^1.91.0"
   },
   "categories": [
-    "Other"
+    "AI",
+    "Machine Learning",
+    "Programming Languages"
   ],
   "activationEvents": [
     "onStartupFinished"
@@ -90,7 +106,9 @@
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "lint": "eslint src --ext ts"
+    "lint": "eslint src --ext ts",
+    "package": "npx @vscode/vsce package",
+    "publish": "npx @vscode/vsce publish"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
