@@ -18,7 +18,9 @@ That's what an inline agent is. It's scoped to your file, powered by determinist
 
 ## Project context
 
-CodeSpark reads your `CLAUDE.md` and `AGENT.md` files so it knows your project's patterns and conventions. The edits it makes aren't generic — they match how _you_ write code in _this_ project. You can link to files and directories from these files to automatically include them as context.
+CodeSpark reads your `CLAUDE.md` and `AGENT.md` files so it knows your project's patterns and conventions. The edits it makes aren't generic — they match how _you_ write code in _this_ project.
+
+You can link to files and directories from these files. Linked files are read into context so the agent understands their contents. Linked directories are expanded to show their filenames, giving the agent awareness of the project structure without loading every file.
 
 These same files also improve your project-level agents — giving them better guidance for planning refactors, suggesting implementation approaches, and understanding how your codebase works.
 
