@@ -510,7 +510,8 @@ export async function callLLMWithSDK(
   let turnIndex = 0;
   let totalLlmMs = 0;
 
-  // Resolve as soon as an edit/write tool completes — don't wait for the follow-up turn
+  // Resolve as soon as an edit/write tool starts on the current file
+  let hasEdits = false;
   let resolveOnToolDone: (() => void) | undefined;
   const toolDonePromise = new Promise<void>((resolve) => {
     resolveOnToolDone = resolve;
@@ -565,11 +566,16 @@ export async function callLLMWithSDK(
       log.appendLine(
         `[sdk:tool] ${event.toolName}(${JSON.stringify(event.args).slice(0, 200)})`,
       );
+      const isCurrentFile = event.args?.path && path.resolve(workspaceFolder, event.args.path) === activeFilePath;
+      const isWrite = event.toolName === "write";
+      const isEdit = event.toolName === "edit" && event.args?.edits?.length > 0;
+      if (isCurrentFile && (isWrite || isEdit)) {
+        hasEdits = true;
+        resolveOnToolDone?.();
+      }
       if (!firstToolSeen) {
         firstToolSeen = true;
-        const isCurrentFile = event.args?.path === ctx.filePath;
-        const isEdit = event.toolName === "edit" || event.toolName === "write";
-        if (!(isCurrentFile && isEdit) && onAgentMode) {
+        if (!(isCurrentFile && (isWrite || isEdit)) && onAgentMode) {
           onAgentMode();
         }
       }
@@ -584,13 +590,6 @@ export async function callLLMWithSDK(
         );
       } else {
         log.appendLine(`[sdk:tool] ${event.toolName} done (${toolMs}ms)`);
-      }
-      if (
-        !event.isError &&
-        (event.toolName === "edit" || event.toolName === "write") &&
-        event.args?.path === ctx.filePath
-      ) {
-        resolveOnToolDone?.();
       }
     }
   });
@@ -615,7 +614,7 @@ export async function callLLMWithSDK(
   );
 
   return {
-    edits: [],
+    hasEdits,
     latencyMs,
     inputTokens,
     outputTokens,

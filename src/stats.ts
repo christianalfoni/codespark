@@ -6,7 +6,6 @@ export interface QueryRecord {
   latencyMs: number;
   inputTokens: number;
   outputTokens: number;
-  editCount: number;
   success: boolean;
   timestamp: number;
 }
@@ -18,7 +17,6 @@ export interface Stats {
   totalInputTokens: number;
   totalOutputTokens: number;
   totalLatencyMs: number;
-  totalEdits: number;
 }
 
 const STATS_KEY = "codeSpark.stats";
@@ -37,7 +35,6 @@ function getStats(): Stats {
     totalInputTokens: 0,
     totalOutputTokens: 0,
     totalLatencyMs: 0,
-    totalEdits: 0,
   });
 }
 
@@ -53,7 +50,6 @@ export function recordQuery(record: QueryRecord) {
   stats.totalInputTokens += record.inputTokens;
   stats.totalOutputTokens += record.outputTokens;
   stats.totalLatencyMs += record.latencyMs;
-  stats.totalEdits += record.editCount;
 
   workspaceState.update(STATS_KEY, stats);
 }
@@ -86,11 +82,9 @@ export function showStats() {
   }
 
   const avgLatency = Math.round(stats.totalLatencyMs / stats.totalQueries);
-  const avgEdits = (stats.totalEdits / stats.successfulQueries).toFixed(1);
 
   const lines = [
     `Queries: ${stats.totalQueries} (${stats.successfulQueries} ok, ${stats.failedQueries} failed)`,
-    `Total edits applied: ${stats.totalEdits} (avg ${avgEdits}/query)`,
     `Avg latency: ${avgLatency}ms`,
     `Tokens: ${stats.totalInputTokens.toLocaleString()} in / ${stats.totalOutputTokens.toLocaleString()} out`,
   ];

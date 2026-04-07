@@ -44,12 +44,7 @@ export function createInvokeCommand(
 
     const gutterDecoration = vscode.window.createTextEditorDecorationType({
       isWholeLine: true,
-      gutterIconPath: path.join(
-        __dirname,
-        "..",
-        "media",
-        "gutter-changed.svg",
-      ),
+      gutterIconPath: path.join(__dirname, "..", "media", "gutter-changed.svg"),
       gutterIconSize: "contain",
     });
     const pendingRange = new vscode.Range(
@@ -188,24 +183,19 @@ export function createInvokeCommand(
       pendingDecoration.dispose();
       gutterDecoration.dispose();
 
-      const hasEdits = editor.document.getText() !== ctx.fileContent;
-
       recordQuery({
         provider: result.provider,
         model: result.model,
         latencyMs: result.latencyMs,
         inputTokens: result.inputTokens,
         outputTokens: result.outputTokens,
-        editCount: hasEdits ? 1 : 0,
         success: true,
         timestamp: Date.now(),
       });
 
-      if (!hasEdits) {
+      if (!result.hasEdits) {
         decorationProvider.deactivate();
-        vscode.window.showInformationMessage(
-          "CodeSpark: No edits suggested.",
-        );
+        vscode.window.showInformationMessage("CodeSpark: No edits suggested.");
         updateActiveInstructions();
         return;
       }
@@ -223,7 +213,6 @@ export function createInvokeCommand(
         latencyMs: 0,
         inputTokens: 0,
         outputTokens: 0,
-        editCount: 0,
         success: false,
         timestamp: Date.now(),
       });

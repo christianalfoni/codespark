@@ -1,10 +1,9 @@
 import * as vscode from "vscode";
-import * as path from "path";
-import { findInstructionsForFile, ResolvedInstructions } from "./instructions";
 import { InstructionFileDecorationProvider } from "./instructionDecorations";
 import { warmupSession, closeSession } from "./llm-sdk";
 import { initStats, showStats, resetStats } from "./stats";
 import { createInvokeCommand } from "./invoker";
+import { createUpdateActiveInstructions } from "./statusbar";
 
 export function activate(context: vscode.ExtensionContext) {
   const log = vscode.window.createOutputChannel("CodeSpark");
@@ -26,48 +25,16 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.StatusBarAlignment.Left,
     0,
   );
-  statusBarItem.command = "codeSpark.openInstructions";
   context.subscriptions.push(statusBarItem);
 
-  let currentInstructions: ResolvedInstructions = {
-    root: undefined,
-    local: [],
-    referencedFiles: [],
-  };
-
-  function updateActiveInstructions() {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-      currentInstructions = { root: undefined, local: [], referencedFiles: [] };
-      statusBarItem.hide();
-      return;
-    }
-
-    currentInstructions = findInstructionsForFile(editor.document.uri);
-
-    const labels: string[] = [];
-    if (currentInstructions.root) {
-      labels.push("root");
-    }
-    for (const loc of currentInstructions.local) {
-      labels.push(vscode.workspace.asRelativePath(loc.uri));
-    }
-
-    if (labels.length > 0) {
-      statusBarItem.text = `$(sparkle) CodeSpark: ${labels.join(" + ")}`;
-      statusBarItem.tooltip = `Active instructions: ${labels.join(", ")}`;
-      statusBarItem.show();
-    } else {
-      statusBarItem.text = "$(sparkle) CodeSpark";
-      statusBarItem.tooltip = "No CLAUDE.md or AGENT.md found for this file";
-      statusBarItem.show();
-    }
-  }
+  const activeInstructions = createUpdateActiveInstructions(statusBarItem);
 
   // Update on editor change
-  updateActiveInstructions();
+  activeInstructions.update();
   context.subscriptions.push(
-    vscode.window.onDidChangeActiveTextEditor(() => updateActiveInstructions()),
+    vscode.window.onDidChangeActiveTextEditor(() =>
+      activeInstructions.update(),
+    ),
   );
 
   // Watch for CLAUDE.md and AGENT.md file changes
@@ -78,26 +45,12 @@ export function activate(context: vscode.ExtensionContext) {
     log.appendLine(
       `[instructions] ${type}: ${vscode.workspace.asRelativePath(uri)}`,
     );
-    updateActiveInstructions();
+    activeInstructions.update();
   };
   watcher.onDidCreate(onInstructionsChanged("Created"));
   watcher.onDidChange(onInstructionsChanged("Updated"));
   watcher.onDidDelete(onInstructionsChanged("Deleted"));
   context.subscriptions.push(watcher);
-
-  // Command to open the active CLAUDE.md file (prefers local, falls back to root)
-  context.subscriptions.push(
-    vscode.commands.registerCommand("codeSpark.openInstructions", () => {
-      const target = currentInstructions.local[0] ?? currentInstructions.root;
-      if (target) {
-        vscode.window.showTextDocument(target.uri);
-      } else {
-        vscode.window.showInformationMessage(
-          "No CLAUDE.md or AGENT.md found for the current file.",
-        );
-      }
-    }),
-  );
 
   context.subscriptions.push(
     vscode.commands.registerCommand(
@@ -106,7 +59,7 @@ export function activate(context: vscode.ExtensionContext) {
         log,
         decorationProvider,
         statusBarItem,
-        updateActiveInstructions,
+        activeInstructions.update,
       ),
     ),
   );

@@ -2,7 +2,7 @@
   "name": "codespark-agent",
   "displayName": "CodeSpark",
   "description": "The inline agent for writing code.",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "publisher": "codespark",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -36,22 +36,6 @@
       {
         "command": "codeSpark.invoke",
         "title": "CodeSpark: Invoke"
-      },
-      {
-        "command": "codeSpark.acceptDiff",
-        "title": "CodeSpark: Accept Diff"
-      },
-      {
-        "command": "codeSpark.rejectDiff",
-        "title": "CodeSpark: Reject Diff"
-      },
-      {
-        "command": "codeSpark.openInstructions",
-        "title": "CodeSpark: Open Active CLAUDE.md"
-      },
-      {
-        "command": "codeSpark.testLm",
-        "title": "CodeSpark: Test LM API"
       },
       {
         "command": "codeSpark.showStats",

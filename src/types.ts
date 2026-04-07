@@ -1,9 +1,3 @@
-export interface StrReplaceEdit {
-  old_str: string;
-  new_str: string;
-  insert_line?: number;
-}
-
 export interface ResolvedContext {
   fileContent: string;
   filePath: string;
@@ -18,7 +12,7 @@ export interface ResolvedContext {
 }
 
 export interface LLMResult {
-  edits: StrReplaceEdit[];
+  hasEdits: boolean;
   latencyMs: number;
   inputTokens: number;
   outputTokens: number;
