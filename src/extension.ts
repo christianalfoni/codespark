@@ -137,7 +137,6 @@ export function activate(context: vscode.ExtensionContext) {
       // Show gutter indicator immediately while the prompt is open
       const gutterDecoration = vscode.window.createTextEditorDecorationType({
         isWholeLine: true,
-        overviewRulerColor: "#DA7756",
         gutterIconPath: path.join(
           __dirname,
           "..",
@@ -252,7 +251,6 @@ export function activate(context: vscode.ExtensionContext) {
       const agentDecoration = vscode.window.createTextEditorDecorationType({
         isWholeLine: true,
         opacity: "0.4",
-        overviewRulerColor: "#5B8ADD",
         gutterIconPath: path.join(__dirname, "..", "media", "gutter-agent.svg"),
         gutterIconSize: "contain",
       });
@@ -283,8 +281,7 @@ export function activate(context: vscode.ExtensionContext) {
             pendingDecoration.dispose();
             gutterDecoration.dispose();
             editor.setDecorations(agentDecoration, [pendingRange]);
-            statusBarItem.text =
-              "$(loading~spin) CodeSpark · agent working...";
+            statusBarItem.text = "$(loading~spin) CodeSpark · agent working...";
           },
         );
         agentDecoration.dispose();
