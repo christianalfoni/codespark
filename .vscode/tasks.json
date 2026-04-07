@@ -21,8 +21,8 @@
         },
         "background": {
           "activeOnStart": true,
-          "beginsPattern": "^\\[watch\\]",
-          "endsPattern": "^Watching\\.\\.\\.$"
+          "beginsPattern": ".",
+          "endsPattern": "Watching\\.\\.\\."
         }
       }
     }

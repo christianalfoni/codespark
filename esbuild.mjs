@@ -23,7 +23,7 @@ const opts = {
 if (watch) {
   const ctx = await esbuild.context(opts);
   await ctx.watch();
-  console.log("Watching...");
+  process.stdout.write("Watching...\n");
 } else {
   await esbuild.build(opts);
 }

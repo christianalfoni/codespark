@@ -281,7 +281,7 @@ const DEFAULT_MODELS: Record<string, string> = {
   groq: "llama-4-scout-17b-16e-instruct",
   xai: "grok-3-mini",
   mistral: "mistral-medium-latest",
-  together: "meta-llama/Llama-4-Scout-17B-16E-Instruct",
+  together: "meta-llama/Llama-3.3-70B-Instruct-Turbo",
 };
 
 export interface ResolvedModel {
@@ -349,6 +349,13 @@ export async function resolveModel(
         cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
         contextWindow: 131072,
         maxTokens: 4096,
+        compat: {
+          supportsStore: false,
+          supportsDeveloperRole: false,
+          supportsUsageInStreaming: false,
+          maxTokensField: "max_tokens",
+          supportsStrictMode: false,
+        },
       };
     } else {
       piModel = piAi.getModel(provider as piAi.KnownProvider, model as never);
@@ -527,6 +534,24 @@ export async function callLLMWithSDK(
       log.appendLine(
         `[sdk:timing] LLM turn ${turnIndex} done (request: ${streamMs}ms)`,
       );
+      // Log response content summary for debugging
+      const content = event.message?.content;
+      if (Array.isArray(content)) {
+        const types = content.map((c: any) => c.type);
+        log.appendLine(`[sdk:debug] Response blocks: [${types.join(", ")}]`);
+        for (const block of content) {
+          if (block.type === "text" && block.text) {
+            log.appendLine(
+              `[sdk:debug] Text: ${block.text.slice(0, 300)}`,
+            );
+          }
+        }
+        if (content.length === 0) {
+          log.appendLine(
+            `[sdk:debug] Empty response — stopReason: ${event.message.stopReason}, error: ${event.message.errorMessage || "none"}`,
+          );
+        }
+      }
       requestSentTime = 0;
       turnIndex++;
       const usage = event.message.usage;
