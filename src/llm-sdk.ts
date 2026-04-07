@@ -64,14 +64,19 @@ function numberLines(content: string): string {
     .join("\n");
 }
 
-let agent: any;
+// ---------------------------------------------------------------------------
+// Mutable ref for active file path — allows tool singletons to be reused
+// ---------------------------------------------------------------------------
+const activeFileRef = { path: "", cwd: "" };
 
-function createVscodeEditOperations(activeFilePath: string) {
+function createVscodeEditOperations() {
   return {
     readFile: async (absolutePath: string) => {
-      if (absolutePath === activeFilePath) {
+      if (absolutePath === activeFileRef.path) {
         const uri = vscode.Uri.file(absolutePath);
-        const doc = vscode.workspace.textDocuments.find(d => d.uri.fsPath === uri.fsPath);
+        const doc = vscode.workspace.textDocuments.find(
+          (d) => d.uri.fsPath === uri.fsPath,
+        );
         if (doc) {
           return Buffer.from(doc.getText());
         }
@@ -79,9 +84,11 @@ function createVscodeEditOperations(activeFilePath: string) {
       return fs.promises.readFile(absolutePath);
     },
     writeFile: async (absolutePath: string, content: string) => {
-      if (absolutePath === activeFilePath) {
+      if (absolutePath === activeFileRef.path) {
         const uri = vscode.Uri.file(absolutePath);
-        const doc = vscode.workspace.textDocuments.find(d => d.uri.fsPath === uri.fsPath);
+        const doc = vscode.workspace.textDocuments.find(
+          (d) => d.uri.fsPath === uri.fsPath,
+        );
         if (doc) {
           const edit = new vscode.WorkspaceEdit();
           const fullRange = new vscode.Range(
@@ -96,17 +103,22 @@ function createVscodeEditOperations(activeFilePath: string) {
       fs.writeFileSync(absolutePath, content);
     },
     access: async (absolutePath: string) => {
-      await fs.promises.access(absolutePath, fs.constants.R_OK | fs.constants.W_OK);
+      await fs.promises.access(
+        absolutePath,
+        fs.constants.R_OK | fs.constants.W_OK,
+      );
     },
   };
 }
 
-function createVscodeWriteOperations(activeFilePath: string) {
+function createVscodeWriteOperations() {
   return {
     writeFile: async (absolutePath: string, content: string) => {
-      if (absolutePath === activeFilePath) {
+      if (absolutePath === activeFileRef.path) {
         const uri = vscode.Uri.file(absolutePath);
-        const doc = vscode.workspace.textDocuments.find(d => d.uri.fsPath === uri.fsPath);
+        const doc = vscode.workspace.textDocuments.find(
+          (d) => d.uri.fsPath === uri.fsPath,
+        );
         if (doc) {
           const edit = new vscode.WorkspaceEdit();
           const fullRange = new vscode.Range(
@@ -126,20 +138,24 @@ function createVscodeWriteOperations(activeFilePath: string) {
   };
 }
 
-function createReadOperations(activeFilePath: string) {
+function createReadOperations() {
   return {
     readFile: async (absolutePath: string) => {
       const stat = await fs.promises.stat(absolutePath);
       if (stat.isDirectory()) {
-        const entries = await fs.promises.readdir(absolutePath, { withFileTypes: true });
+        const entries = await fs.promises.readdir(absolutePath, {
+          withFileTypes: true,
+        });
         const lines = entries.map((e) =>
-          e.isDirectory() ? `${e.name}/` : e.name
+          e.isDirectory() ? `${e.name}/` : e.name,
         );
         return Buffer.from(lines.join("\n"));
       }
-      if (absolutePath === activeFilePath) {
+      if (absolutePath === activeFileRef.path) {
         const uri = vscode.Uri.file(absolutePath);
-        const doc = vscode.workspace.textDocuments.find(d => d.uri.fsPath === uri.fsPath);
+        const doc = vscode.workspace.textDocuments.find(
+          (d) => d.uri.fsPath === uri.fsPath,
+        );
         if (doc) {
           return Buffer.from(doc.getText());
         }
@@ -152,35 +168,87 @@ function createReadOperations(activeFilePath: string) {
   };
 }
 
-function createAgent(
+// ---------------------------------------------------------------------------
+// Singleton tools — created once, route via activeFileRef
+// ---------------------------------------------------------------------------
+const editOps = createVscodeEditOperations();
+const writeOps = createVscodeWriteOperations();
+const readOps = createReadOperations();
+
+// Tools are created lazily (need cwd), but only once
+let singletonTools: {
+  readTool: any;
+  editTool: any;
+  writeTool: any;
+} | undefined;
+
+function getTools(cwd: string) {
+  if (!singletonTools || activeFileRef.cwd !== cwd) {
+    activeFileRef.cwd = cwd;
+    singletonTools = {
+      editTool: piCodingAgent.createEditTool(cwd, { operations: editOps }),
+      writeTool: piCodingAgent.createWriteTool(cwd, { operations: writeOps }),
+      readTool: piCodingAgent.createReadTool(cwd, { operations: readOps }),
+    };
+  }
+  return singletonTools;
+}
+
+// ---------------------------------------------------------------------------
+// Singleton agent — created once during warmup, reused via reset()
+// ---------------------------------------------------------------------------
+let agent: any;
+
+function ensureAgent(
   piModel: any,
   apiKey: string,
   cwd: string,
-  activeFilePath: string,
   log: vscode.OutputChannel,
   onPayload?: () => void,
 ): any {
-  log.appendLine(`[sdk] Creating agent (model: ${piModel.id}, provider: ${piModel.provider})`);
+  const tools = getTools(cwd);
 
-  const editOps = createVscodeEditOperations(activeFilePath);
-  const writeOps = createVscodeWriteOperations(activeFilePath);
-  const readOps = createReadOperations(activeFilePath);
-  const editTool = piCodingAgent.createEditTool(cwd, { operations: editOps });
-  const writeTool = piCodingAgent.createWriteTool(cwd, { operations: writeOps });
-  const readTool = piCodingAgent.createReadTool(cwd, { operations: readOps });
+  if (!agent) {
+    log.appendLine(
+      `[sdk] Creating agent (model: ${piModel.id}, provider: ${piModel.provider})`,
+    );
+    agent = new piAgentCore.Agent({
+      initialState: {
+        model: piModel,
+        systemPrompt: "",
+        tools: [tools.readTool, tools.editTool, tools.writeTool],
+        thinkingLevel: "off",
+      },
+      getApiKey: () => apiKey,
+      onPayload: onPayload
+        ? () => {
+            onPayload();
+            return undefined;
+          }
+        : undefined,
+    });
+  } else {
+    // Abort any in-progress work, then reset for reuse
+    agent.abort();
+    agent.reset();
+    // Update mutable config for this invocation
+    agent.state.model = piModel;
+    agent.state.tools = [tools.readTool, tools.editTool, tools.writeTool];
+    agent.state.thinkingLevel = "off";
+    // Re-wire callbacks
+    agent.getApiKey = () => apiKey;
+    agent.onPayload = onPayload
+      ? () => {
+          onPayload();
+          return undefined;
+        }
+      : undefined;
+    log.appendLine(
+      `[sdk] Reusing agent (model: ${piModel.id}, provider: ${piModel.provider})`,
+    );
+  }
 
-  return new piAgentCore.Agent({
-    initialState: {
-      model: piModel,
-      systemPrompt: "",
-      tools: [readTool, editTool, writeTool],
-      thinkingLevel: "off",
-    },
-    getApiKey: () => apiKey,
-    onPayload: onPayload
-      ? () => { onPayload(); return undefined; }
-      : undefined,
-  });
+  return agent;
 }
 
 export function closeSession(): void {
@@ -199,45 +267,59 @@ export function warmupSession(log: vscode.OutputChannel): void {
     .catch((err) => log.appendLine(`[sdk:warmup-error] ${err}`));
 }
 
-export async function callLLMWithSDK(
-  ctx: ResolvedContext,
+// ---------------------------------------------------------------------------
+// Model resolution — can be called early and cached
+// ---------------------------------------------------------------------------
+
+// Default models per provider
+const DEFAULT_MODELS: Record<string, string> = {
+  copilot: "claude-haiku-4.5",
+  anthropic: "claude-haiku-4-5-20251001",
+  openai: "gpt-4.1-mini",
+  google: "gemini-2.5-flash",
+  openrouter: "anthropic/claude-haiku-4-5-20251001",
+  groq: "llama-4-scout-17b-16e-instruct",
+  xai: "grok-3-mini",
+  mistral: "mistral-medium-latest",
+  together: "meta-llama/Llama-4-Scout-17B-16E-Instruct",
+};
+
+export interface ResolvedModel {
+  piModel: any;
+  provider: string;
+  model: string;
+  apiKey: string;
+}
+
+let cachedModel: ResolvedModel | undefined;
+let cachedModelKey = "";
+
+export async function resolveModel(
   log: vscode.OutputChannel,
-  onAgentMode?: () => void,
-): Promise<LLMResult> {
-  const config = vscode.workspace.getConfiguration("codeSpark");
-  const provider = config.get<string>("provider", "copilot");
-  const apiKey = config.get<string>("apiKey", "");
-  log.appendLine(`[sdk] Config: provider="${provider}", apiKey=${apiKey ? "set" : "empty"}`);
-
-  const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-  if (!workspaceFolder) {
-    throw new Error("No workspace folder open");
-  }
-
+): Promise<ResolvedModel> {
   // Wait for warmup if still in progress
   if (warmupPromise) {
     await warmupPromise;
     warmupPromise = undefined;
   }
 
-  await loadPiModules();
+  const config = vscode.workspace.getConfiguration("codeSpark");
+  const provider = config.get<string>("provider", "copilot");
+  const apiKey = config.get<string>("apiKey", "");
+  const model =
+    config.get<string>("model", "") || DEFAULT_MODELS[provider] || "";
+  const cacheKey = `${provider}:${model}`;
 
-  // Default models per provider
-  const DEFAULT_MODELS: Record<string, string> = {
-    copilot: "claude-haiku-4.5",
-    anthropic: "claude-haiku-4-5-20251001",
-    openai: "gpt-4.1-mini",
-    google: "gemini-2.5-flash",
-    openrouter: "anthropic/claude-haiku-4-5-20251001",
-    groq: "llama-4-scout-17b-16e-instruct",
-    xai: "grok-3-mini",
-    mistral: "mistral-medium-latest",
-    together: "meta-llama/Llama-4-Scout-17B-16E-Instruct",
-  };
+  if (cachedModel && cachedModelKey === cacheKey) {
+    log.appendLine(`[sdk] Using cached model: ${cachedModel.piModel.id}`);
+    return { ...cachedModel, apiKey };
+  }
 
-  // Resolve model based on provider
+  log.appendLine(
+    `[sdk] Resolving model: provider="${provider}", model="${model}"`,
+  );
+
   let piModel: any;
-  const model = config.get<string>("model", "") || DEFAULT_MODELS[provider] || "";
 
   if (provider === "copilot") {
     const result = await selectVscodeLmModel("copilot", model);
@@ -247,7 +329,7 @@ export async function callLLMWithSDK(
       );
     }
     piModel = result.piModel;
-    log.appendLine(`[sdk] Using Copilot: ${result.vscodeLmModel.name}`);
+    log.appendLine(`[sdk] Resolved Copilot: ${result.vscodeLmModel.name}`);
   } else {
     if (!apiKey) {
       throw new Error(
@@ -256,7 +338,6 @@ export async function callLLMWithSDK(
     }
 
     if (provider === "together") {
-      // Together AI is not a built-in pi-ai provider — use OpenAI-compatible API
       piModel = {
         id: model,
         name: model,
@@ -270,34 +351,35 @@ export async function callLLMWithSDK(
         maxTokens: 4096,
       };
     } else {
-      piModel = piAi.getModel(provider, model as never);
+      piModel = piAi.getModel(provider as piAi.KnownProvider, model as never);
     }
-    log.appendLine(`[sdk] Using ${provider}: ${model}`);
+    log.appendLine(`[sdk] Resolved ${provider}: ${model}`);
   }
 
-  const systemPrompt = buildSystemPrompt(ctx);
+  cachedModel = { piModel, provider, model, apiKey };
+  cachedModelKey = cacheKey;
+  return cachedModel;
+}
 
-  const activeFilePath = path.resolve(workspaceFolder, ctx.filePath);
-  log.appendLine(`[sdk] Model: ${piModel.id}`);
-  log.appendLine(`[sdk] File: ${ctx.filePath}`);
+// ---------------------------------------------------------------------------
+// Context pre-building — can run before user submits instruction
+// ---------------------------------------------------------------------------
 
-  // Create a fresh agent per invocation — the active file determines tool routing
-  if (agent) {
-    agent.abort();
-  }
-  let requestSentTime = 0;
-  const ag = createAgent(piModel, apiKey, workspaceFolder, activeFilePath, log, () => {
-    requestSentTime = Date.now();
-    log.appendLine(`[sdk:timing] LLM request sent`);
-  });
-
-  // Update system prompt and reset messages for this invocation
-  ag.state.systemPrompt = systemPrompt;
-  ag.state.messages = [];
-
-  // Pre-populate with fake read tool turns so the model has file content in context
+export function buildContextMessages(
+  fileContent: string,
+  filePath: string,
+  referenceFiles: { path: string; content: string }[],
+  piModel: any,
+): any[] {
   const now = Date.now();
-  const emptyUsage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
+  const emptyUsage = {
+    input: 0,
+    output: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+    totalTokens: 0,
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+  };
   const messages: any[] = [];
 
   // Main edited file
@@ -306,7 +388,12 @@ export async function callLLMWithSDK(
     {
       role: "assistant",
       content: [
-        { type: "toolCall", id: readId, name: "read", arguments: { path: ctx.filePath } },
+        {
+          type: "toolCall",
+          id: readId,
+          name: "read",
+          arguments: { path: filePath },
+        },
       ],
       api: piModel.api,
       provider: piModel.provider,
@@ -319,21 +406,26 @@ export async function callLLMWithSDK(
       role: "toolResult",
       toolCallId: readId,
       toolName: "read",
-      content: [{ type: "text", text: numberLines(ctx.fileContent) }],
+      content: [{ type: "text", text: numberLines(fileContent) }],
       isError: false,
       timestamp: now,
     },
   );
 
   // Reference files from CLAUDE.md links
-  for (let i = 0; i < ctx.referenceFiles.length; i++) {
-    const ref = ctx.referenceFiles[i];
+  for (let i = 0; i < referenceFiles.length; i++) {
+    const ref = referenceFiles[i];
     const refId = `read_ref_${i}`;
     messages.push(
       {
         role: "assistant",
         content: [
-          { type: "toolCall", id: refId, name: "read", arguments: { path: ref.path } },
+          {
+            type: "toolCall",
+            id: refId,
+            name: "read",
+            arguments: { path: ref.path },
+          },
         ],
         api: piModel.api,
         provider: piModel.provider,
@@ -353,10 +445,46 @@ export async function callLLMWithSDK(
     );
   }
 
-  ag.state.messages = messages;
+  return messages;
+}
+
+// ---------------------------------------------------------------------------
+// Main LLM call — now accepts pre-resolved model and context messages
+// ---------------------------------------------------------------------------
+
+export async function callLLMWithSDK(
+  ctx: ResolvedContext,
+  log: vscode.OutputChannel,
+  resolved: ResolvedModel,
+  contextMessages: any[],
+  onAgentMode?: () => void,
+): Promise<LLMResult> {
+  const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  if (!workspaceFolder) {
+    throw new Error("No workspace folder open");
+  }
+
+  const { piModel, provider, apiKey } = resolved;
+
+  const systemPrompt = buildSystemPrompt(ctx);
+
+  const activeFilePath = path.resolve(workspaceFolder, ctx.filePath);
+  activeFileRef.path = activeFilePath;
+  log.appendLine(`[sdk] Model: ${piModel.id}`);
+  log.appendLine(`[sdk] File: ${ctx.filePath}`);
+
+  let requestSentTime = 0;
+  const ag = ensureAgent(piModel, apiKey, workspaceFolder, log, () => {
+    requestSentTime = Date.now();
+    log.appendLine(`[sdk:timing] LLM request sent`);
+  });
+
+  // Set up state for this invocation
+  ag.state.systemPrompt = systemPrompt;
+  ag.state.messages = contextMessages;
 
   // Log pre-populated messages
-  for (const msg of messages) {
+  for (const msg of contextMessages) {
     if (msg.role === "assistant" && msg.content) {
       for (const c of msg.content) {
         if (c.type === "toolCall") {
@@ -389,12 +517,16 @@ export async function callLLMWithSDK(
 
     if (event.type === "message_start" && event.message?.role === "assistant") {
       const ttft = requestSentTime ? now - requestSentTime : 0;
-      log.appendLine(`[sdk:timing] LLM turn ${turnIndex} first token (TTFT: ${ttft}ms)`);
+      log.appendLine(
+        `[sdk:timing] LLM turn ${turnIndex} first token (TTFT: ${ttft}ms)`,
+      );
     }
     if (event.type === "message_end" && event.message?.role === "assistant") {
       const streamMs = requestSentTime ? now - requestSentTime : 0;
       totalLlmMs += streamMs;
-      log.appendLine(`[sdk:timing] LLM turn ${turnIndex} done (request: ${streamMs}ms)`);
+      log.appendLine(
+        `[sdk:timing] LLM turn ${turnIndex} done (request: ${streamMs}ms)`,
+      );
       requestSentTime = 0;
       turnIndex++;
       const usage = event.message.usage;
@@ -405,7 +537,9 @@ export async function callLLMWithSDK(
     }
     if (event.type === "tool_execution_start") {
       toolStartTimes.set(event.toolName + "_" + (event.args?.path || ""), now);
-      log.appendLine(`[sdk:tool] ${event.toolName}(${JSON.stringify(event.args).slice(0, 200)})`);
+      log.appendLine(
+        `[sdk:tool] ${event.toolName}(${JSON.stringify(event.args).slice(0, 200)})`,
+      );
       if (!firstToolSeen) {
         firstToolSeen = true;
         const isCurrentFile = event.args?.path === ctx.filePath;
@@ -420,11 +554,16 @@ export async function callLLMWithSDK(
       const toolStart = toolStartTimes.get(key);
       const toolMs = toolStart ? now - toolStart : 0;
       if (event.isError) {
-        log.appendLine(`[sdk:tool] ${event.toolName} ERROR (${toolMs}ms): ${JSON.stringify(event.result).slice(0, 300)}`);
+        log.appendLine(
+          `[sdk:tool] ${event.toolName} ERROR (${toolMs}ms): ${JSON.stringify(event.result).slice(0, 300)}`,
+        );
       } else {
         log.appendLine(`[sdk:tool] ${event.toolName} done (${toolMs}ms)`);
       }
-      if (!event.isError && (event.toolName === "edit" || event.toolName === "write")) {
+      if (
+        !event.isError &&
+        (event.toolName === "edit" || event.toolName === "write")
+      ) {
         resolveOnToolDone?.();
       }
     }
@@ -445,7 +584,9 @@ export async function callLLMWithSDK(
 
   const latencyMs = Date.now() - startTime;
   const overheadMs = latencyMs - totalLlmMs;
-  log.appendLine(`[sdk:timing] Total: ${latencyMs}ms | LLM: ${totalLlmMs}ms | Overhead: ${overheadMs}ms (${turnIndex} turn${turnIndex !== 1 ? "s" : ""})`);
+  log.appendLine(
+    `[sdk:timing] Total: ${latencyMs}ms | LLM: ${totalLlmMs}ms | Overhead: ${overheadMs}ms (${turnIndex} turn${turnIndex !== 1 ? "s" : ""})`,
+  );
 
   return {
     edits: [],
@@ -456,4 +597,3 @@ export async function callLLMWithSDK(
     model: piModel.id,
   };
 }
-

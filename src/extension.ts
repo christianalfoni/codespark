@@ -3,19 +3,24 @@ import * as path from "path";
 import * as fs from "fs";
 import { findInstructionsForFile, ResolvedInstructions } from "./instructions";
 import { InstructionFileDecorationProvider } from "./instructionDecorations";
-import { callLLMWithSDK, warmupSession, closeSession } from "./llm-sdk";
-import { applyDiffFromBuffer, acceptDiff, rejectDiff, hasPendingDiff, registerDiffHandlers } from "./diff";
+import {
+  callLLMWithSDK,
+  warmupSession,
+  closeSession,
+  resolveModel,
+  buildContextMessages,
+  ResolvedModel,
+} from "./llm-sdk";
 import { ResolvedContext } from "./types";
 import { promptForInstruction } from "./promptInput";
 import { initStats, recordQuery, showStats, resetStats } from "./stats";
-
+import { evaluateFocusArea } from "./editor";
 
 export function activate(context: vscode.ExtensionContext) {
   const log = vscode.window.createOutputChannel("CodeSpark");
   context.subscriptions.push(log);
 
   initStats(context.workspaceState);
-  registerDiffHandlers(context);
 
   // Prewarm pi modules on startup
   warmupSession(log);
@@ -23,19 +28,22 @@ export function activate(context: vscode.ExtensionContext) {
   // File decoration provider for context files
   const decorationProvider = new InstructionFileDecorationProvider();
   context.subscriptions.push(
-    vscode.window.registerFileDecorationProvider(decorationProvider)
+    vscode.window.registerFileDecorationProvider(decorationProvider),
   );
-
 
   // Status bar item showing the active CLAUDE.md
   const statusBarItem = vscode.window.createStatusBarItem(
     vscode.StatusBarAlignment.Left,
-    0
+    0,
   );
   statusBarItem.command = "codeSpark.openInstructions";
   context.subscriptions.push(statusBarItem);
 
-  let currentInstructions: ResolvedInstructions = { root: undefined, local: [], referencedFiles: [] };
+  let currentInstructions: ResolvedInstructions = {
+    root: undefined,
+    local: [],
+    referencedFiles: [],
+  };
 
   function updateActiveInstructions() {
     const editor = vscode.window.activeTextEditor;
@@ -69,13 +77,17 @@ export function activate(context: vscode.ExtensionContext) {
   // Update on editor change
   updateActiveInstructions();
   context.subscriptions.push(
-    vscode.window.onDidChangeActiveTextEditor(() => updateActiveInstructions())
+    vscode.window.onDidChangeActiveTextEditor(() => updateActiveInstructions()),
   );
 
   // Watch for CLAUDE.md and AGENT.md file changes
-  const watcher = vscode.workspace.createFileSystemWatcher("**/{CLAUDE,AGENT}.md");
+  const watcher = vscode.workspace.createFileSystemWatcher(
+    "**/{CLAUDE,AGENT}.md",
+  );
   const onInstructionsChanged = (type: string) => (uri: vscode.Uri) => {
-    log.appendLine(`[instructions] ${type}: ${vscode.workspace.asRelativePath(uri)}`);
+    log.appendLine(
+      `[instructions] ${type}: ${vscode.workspace.asRelativePath(uri)}`,
+    );
     updateActiveInstructions();
   };
   watcher.onDidCreate(onInstructionsChanged("Created"));
@@ -90,25 +102,23 @@ export function activate(context: vscode.ExtensionContext) {
       if (target) {
         vscode.window.showTextDocument(target.uri);
       } else {
-        vscode.window.showInformationMessage("No CLAUDE.md or AGENT.md found for the current file.");
+        vscode.window.showInformationMessage(
+          "No CLAUDE.md or AGENT.md found for the current file.",
+        );
       }
-    })
+    }),
   );
 
   // Main invoke command
   context.subscriptions.push(
     vscode.commands.registerCommand("codeSpark.invoke", async () => {
       const editor = vscode.window.activeTextEditor;
+
       if (!editor) {
         return;
       }
 
-      if (hasPendingDiff()) {
-        await rejectDiff();
-      }
-
       const instructions = decorationProvider.activate(editor.document.uri);
-
       const fileContent = editor.document.getText();
       const selection = editor.selection.isEmpty
         ? undefined
@@ -117,72 +127,73 @@ export function activate(context: vscode.ExtensionContext) {
       const cursorLine = editor.document.lineAt(cursorLineNum);
       const cursorOnEmptyLine = cursorLine.isEmptyOrWhitespace;
 
-      // Determine focus area based on cursor position
-      let contextSnippet: string;
-      let focusStartLine: number;
-      let focusEndLine: number;
-      let enclosingBlock: vscode.FoldingRange | undefined;
-
-      if (cursorLineNum === 0) {
-        // First line: whole file
-        focusStartLine = 0;
-        focusEndLine = editor.document.lineCount - 1;
-        contextSnippet = "The whole file";
-      } else {
-        // Check if cursor is inside a folding block
-        const foldingRanges = await vscode.commands.executeCommand<vscode.FoldingRange[]>(
-          "vscode.executeFoldingRangeProvider",
-          editor.document.uri
-        );
-        if (foldingRanges) {
-          for (const range of foldingRanges) {
-            if (range.start <= cursorLineNum && range.end >= cursorLineNum) {
-              if (!enclosingBlock || (range.end - range.start) < (enclosingBlock.end - enclosingBlock.start)) {
-                enclosingBlock = range;
-              }
-            }
-          }
-        }
-
-        if (enclosingBlock) {
-          // Inside a block: decoration and snippet cover the block
-          focusStartLine = enclosingBlock.start;
-          focusEndLine = Math.min(enclosingBlock.end + 1, editor.document.lineCount - 1);
-          const lines: string[] = [];
-          for (let i = focusStartLine; i <= focusEndLine; i++) {
-            lines.push(editor.document.lineAt(i).text);
-          }
-          contextSnippet = lines.join("\n");
-        } else {
-          // Any other line: decoration is just the line, snippet is ±5 lines
-          focusStartLine = cursorLineNum;
-          focusEndLine = cursorLineNum;
-          const snippetStart = Math.max(0, cursorLineNum - 5);
-          const snippetEnd = Math.min(editor.document.lineCount - 1, cursorLineNum + 5);
-          const lines: string[] = [];
-          for (let i = snippetStart; i <= snippetEnd; i++) {
-            const prefix = i === cursorLineNum ? ">" : " ";
-            lines.push(`${prefix} ${editor.document.lineAt(i).text}`);
-          }
-          contextSnippet = lines.join("\n");
-        }
-      }
+      const focusArea = await evaluateFocusArea(editor);
+      const contextSnippet =
+        focusArea.focusStartLine === 0 &&
+        focusArea.focusEndLine === editor.document.lineCount - 1
+          ? "The whole file"
+          : focusArea.lines.join("\n");
 
       // Show gutter indicator immediately while the prompt is open
       const gutterDecoration = vscode.window.createTextEditorDecorationType({
         isWholeLine: true,
-        overviewRulerColor: '#DA7756',
-        gutterIconPath: path.join(__dirname, "..", "media", "gutter-changed.svg"),
+        overviewRulerColor: "#DA7756",
+        gutterIconPath: path.join(
+          __dirname,
+          "..",
+          "media",
+          "gutter-changed.svg",
+        ),
         gutterIconSize: "contain",
       });
-      const showFullRange = cursorLineNum === 0 || (enclosingBlock && cursorLineNum === enclosingBlock.start);
-      const pendingStart = showFullRange ? focusStartLine : cursorLineNum;
-      const pendingEnd = showFullRange ? focusEndLine : cursorLineNum;
       const pendingRange = new vscode.Range(
-        new vscode.Position(pendingStart, 0),
-        editor.document.lineAt(pendingEnd).range.end
+        new vscode.Position(0, 0),
+        editor.document.lineAt(editor.document.lineCount - 1).range.end,
       );
       editor.setDecorations(gutterDecoration, [pendingRange]);
+
+      const filePath = vscode.workspace.asRelativePath(editor.document.uri);
+      const basename = path.basename(editor.document.uri.fsPath);
+      const isInstructionFile =
+        basename === "CLAUDE.md" || basename === "AGENT.md";
+
+      // Build instruction content for system prompt (skip when editing CLAUDE.md itself)
+      let instructionContent: string | undefined;
+      if (!isInstructionFile) {
+        const instructionParts: string[] = [];
+        if (instructions.root) {
+          instructionParts.push(instructions.root.content);
+        }
+        for (const loc of instructions.local) {
+          instructionParts.push(loc.content);
+        }
+        instructionContent =
+          instructionParts.length > 0
+            ? instructionParts.join("\n\n---\n\n")
+            : undefined;
+      }
+
+      // --- Phase 2: Fire expensive work in parallel with the prompt ---
+      // These all run while the user types their instruction.
+      const savePromise = editor.document.save();
+      const modelPromise = resolveModel(log).catch((err) => err as Error);
+      const refFilesPromise = isInstructionFile
+        ? Promise.resolve([] as { path: string; content: string }[])
+        : Promise.all(
+            instructions.referencedFiles.map(async (absPath) => {
+              try {
+                const content = await fs.promises.readFile(absPath, "utf-8");
+                const relPath = vscode.workspace.asRelativePath(absPath);
+                return { path: relPath, content };
+              } catch {
+                return null;
+              }
+            }),
+          ).then((results) =>
+            results.filter(
+              (r): r is { path: string; content: string } => r !== null,
+            ),
+          );
 
       const promptResult = await promptForInstruction();
 
@@ -194,52 +205,36 @@ export function activate(context: vscode.ExtensionContext) {
 
       const instruction = promptResult.instruction;
 
-      log.appendLine(`[context] Cursor at line ${cursorLineNum + 1}, focus lines ${focusStartLine + 1}-${focusEndLine + 1}`);
+      log.appendLine(
+        `[context] Cursor at line ${cursorLineNum + 1}, focus lines ${focusArea.focusStartLine + 1}-${focusArea.focusEndLine + 1}`,
+      );
       if (instructions.root) {
-        log.appendLine(`[context] Root CLAUDE.md: ${vscode.workspace.asRelativePath(instructions.root.uri)}`);
+        log.appendLine(
+          `[context] Root CLAUDE.md: ${vscode.workspace.asRelativePath(instructions.root.uri)}`,
+        );
       }
       for (const loc of instructions.local) {
-        log.appendLine(`[context] Local CLAUDE.md: ${vscode.workspace.asRelativePath(loc.uri)}`);
+        log.appendLine(
+          `[context] Local CLAUDE.md: ${vscode.workspace.asRelativePath(loc.uri)}`,
+        );
       }
 
       // Add fade effect now that the LLM is working (gutter already visible from prompt phase)
       const pendingDecoration = vscode.window.createTextEditorDecorationType({
         isWholeLine: true,
-        opacity: '0.4',
+        opacity: "0.4",
       });
       editor.setDecorations(pendingDecoration, [pendingRange]);
 
       // Show loading status
       statusBarItem.text = "$(loading~spin) CodeSpark · thinking...";
 
-      const filePath = vscode.workspace.asRelativePath(editor.document.uri);
-      const basename = path.basename(editor.document.uri.fsPath);
-      const isInstructionFile = basename === "CLAUDE.md" || basename === "AGENT.md";
-
-      // Build instruction content for system prompt (skip when editing CLAUDE.md itself)
-      let instructionContent: string | undefined;
-      const referenceFiles: { path: string; content: string }[] = [];
-      if (!isInstructionFile) {
-        const instructionParts: string[] = [];
-        if (instructions.root) {
-          instructionParts.push(instructions.root.content);
-        }
-        for (const loc of instructions.local) {
-          instructionParts.push(loc.content);
-        }
-        instructionContent = instructionParts.length > 0 ? instructionParts.join("\n\n---\n\n") : undefined;
-
-        // Read files referenced by CLAUDE.md links
-        for (const absPath of instructions.referencedFiles) {
-          try {
-            const content = fs.readFileSync(absPath, "utf-8");
-            const relPath = vscode.workspace.asRelativePath(absPath);
-            referenceFiles.push({ path: relPath, content });
-          } catch {
-            // skip unreadable files
-          }
-        }
-      }
+      // --- Await parallel work (should already be done by now) ---
+      const [, modelResult, referenceFiles] = await Promise.all([
+        savePromise,
+        modelPromise,
+        refFilesPromise,
+      ]);
 
       const ctx: ResolvedContext = {
         fileContent,
@@ -250,31 +245,53 @@ export function activate(context: vscode.ExtensionContext) {
         contextSnippet,
         instruction,
         instructionContent,
-        referenceFiles,
+        referenceFiles: [],
         isInstructionFile,
       };
 
       const agentDecoration = vscode.window.createTextEditorDecorationType({
         isWholeLine: true,
-        opacity: '0.4',
-        overviewRulerColor: '#5B8ADD',
+        opacity: "0.4",
+        overviewRulerColor: "#5B8ADD",
         gutterIconPath: path.join(__dirname, "..", "media", "gutter-agent.svg"),
         gutterIconSize: "contain",
       });
 
       try {
-        await editor.document.save();
-        const result = await callLLMWithSDK(ctx, log, () => {
-          pendingDecoration.dispose();
-          gutterDecoration.dispose();
-          editor.setDecorations(agentDecoration, [pendingRange]);
-          statusBarItem.text = "$(loading~spin) CodeSpark · agent working...";
-        });
+        if (modelResult instanceof Error) {
+          throw modelResult;
+        }
+
+        const resolved = modelResult as ResolvedModel;
+
+        // Build context messages (doesn't depend on instruction)
+        const contextMessages = buildContextMessages(
+          fileContent,
+          filePath,
+          referenceFiles,
+          resolved.piModel,
+        );
+
+        ctx.referenceFiles = referenceFiles;
+
+        const result = await callLLMWithSDK(
+          ctx,
+          log,
+          resolved,
+          contextMessages,
+          () => {
+            pendingDecoration.dispose();
+            gutterDecoration.dispose();
+            editor.setDecorations(agentDecoration, [pendingRange]);
+            statusBarItem.text =
+              "$(loading~spin) CodeSpark · agent working...";
+          },
+        );
         agentDecoration.dispose();
         pendingDecoration.dispose();
         gutterDecoration.dispose();
 
-        const hasEdits = await applyDiffFromBuffer(editor, ctx.fileContent, log);
+        const hasEdits = editor.document.getText() !== ctx.fileContent;
 
         recordQuery({
           provider: result.provider,
@@ -289,7 +306,9 @@ export function activate(context: vscode.ExtensionContext) {
 
         if (!hasEdits) {
           decorationProvider.deactivate();
-          vscode.window.showInformationMessage("CodeSpark: No edits suggested.");
+          vscode.window.showInformationMessage(
+            "CodeSpark: No edits suggested.",
+          );
           updateActiveInstructions();
           return;
         }
@@ -315,87 +334,20 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.window.showErrorMessage(`CodeSpark: ${msg}`);
         updateActiveInstructions();
       }
-    })
-  );
-
-  context.subscriptions.push(
-    vscode.commands.registerCommand("codeSpark.acceptDiff", async () => {
-      await acceptDiff();
-      updateActiveInstructions();
-      vscode.window.showInformationMessage("CodeSpark: Diff accepted.");
-    })
-  );
-
-  context.subscriptions.push(
-    vscode.commands.registerCommand("codeSpark.rejectDiff", async () => {
-      await rejectDiff();
-      updateActiveInstructions();
-      vscode.window.showInformationMessage("CodeSpark: Diff rejected.");
-    })
-  );
-
-  // Raw test command — bypasses pi-ai entirely
-  context.subscriptions.push(
-    vscode.commands.registerCommand("codeSpark.testLm", async () => {
-      try {
-        log.appendLine("[test] Selecting models...");
-        // Try all vendors to find one that actually works
-        const allModels = await vscode.lm.selectChatModels();
-        log.appendLine(`[test] All available models:`);
-        for (const m of allModels) {
-          log.appendLine(`[test]   ${m.id} | vendor: ${m.vendor} | family: ${m.family}`);
-        }
-
-        // Try copilot vendor first, then any
-        const models = await vscode.lm.selectChatModels({ vendor: "copilot" });
-        log.appendLine(`[test] Found ${models.length} models`);
-        if (models.length === 0) {
-          vscode.window.showErrorMessage("No models found");
-          return;
-        }
-        const model = models[0];
-        log.appendLine(`[test] Using: ${model.name} (${model.id})`);
-
-        const messages = [
-          vscode.LanguageModelChatMessage.User("Say hello in one sentence."),
-        ];
-
-        log.appendLine("[test] Calling sendRequest...");
-        const response = await model.sendRequest(
-          messages,
-          { justification: "CodeSpark test request. Click Allow to proceed." },
-          new vscode.CancellationTokenSource().token,
-        );
-
-        log.appendLine("[test] Got response, consuming text stream...");
-        let text = "";
-        for await (const fragment of response.text) {
-          text += fragment;
-          log.appendLine(`[test] fragment: "${fragment}"`);
-        }
-        log.appendLine(`[test] Done. Full response: "${text}"`);
-        log.show();
-        vscode.window.showInformationMessage(`LM test: ${text.slice(0, 100)}`);
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        log.appendLine(`[test] ERROR: ${msg}`);
-        log.show();
-        vscode.window.showErrorMessage(`LM test failed: ${msg}`);
-      }
-    })
+    }),
   );
 
   context.subscriptions.push(
     vscode.commands.registerCommand("codeSpark.showStats", () => {
       showStats();
-    })
+    }),
   );
 
   context.subscriptions.push(
     vscode.commands.registerCommand("codeSpark.resetStats", () => {
       resetStats();
       vscode.window.showInformationMessage("CodeSpark: Stats reset.");
-    })
+    }),
   );
 }
 
