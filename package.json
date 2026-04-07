@@ -2,7 +2,7 @@
   "name": "codespark-agent",
   "displayName": "CodeSpark",
   "description": "The inline agent for writing code.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "publisher": "codespark",
   "license": "MIT",
   "icon": "media/icon.png",

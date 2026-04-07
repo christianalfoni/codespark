@@ -587,7 +587,8 @@ export async function callLLMWithSDK(
       }
       if (
         !event.isError &&
-        (event.toolName === "edit" || event.toolName === "write")
+        (event.toolName === "edit" || event.toolName === "write") &&
+        event.args?.path === ctx.filePath
       ) {
         resolveOnToolDone?.();
       }
