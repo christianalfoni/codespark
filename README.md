@@ -14,7 +14,7 @@ Project-level agents like Claude Code, Copilot Agent, and Cursor are powerful �
 
 ## Project context
 
-Context is preset starting from your cursor position — outward to the surrounding block, the full file contents, and then further to your `CLAUDE.md` / `AGENT.md` files and any resources they reference, plus any research from the sidebar. Often that's enough to make the change. But when the task demands it, the agent will on its own explore additional files and go as wide as it needs — like a project-level agent, just anchored to where your cursor is.
+Context is progressively included starting from where your cursor is. Sometimes the code at the cursor is enough. Other times it needs the surrounding block, the full file, your `CLAUDE.md` / `AGENT.md` files and any resources they reference, or research from the sidebar. This progressive approach is optimized for keeping context small and relevant — but when the task demands it, the agent will explore additional files and go as wide as it needs on its own.
 
 You can link to files and directories from your `CLAUDE.md` and `AGENT.md` files. Linked files are read into context so the agent understands their contents. Linked directories are expanded to show their filenames, giving the agent awareness of the project structure without loading every file.
 
