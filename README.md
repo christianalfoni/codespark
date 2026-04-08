@@ -2,21 +2,21 @@
   <img src="./media/logo.png" alt="CodeSpark" width="340" />
 </p>
 
-<p align="center"><em>The inline agent for writing code — with a research sidekick</em></p>
+<p align="center"><em>The inline agent for writing code</em></p>
 
 > You don't need to own every keystroke — but you do need to own the expression of your intent. And that happens at the file level, where you're closest to the code — not from a project-wide prompt.
 
-Project-level agents like Claude Code, Copilot Agent, and Cursor are powerful. They explore your repo, run commands, debug across files, and plan complex changes. They operate in dynamic context — long sessions where the agent drives most of the decisions.
+CodeSpark is a full-fledged coding agent — but it works from your cursor, not from a separate prompt window. Instead of manually navigating files and typing out changes, you describe what should happen in natural language. You're still the one learning the codebase, still the one deciding what changes to make. The agent just replaces the mechanical parts — the searching, the boilerplate, the repetitive edits — so you can stay focused on intent.
 
-When it's time to actually write code, you want something different. Short sessions. Fast momentum. Full ownership of every change. You want to stay in your editor, point at the code, and say what needs to happen.
+Project-level agents like Claude Code, Copilot Agent, and Cursor are powerful — great for project-wide mundane tasks like large refactors, boilerplate generation, and scaffolding. But they take on the decision-making and ownership of the code, which is something you normally don't want to give up. CodeSpark keeps that ownership with you: short sessions, fast momentum, every change under your eye.
 
 ![CodeSpark in action](./media/screenshot.png)
 
 ## Project context
 
-CodeSpark reads your `CLAUDE.md` and `AGENT.md` files so it knows your project's patterns and conventions. The edits it makes aren't generic — they match how _you_ write code in _this_ project.
+Context is preset starting from your cursor position — outward to the surrounding block, the full file contents, and then further to your `CLAUDE.md` / `AGENT.md` files and any resources they reference, plus any research from the sidebar. Often that's enough to make the change. But when the task demands it, the agent will on its own explore additional files and go as wide as it needs — like a project-level agent, just anchored to where your cursor is.
 
-You can link to files and directories from these files. Linked files are read into context so the agent understands their contents. Linked directories are expanded to show their filenames, giving the agent awareness of the project structure without loading every file.
+You can link to files and directories from your `CLAUDE.md` and `AGENT.md` files. Linked files are read into context so the agent understands their contents. Linked directories are expanded to show their filenames, giving the agent awareness of the project structure without loading every file.
 
 These same files also improve your project-level agents — giving them better guidance for planning refactors, suggesting implementation approaches, and understanding how your codebase works.
 
