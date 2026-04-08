@@ -13,6 +13,89 @@ import { promptForInstruction } from "./promptInput";
 import { recordQuery } from "./stats";
 import { evaluateFocusArea } from "./editor";
 
+/* ── File-level decoration helpers ────────────────────────────── */
+
+/**
+ * Scanning effect: a bright band sweeps down through the dimmed file.
+ * Lines near the scan position are more opaque, the rest stay dim.
+ */
+function startFileScan(
+  editor: vscode.TextEditor,
+): { dispose: () => void } {
+  const lineCount = editor.document.lineCount;
+
+  // Pre-create opacity levels — fewer types = better performance.
+  // Level 0 = dimmest (base), last = brightest (scan center).
+  const BASE_OPACITY = 0.3;
+  const PEAK_OPACITY = 0.85;
+  const LEVELS = 6;
+  const opacityTypes: vscode.TextEditorDecorationType[] = [];
+  for (let i = 0; i < LEVELS; i++) {
+    const t = i / (LEVELS - 1); // 0 → 1
+    const opacity = BASE_OPACITY + t * (PEAK_OPACITY - BASE_OPACITY);
+    opacityTypes.push(
+      vscode.window.createTextEditorDecorationType({
+        isWholeLine: true,
+        opacity: `${opacity}`,
+      }),
+    );
+  }
+
+  // The scan band radius — how many lines from center get the gradient
+  const BAND_RADIUS = 4;
+  const SCAN_SPEED = 2; // lines per tick
+  const TICK_MS = 60;
+  let scanPos = 0;
+
+  function applyFrame() {
+    // Group lines by their opacity level
+    const buckets: vscode.Range[][] = Array.from(
+      { length: LEVELS },
+      () => [],
+    );
+
+    for (let line = 0; line < lineCount; line++) {
+      const dist = Math.abs(line - scanPos);
+      let level: number;
+      if (dist >= BAND_RADIUS) {
+        level = 0; // base dim
+      } else {
+        // Cosine falloff: 1 at center → 0 at edge
+        const t = Math.cos((dist / BAND_RADIUS) * (Math.PI / 2));
+        level = Math.round(t * (LEVELS - 1));
+      }
+      const range = new vscode.Range(line, 0, line, 0);
+      buckets[level].push(range);
+    }
+
+    for (let i = 0; i < LEVELS; i++) {
+      editor.setDecorations(opacityTypes[i], buckets[i]);
+    }
+  }
+
+  applyFrame();
+
+  const interval = setInterval(() => {
+    scanPos += SCAN_SPEED;
+    // Wrap around with some overshoot so the band fully exits before restarting
+    if (scanPos > lineCount + BAND_RADIUS) {
+      scanPos = -BAND_RADIUS;
+    }
+    applyFrame();
+  }, TICK_MS);
+
+  return {
+    dispose() {
+      clearInterval(interval);
+      for (const t of opacityTypes) {
+        t.dispose();
+      }
+    },
+  };
+}
+
+/* ── Main command ─────────────────────────────────────────────── */
+
 export function createInvokeCommand(
   log: vscode.OutputChannel,
   decorationProvider: InstructionFileDecorationProvider,
@@ -42,16 +125,17 @@ export function createInvokeCommand(
         ? "The whole file"
         : focusArea.lines.join("\n");
 
-    const gutterDecoration = vscode.window.createTextEditorDecorationType({
-      isWholeLine: true,
-      gutterIconPath: path.join(__dirname, "..", "media", "gutter-changed.svg"),
-      gutterIconSize: "contain",
-    });
     const pendingRange = new vscode.Range(
       new vscode.Position(0, 0),
       editor.document.lineAt(editor.document.lineCount - 1).range.end,
     );
-    editor.setDecorations(gutterDecoration, [pendingRange]);
+
+    // Dim the file while the prompt is open
+    const invokeDim = vscode.window.createTextEditorDecorationType({
+      isWholeLine: true,
+      opacity: "0.5",
+    });
+    editor.setDecorations(invokeDim, [pendingRange]);
 
     const filePath = vscode.workspace.asRelativePath(editor.document.uri);
     const basename = path.basename(editor.document.uri.fsPath);
@@ -96,7 +180,7 @@ export function createInvokeCommand(
     const promptResult = await promptForInstruction();
 
     if (!promptResult) {
-      gutterDecoration.dispose();
+      invokeDim.dispose();
       decorationProvider.deactivate();
       return;
     }
@@ -117,11 +201,9 @@ export function createInvokeCommand(
       );
     }
 
-    const pendingDecoration = vscode.window.createTextEditorDecorationType({
-      isWholeLine: true,
-      opacity: "0.4",
-    });
-    editor.setDecorations(pendingDecoration, [pendingRange]);
+    // Start scanning immediately after prompt submission
+    invokeDim.dispose();
+    let pulse: { dispose: () => void } = startFileScan(editor);
 
     statusBarItem.text = "$(loading~spin) CodeSpark · thinking...";
 
@@ -143,13 +225,6 @@ export function createInvokeCommand(
       referenceFiles: [],
       isInstructionFile,
     };
-
-    const agentDecoration = vscode.window.createTextEditorDecorationType({
-      isWholeLine: true,
-      opacity: "0.4",
-      gutterIconPath: path.join(__dirname, "..", "media", "gutter-agent.svg"),
-      gutterIconSize: "contain",
-    });
 
     try {
       if (modelResult instanceof Error) {
@@ -173,15 +248,10 @@ export function createInvokeCommand(
         resolved,
         contextMessages,
         () => {
-          pendingDecoration.dispose();
-          gutterDecoration.dispose();
-          editor.setDecorations(agentDecoration, [pendingRange]);
           statusBarItem.text = "$(loading~spin) CodeSpark · agent working...";
         },
       );
-      agentDecoration.dispose();
-      pendingDecoration.dispose();
-      gutterDecoration.dispose();
+      pulse.dispose();
 
       recordQuery({
         provider: result.provider,
@@ -203,9 +273,7 @@ export function createInvokeCommand(
       decorationProvider.deactivate();
       statusBarItem.text = `$(sparkle) CodeSpark · edited`;
     } catch (err: unknown) {
-      agentDecoration.dispose();
-      pendingDecoration.dispose();
-      gutterDecoration.dispose();
+      pulse.dispose();
       decorationProvider.deactivate();
       recordQuery({
         provider: "",
