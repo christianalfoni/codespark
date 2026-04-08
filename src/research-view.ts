@@ -118,11 +118,19 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  private _runInTerminal(command: string): void {
-    let terminal = vscode.window.activeTerminal;
-    if (!terminal) {
-      terminal = vscode.window.createTerminal("CodeSpark");
+  private _terminal: vscode.Terminal | undefined;
+
+  private _getTerminal(): vscode.Terminal {
+    // Reuse existing CodeSpark terminal if it's still open
+    if (this._terminal && !this._terminal.exitStatus) {
+      return this._terminal;
     }
+    this._terminal = vscode.window.createTerminal("CodeSpark");
+    return this._terminal;
+  }
+
+  private _runInTerminal(command: string): void {
+    const terminal = this._getTerminal();
     terminal.show();
     terminal.sendText(command);
   }

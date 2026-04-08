@@ -406,7 +406,7 @@ function AssistantMessage({
   if (isStreaming && (activeTool || !currentTurnHasText)) {
     elements.push(
       <div key="thinking" class="message-thinking">
-        {activeTool ? `Using ${activeTool}...` : "Thinking..."}
+        Thinking...
       </div>,
     );
   }
