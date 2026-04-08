@@ -2,7 +2,7 @@
   <img src="./media/logo.png" alt="CodeSpark" width="340" />
 </p>
 
-<p align="center"><em>The inline agent for writing code</em></p>
+<p align="center"><em>A coding agent at the tip of your cursor</em></p>
 
 > You don't need to own every keystroke — but you do need to own the expression of your intent. And that happens at the file level, where you're closest to the code — not from a project-wide prompt.
 

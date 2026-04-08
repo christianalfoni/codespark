@@ -1,7 +1,7 @@
 {
   "name": "codespark-agent",
   "displayName": "CodeSpark",
-  "description": "The inline agent for writing code.",
+  "description": "A coding agent at the tip of your cursor",
   "version": "0.2.0",
   "publisher": "codespark",
   "license": "MIT",
