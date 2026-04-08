@@ -9,7 +9,7 @@ import {
   type ContextState,
   createInitialState,
 } from "./state";
-import { renderMarkdown } from "./markdown";
+import { renderMarkdown, CLIPBOARD_ICON, CHECK_ICON } from "./markdown";
 
 interface VsCodeApi {
   postMessage(msg: unknown): void;
@@ -205,23 +205,53 @@ export function App({ vscode, logoUri }: AppProps) {
     ta.style.height = Math.min(ta.scrollHeight, 150) + "px";
   }
 
-  const isEmpty = state.entries.length === 0;
+  function onMessageListClick(e: MouseEvent) {
+    const target = e.target as HTMLElement;
+    const btn = target.closest("button");
+    const codePath = target.closest(".code-path") as HTMLElement | null;
 
-  // Find the last user message for sticky prompt
-  let lastUserContent: string | null = null;
-  for (let i = state.entries.length - 1; i >= 0; i--) {
-    if (state.entries[i].role === "user") {
-      lastUserContent = (state.entries[i] as { role: "user"; content: string }).content;
-      break;
+    if (codePath) {
+      const path = codePath.dataset.path;
+      const line = codePath.dataset.line;
+      if (path) {
+        vscode.postMessage({
+          type: "open-file",
+          path,
+          line: line ? parseInt(line, 10) : undefined,
+        });
+      }
+      return;
+    }
+
+    if (btn?.classList.contains("code-copy-btn")) {
+      const code = btn.dataset.code ?? "";
+      navigator.clipboard.writeText(code);
+      btn.innerHTML = CHECK_ICON;
+      btn.classList.add("code-copy-btn-copied");
+      setTimeout(() => {
+        btn.innerHTML = CLIPBOARD_ICON;
+        btn.classList.remove("code-copy-btn-copied");
+      }, 1000);
+      return;
+    }
+
+    if (btn?.classList.contains("code-run-btn")) {
+      const command = btn.dataset.command ?? "";
+      if (command) {
+        vscode.postMessage({ type: "run-command", command });
+      }
+      return;
     }
   }
 
+  const isEmpty = state.entries.length === 0;
+
   return (
     <>
-      <div class="message-list" ref={messageListRef} onScroll={onScroll}>
+      <div class="message-list" ref={messageListRef} onScroll={onScroll} onClick={onMessageListClick}>
         {isEmpty ? (
           <div class="empty-state">
-            <img class="empty-state-logo" src={logoUri} alt="CodeSpark" />
+            <Logo />
             <div class="empty-state-text">
               Research your codebase and the web. Findings are shared with the
               inline agent.
@@ -232,12 +262,10 @@ export function App({ vscode, logoUri }: AppProps) {
             {state.entries.map((entry, i) => {
               const isLast = i === state.entries.length - 1;
               if (entry.role === "user") {
-                const isLastUser = entry.content === lastUserContent;
                 return (
                   <UserMessage
                     key={i}
                     content={entry.content}
-                    sticky={isLastUser}
                   />
                 );
               }
@@ -292,9 +320,9 @@ export function App({ vscode, logoUri }: AppProps) {
   );
 }
 
-function UserMessage({ content, sticky }: { content: string; sticky?: boolean }) {
+function UserMessage({ content }: { content: string }) {
   return (
-    <div class={`message message-user${sticky ? " message-user-sticky" : ""}`}>
+    <div class="message message-user">
       {content}
     </div>
   );
@@ -384,4 +412,31 @@ function AssistantMessage({
   }
 
   return <>{elements}</>;
+}
+
+function Logo() {
+  return (
+    <svg class="empty-state-logo" viewBox="0 0 680 320" xmlns="http://www.w3.org/2000/svg">
+      {/* Left angle bracket */}
+      <polygon
+        points="290,80 276,80 232,152 276,224 290,224 246,152"
+        class="logo-bracket"
+      />
+      {/* Right angle bracket */}
+      <polygon
+        points="390,80 404,80 448,152 404,224 390,224 434,152"
+        class="logo-bracket"
+      />
+      {/* Lightning bolt */}
+      <path
+        transform="translate(286,98) scale(4.5)"
+        d="M14.5 2L5 13h6.5L9.5 22L19 11h-6.5L14.5 2Z"
+        class="logo-bolt"
+      />
+      {/* Wordmark */}
+      <text x="340" y="295" class="logo-text">
+        Code<tspan class="logo-text-accent">Spark</tspan>
+      </text>
+    </svg>
+  );
 }

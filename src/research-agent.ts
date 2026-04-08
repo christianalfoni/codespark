@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import * as piAgentCore from "@mariozechner/pi-agent-core";
 import * as piCodingAgent from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import { resolveModel } from "./llm-sdk";
+import { resolveModel, resolveResearchModel } from "./llm-sdk";
 
 // ---------------------------------------------------------------------------
 // Summary store (backed by workspaceState)
@@ -60,7 +60,7 @@ export function appendResearchContext(
 }
 
 // ---------------------------------------------------------------------------
-// Custom tools
+// Low-level tools (used by sub-agents)
 // ---------------------------------------------------------------------------
 
 function createWebSearchTool(): piAgentCore.AgentTool {
@@ -174,36 +174,244 @@ function createWebFetchTool(): piAgentCore.AgentTool {
 }
 
 // ---------------------------------------------------------------------------
-// Research agent
+// Sub-agent runner
 // ---------------------------------------------------------------------------
 
-const RESEARCH_SYSTEM_PROMPT = `You are a research assistant for the CodeSpark coding extension. You can read workspace files and search the web, but you CANNOT edit or write files.
+function extractAssistantText(agent: any): string {
+  const messages: any[] = agent.state.messages ?? [];
+  const parts: string[] = [];
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (msg.role !== "assistant") break;
+    const content = msg.content;
+    if (Array.isArray(content)) {
+      for (const block of content) {
+        if (block.type === "text" && block.text) {
+          parts.unshift(block.text);
+        }
+      }
+    }
+  }
+  return parts.join("\n").trim();
+}
 
-Research topics the user asks about — whether that's understanding code in the workspace, finding documentation online, or investigating how to approach a coding task. Respond naturally and conversationally to the user.
+async function runSubAgent(
+  subModel: any,
+  apiKey: string,
+  systemPrompt: string,
+  tools: piAgentCore.AgentTool[],
+  task: string,
+  log: vscode.OutputChannel,
+): Promise<string> {
+  const sub = new piAgentCore.Agent({
+    initialState: {
+      model: subModel,
+      systemPrompt,
+      tools,
+      thinkingLevel: "off",
+    },
+    getApiKey: () => apiKey,
+  });
+
+  log.appendLine(
+    `[research:sub] Spawning sub-agent (model: ${subModel.id}) — ${task.slice(0, 80)}`,
+  );
+
+  try {
+    sub.prompt(task);
+    await sub.waitForIdle();
+    const result = extractAssistantText(sub);
+    log.appendLine(
+      `[research:sub] Sub-agent done (${result.length} chars)`,
+    );
+    return result || "(sub-agent returned no text)";
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    log.appendLine(`[research:sub] Sub-agent error: ${msg}`);
+    return `Error: ${msg}`;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Compound tools (used by head agent, spawn sub-agents)
+// ---------------------------------------------------------------------------
+
+function createSearchAndSummarizeTool(
+  subModel: any,
+  apiKey: string,
+  log: vscode.OutputChannel,
+): piAgentCore.AgentTool {
+  const schema = Type.Object({
+    query: Type.String({
+      description: "The search query or research question",
+    }),
+    context: Type.Optional(
+      Type.String({
+        description:
+          "Additional context to help the sub-agent understand what to look for",
+      }),
+    ),
+  });
+
+  const webSearchTool = createWebSearchTool();
+  const webFetchTool = createWebFetchTool();
+
+  const systemPrompt = `You are a web research sub-agent. Your job is to search the web and gather information to answer the given question.
+
+Use web_search to find relevant results, then use web_fetch to read the most promising pages. You may search multiple times with different queries if the first results aren't sufficient.
+
+Return a clear, structured summary of your findings. Include:
+- Key facts and details that answer the question
+- Relevant URLs for attribution
+- Code examples or API details if applicable
+
+Be thorough but concise. Focus on actionable information.`;
+
+  return {
+    name: "search_and_summarize",
+    label: "Search & Summarize",
+    description:
+      "Search the web and return a summarized answer. Use this for any web research — documentation lookups, API references, how-to guides, etc. A sub-agent will search, read pages, and return a synthesis.",
+    parameters: schema,
+    execute: async (_toolCallId, rawParams) => {
+      const params = rawParams as { query: string; context?: string };
+      const task = params.context
+        ? `${params.query}\n\nContext: ${params.context}`
+        : params.query;
+
+      const result = await runSubAgent(
+        subModel,
+        apiKey,
+        systemPrompt,
+        [webSearchTool, webFetchTool],
+        task,
+        log,
+      );
+
+      return {
+        content: [{ type: "text", text: result }],
+        details: undefined,
+      };
+    },
+  };
+}
+
+function createExploreCodebaseTool(
+  subModel: any,
+  apiKey: string,
+  cwd: string,
+  log: vscode.OutputChannel,
+): piAgentCore.AgentTool {
+  const schema = Type.Object({
+    question: Type.String({
+      description:
+        "What to explore or find out about the codebase (e.g. 'How does authentication work?', 'Find all API endpoints', 'What does the User model look like?')",
+    }),
+  });
+
+  const readOnlyTools = piCodingAgent.createReadOnlyTools(cwd);
+
+  const systemPrompt = `You are a codebase exploration sub-agent. Your job is to read files in the workspace to answer questions about the code.
+
+Use the available tools to navigate the codebase. Read relevant files, follow imports, and trace through the code to build understanding.
+
+Return a clear, structured summary of your findings. Include:
+- Relevant file paths and line numbers
+- Key code patterns, function signatures, or type definitions
+- How different parts connect to each other
+
+Be thorough but concise. Include actual code snippets where they help explain the answer.`;
+
+  return {
+    name: "explore_codebase",
+    label: "Explore Codebase",
+    description:
+      "Explore the workspace codebase to answer a question. A sub-agent will read files, follow imports, and return a structured summary of its findings. Use this for understanding code structure, finding implementations, tracing data flow, etc.",
+    parameters: schema,
+    execute: async (_toolCallId, rawParams) => {
+      const params = rawParams as { question: string };
+
+      const result = await runSubAgent(
+        subModel,
+        apiKey,
+        systemPrompt,
+        readOnlyTools,
+        params.question,
+        log,
+      );
+
+      return {
+        content: [{ type: "text", text: result }],
+        details: undefined,
+      };
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Research agent (head)
+// ---------------------------------------------------------------------------
+
+function buildResearchSystemPrompt(): string {
+  const now = new Date();
+  const date = now.toISOString().split("T")[0];
+  const platform = process.platform === "darwin" ? "macOS" : process.platform === "win32" ? "Windows" : "Linux";
+
+  return `You are the research orchestrator for the CodeSpark coding extension. You help users understand code and find information by delegating to specialized sub-agents.
+
+## Environment
+- Current date: ${date}
+- Platform: ${platform}
+- Editor: VS Code
+
+## Tools
+
+You have two powerful tools:
+- **search_and_summarize**: Delegates web research to a fast sub-agent that searches and reads web pages. Use this for documentation, API references, tutorials, specs, etc.
+- **explore_codebase**: Delegates codebase exploration to a fast sub-agent that reads workspace files. Use this for understanding code structure, finding implementations, tracing logic, etc.
+
+**Call multiple tools in parallel whenever possible.** For example, if the user asks something that involves both understanding their code AND looking up documentation, call both explore_codebase and search_and_summarize in the same response — they will run concurrently.
+
+## Formatting
+
+- When referencing workspace file paths, use inline code: \`src/foo.ts\` or \`src/foo.ts:42\`. These become clickable links that open the file in the editor.
+- When suggesting terminal commands, always use a fenced code block with the \`bash\` language tag — these become executable by the user with one click. Never put terminal commands in inline code.
+
+## Your role
+
+1. Break the user's question into the right sub-tasks
+2. Delegate to sub-agents via tools
+3. Synthesize their findings into a clear, actionable answer
 
 Your final response for each question will automatically be shared as context with the inline code editing agent (Cmd+I), so make sure your conclusions are clear and actionable — include specific file paths, function names, API details, and patterns where relevant.`;
+}
 
 let researchAgent: any;
 
 export function ensureResearchAgent(
-  piModel: any,
+  headModel: any,
+  subAgentModel: any,
   apiKey: string,
   cwd: string,
   log: vscode.OutputChannel,
 ): any {
-  const readOnlyTools = piCodingAgent.createReadOnlyTools(cwd);
-  const webSearchTool = createWebSearchTool();
-  const webFetchTool = createWebFetchTool();
-  const tools = [...readOnlyTools, webSearchTool, webFetchTool];
+  const searchTool = createSearchAndSummarizeTool(subAgentModel, apiKey, log);
+  const exploreTool = createExploreCodebaseTool(
+    subAgentModel,
+    apiKey,
+    cwd,
+    log,
+  );
+  const tools = [searchTool, exploreTool];
 
   if (!researchAgent) {
     log.appendLine(
-      `[research] Creating agent (model: ${piModel.id}, provider: ${piModel.provider})`,
+      `[research] Creating head agent (head: ${headModel.id}, sub: ${subAgentModel.id})`,
     );
     researchAgent = new piAgentCore.Agent({
       initialState: {
-        model: piModel,
-        systemPrompt: RESEARCH_SYSTEM_PROMPT,
+        model: headModel,
+        systemPrompt: buildResearchSystemPrompt(),
         tools,
         thinkingLevel: "off",
       },
@@ -212,17 +420,17 @@ export function ensureResearchAgent(
   } else {
     researchAgent.abort();
     researchAgent.reset();
-    researchAgent.state.model = piModel;
-    researchAgent.state.systemPrompt = RESEARCH_SYSTEM_PROMPT;
+    researchAgent.state.model = headModel;
+    researchAgent.state.systemPrompt = buildResearchSystemPrompt();
     researchAgent.state.tools = tools;
     researchAgent.state.thinkingLevel = "off";
     researchAgent.getApiKey = () => apiKey;
     log.appendLine(
-      `[research] Reusing agent (model: ${piModel.id}, provider: ${piModel.provider})`,
+      `[research] Reusing head agent (head: ${headModel.id}, sub: ${subAgentModel.id})`,
     );
   }
 
   return researchAgent;
 }
 
-export { resolveModel };
+export { resolveModel, resolveResearchModel };

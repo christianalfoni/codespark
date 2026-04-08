@@ -14,11 +14,23 @@ export interface ReadyMessage {
   type: "ready";
 }
 
+export interface OpenFileMessage {
+  type: "open-file";
+  path: string;
+  line?: number;
+}
+export interface RunCommandMessage {
+  type: "run-command";
+  command: string;
+}
+
 export type WebviewToExtension =
   | SendMessage
   | CancelMessage
   | ClearMessage
-  | ReadyMessage;
+  | ReadyMessage
+  | OpenFileMessage
+  | RunCommandMessage;
 
 export interface InitMessage {
   type: "init";

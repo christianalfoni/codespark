@@ -279,7 +279,7 @@ export function warmupSession(log: vscode.OutputChannel): void {
 // Model resolution — can be called early and cached
 // ---------------------------------------------------------------------------
 
-// Default models per provider
+// Default models per provider (fast/cheap — used for inline agent & sub-agents)
 const DEFAULT_MODELS: Record<string, string> = {
   copilot: "claude-haiku-4.5",
   anthropic: "claude-haiku-4-5-20251001",
@@ -299,8 +299,24 @@ export interface ResolvedModel {
   apiKey: string;
 }
 
+// Smarter defaults for the research head agent
+const RESEARCH_DEFAULT_MODELS: Record<string, string> = {
+  copilot: "claude-sonnet-4.5",
+  anthropic: "claude-sonnet-4-5-20250929",
+  openai: "gpt-4.1",
+  google: "gemini-2.5-pro",
+  openrouter: "anthropic/claude-sonnet-4-5-20250929",
+  groq: "llama-4-maverick-17b-128e-instruct",
+  xai: "grok-3",
+  mistral: "mistral-large-latest",
+  together: "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
+};
+
 let cachedModel: ResolvedModel | undefined;
 let cachedModelKey = "";
+
+let cachedResearchModel: ResolvedModel | undefined;
+let cachedResearchModelKey = "";
 
 export async function resolveModel(
   log: vscode.OutputChannel,
@@ -374,6 +390,85 @@ export async function resolveModel(
   cachedModel = { piModel, provider, model, apiKey };
   cachedModelKey = cacheKey;
   return cachedModel;
+}
+
+export async function resolveResearchModel(
+  log: vscode.OutputChannel,
+): Promise<ResolvedModel> {
+  if (warmupPromise) {
+    await warmupPromise;
+    warmupPromise = undefined;
+  }
+
+  const config = vscode.workspace.getConfiguration("codeSpark");
+  const provider = config.get<string>("provider", "copilot");
+  const apiKey = config.get<string>("apiKey", "");
+  const model =
+    config.get<string>("researchModel", "") ||
+    RESEARCH_DEFAULT_MODELS[provider] ||
+    "";
+  const cacheKey = `research:${provider}:${model}`;
+
+  if (cachedResearchModel && cachedResearchModelKey === cacheKey) {
+    log.appendLine(
+      `[sdk] Using cached research model: ${cachedResearchModel.piModel.id}`,
+    );
+    return { ...cachedResearchModel, apiKey };
+  }
+
+  log.appendLine(
+    `[sdk] Resolving research model: provider="${provider}", model="${model}"`,
+  );
+
+  let piModel: any;
+
+  if (provider === "copilot") {
+    const result = await selectVscodeLmModel("copilot", model);
+    if (!result) {
+      throw new Error(
+        `No Copilot model found for "${model}". Make sure GitHub Copilot is installed and signed in.`,
+      );
+    }
+    piModel = result.piModel;
+    log.appendLine(
+      `[sdk] Resolved Copilot research model: ${result.vscodeLmModel.name}`,
+    );
+  } else {
+    if (!apiKey) {
+      throw new Error(
+        `${provider} provider requires an API key. Set codeSpark.apiKey in settings.`,
+      );
+    }
+
+    if (provider === "together") {
+      piModel = {
+        id: model,
+        name: model,
+        api: "openai-completions",
+        provider: "together",
+        baseUrl: "https://api.together.xyz/v1",
+        reasoning: false,
+        input: ["text"] as const,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        contextWindow: 131072,
+        maxTokens: 4096,
+        compat: {
+          supportsStore: false,
+          supportsDeveloperRole: false,
+          supportsUsageInStreaming: false,
+          maxTokensField: "max_tokens",
+          supportsStrictMode: false,
+        },
+      };
+    } else {
+      piModel = piAi.getModel(provider as piAi.KnownProvider, model as never);
+    }
+    log.appendLine(`[sdk] Resolved research ${provider}: ${model}`);
+  }
+
+  cachedResearchModel = { piModel, provider, model, apiKey };
+  cachedResearchModelKey = cacheKey;
+  return cachedResearchModel;
 }
 
 // ---------------------------------------------------------------------------

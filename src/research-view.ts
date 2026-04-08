@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import {
   ensureResearchAgent,
   resolveModel,
+  resolveResearchModel,
   clearResearchSummary,
   getResearchSummary,
   appendResearchContext,
@@ -60,6 +61,12 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
         case "ready":
           this._post({ type: "init", hasContext: !!getResearchSummary() });
           break;
+        case "open-file":
+          this._openFile(msg.path, msg.line);
+          break;
+        case "run-command":
+          this._runInTerminal(msg.command);
+          break;
       }
     });
 
@@ -89,6 +96,37 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
+  private async _openFile(filePath: string, line?: number): Promise<void> {
+    const workspaceFolder =
+      vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!workspaceFolder) return;
+
+    const path = await import("path");
+    const absolute = path.resolve(workspaceFolder, filePath);
+    const uri = vscode.Uri.file(absolute);
+
+    try {
+      const doc = await vscode.workspace.openTextDocument(uri);
+      const options: vscode.TextDocumentShowOptions = {};
+      if (line && line > 0) {
+        const pos = new vscode.Position(line - 1, 0);
+        options.selection = new vscode.Range(pos, pos);
+      }
+      await vscode.window.showTextDocument(doc, options);
+    } catch {
+      this._log.appendLine(`[research-view] Could not open file: ${absolute}`);
+    }
+  }
+
+  private _runInTerminal(command: string): void {
+    let terminal = vscode.window.activeTerminal;
+    if (!terminal) {
+      terminal = vscode.window.createTerminal("CodeSpark");
+    }
+    terminal.show();
+    terminal.sendText(command);
+  }
+
   private async _handlePrompt(text: string): Promise<void> {
     const workspaceFolder =
       vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
@@ -98,9 +136,13 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
       return;
     }
 
-    let resolved;
+    let headResolved;
+    let subResolved;
     try {
-      resolved = await resolveModel(this._log);
+      [headResolved, subResolved] = await Promise.all([
+        resolveResearchModel(this._log),
+        resolveModel(this._log),
+      ]);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       this._post({ type: "error", text: `Failed to resolve model: ${msg}` });
@@ -108,10 +150,13 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
       return;
     }
 
-    const { piModel, apiKey } = resolved;
+    this._log.appendLine(
+      `[research-view] Models resolved, creating agent (head: ${headResolved.piModel?.id}, sub: ${subResolved.piModel?.id})`,
+    );
     const ag = ensureResearchAgent(
-      piModel,
-      apiKey,
+      headResolved.piModel,
+      subResolved.piModel,
+      headResolved.apiKey,
       workspaceFolder,
       this._log,
     );
@@ -149,8 +194,11 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
     this._currentUnsub = unsub;
 
     try {
-      ag.prompt(text);
+      this._log.appendLine(`[research-view] Prompting agent with: ${text.slice(0, 100)}`);
+      await ag.prompt(text);
+      this._log.appendLine(`[research-view] Agent prompt settled, waiting for idle`);
       await ag.waitForIdle();
+      this._log.appendLine(`[research-view] Agent idle`);
 
       // Append the user prompt + final response + files to inline context
       if (lastAssistantText.trim()) {

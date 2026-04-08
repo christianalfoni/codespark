@@ -2,7 +2,7 @@
   "name": "codespark-agent",
   "displayName": "CodeSpark",
   "description": "A coding agent at the tip of your cursor",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "publisher": "codespark",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -123,6 +123,11 @@
           "default": "",
           "markdownDescription": "API key for the selected provider. Not required for Copilot."
         },
+        "codeSpark.researchModel": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Model for the research agent's head (orchestrator). Defaults to a smarter model per provider (e.g. Sonnet). The sub-agents use `#codeSpark.model#`."
+        },
         "codeSpark.braveApiKey": {
           "type": "string",
           "default": "",
@@ -152,6 +157,7 @@
     "@mariozechner/pi-agent-core": "^0.65.0",
     "@mariozechner/pi-ai": "^0.65.0",
     "@mariozechner/pi-coding-agent": "^0.65.0",
+    "highlight.js": "^11.11.1",
     "marked": "^18.0.0",
     "preact": "^10.29.1"
   }
