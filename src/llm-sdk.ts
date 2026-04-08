@@ -6,6 +6,7 @@ import {
   registerVscodeLmProvider,
   selectVscodeLmModel,
 } from "./vscode-lm-provider";
+import { getResearchSummary } from "./research-agent";
 
 import * as piAi from "@mariozechner/pi-ai";
 import * as piAgentCore from "@mariozechner/pi-agent-core";
@@ -50,11 +51,18 @@ function buildSystemPrompt(ctx: ResolvedContext): string {
     return SYSTEM_PROMPT_CLAUDE_MD;
   }
 
-  if (!ctx.instructionContent) {
-    return SYSTEM_PROMPT;
+  let prompt = SYSTEM_PROMPT;
+
+  if (ctx.instructionContent) {
+    prompt += `\n\n# CLAUDE.md\n\n${ctx.instructionContent}`;
   }
 
-  return `${SYSTEM_PROMPT}\n\n# CLAUDE.md\n\n${ctx.instructionContent}`;
+  const summary = getResearchSummary();
+  if (summary) {
+    prompt += `\n\n# Research Summary\n\n${summary}`;
+  }
+
+  return prompt;
 }
 
 function numberLines(content: string): string {
@@ -568,7 +576,7 @@ export async function callLLMWithSDK(
       );
       const isCurrentFile = event.args?.path && path.resolve(workspaceFolder, event.args.path) === activeFilePath;
       const isWrite = event.toolName === "write";
-      const isEdit = event.toolName === "edit" && event.args?.edits?.length > 0;
+      const isEdit = event.toolName === "edit" && (event.args?.edits?.length > 0 || event.args?.oldText);
       if (isCurrentFile && (isWrite || isEdit)) {
         hasEdits = true;
         resolveOnToolDone?.();

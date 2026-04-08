@@ -3,7 +3,7 @@ import * as esbuild from "esbuild";
 const watch = process.argv.includes("--watch");
 
 /** @type {import('esbuild').BuildOptions} */
-const opts = {
+const extensionOpts = {
   entryPoints: ["./src/extension.ts"],
   bundle: true,
   outfile: "out/extension.js",
@@ -20,10 +20,30 @@ const opts = {
   },
 };
 
+/** @type {import('esbuild').BuildOptions} */
+const webviewOpts = {
+  entryPoints: ["./src/webview/main.tsx"],
+  bundle: true,
+  outdir: "out",
+  entryNames: "webview",
+  format: "iife",
+  platform: "browser",
+  sourcemap: true,
+  loader: { ".css": "css" },
+  jsx: "automatic",
+  jsxImportSource: "preact",
+};
+
 if (watch) {
-  const ctx = await esbuild.context(opts);
-  await ctx.watch();
-  process.stdout.write("Watching...\n");
+  const [extCtx, webCtx] = await Promise.all([
+    esbuild.context(extensionOpts),
+    esbuild.context(webviewOpts),
+  ]);
+  await Promise.all([extCtx.watch(), webCtx.watch()]);
+  process.stdout.write("Watching extension + webview...\n");
 } else {
-  await esbuild.build(opts);
+  await Promise.all([
+    esbuild.build(extensionOpts),
+    esbuild.build(webviewOpts),
+  ]);
 }

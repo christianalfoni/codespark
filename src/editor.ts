@@ -50,7 +50,13 @@ async function evaluateFocusArea(
     );
     const lines: string[] = [];
     for (let i = focusStartLine; i <= focusEndLine; i++) {
-      lines.push(editor.document.lineAt(i).text);
+      const lineText = editor.document.lineAt(i).text;
+      if (i === cursorLineNum) {
+        const marker = " // <-- cursor here";
+        lines.push(lineText + marker);
+      } else {
+        lines.push(lineText);
+      }
     }
     return {
       lines,

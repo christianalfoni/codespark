@@ -22,9 +22,25 @@
         "background": {
           "activeOnStart": true,
           "beginsPattern": ".",
-          "endsPattern": "Watching\\.\\.\\."
+          "endsPattern": "Watching.*\\.\\.\\."
         }
       }
+    },
+    {
+      "label": "terminate-watch",
+      "command": "echo ${input:terminate}",
+      "type": "shell",
+      "presentation": {
+        "reveal": "never"
+      }
+    }
+  ],
+  "inputs": [
+    {
+      "id": "terminate",
+      "type": "command",
+      "command": "workbench.action.tasks.terminate",
+      "args": "watch"
     }
   ]
 }

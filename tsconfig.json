@@ -3,7 +3,7 @@
     "module": "commonjs",
     "target": "ES2022",
     "outDir": "out",
-    "lib": ["ES2022"],
+    "lib": ["ES2022", "DOM"],
     "types": ["node"],
     "sourceMap": true,
     "rootDir": "src",
@@ -11,7 +11,9 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "jsx": "react-jsx",
+    "jsxImportSource": "preact"
   },
   "exclude": ["node_modules", ".vscode-test"]
 }

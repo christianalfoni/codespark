@@ -4,12 +4,18 @@ import { warmupSession, closeSession } from "./llm-sdk";
 import { initStats, showStats, resetStats } from "./stats";
 import { createInvokeCommand } from "./invoker";
 import { createUpdateActiveInstructions } from "./statusbar";
+import {
+  initResearchSummary,
+  clearResearchSummary,
+} from "./research-agent";
+import { ResearchViewProvider } from "./research-view";
 
 export function activate(context: vscode.ExtensionContext) {
   const log = vscode.window.createOutputChannel("CodeSpark");
   context.subscriptions.push(log);
 
   initStats(context.workspaceState);
+  initResearchSummary(context.workspaceState);
 
   // Prewarm pi modules on startup
   warmupSession(log);
@@ -75,6 +81,31 @@ export function activate(context: vscode.ExtensionContext) {
       resetStats();
       vscode.window.showInformationMessage("CodeSpark: Stats reset.");
     }),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("codeSpark.openResearch", () => {
+      vscode.commands.executeCommand("codeSpark.research.focus");
+    }),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("codeSpark.clearResearchSummary", () => {
+      clearResearchSummary();
+      vscode.window.showInformationMessage(
+        "CodeSpark: Research summary cleared.",
+      );
+    }),
+  );
+
+  // Research agent webview panel
+  const researchView = new ResearchViewProvider(context.extensionUri, log);
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider(
+      ResearchViewProvider.viewId,
+      researchView,
+      { webviewOptions: { retainContextWhenHidden: true } },
+    ),
   );
 }
 

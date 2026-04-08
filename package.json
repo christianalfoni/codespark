@@ -2,7 +2,7 @@
   "name": "codespark-agent",
   "displayName": "CodeSpark",
   "description": "The inline agent for writing code.",
-  "version": "0.1.3",
+  "version": "0.2.0",
   "publisher": "codespark",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -32,6 +32,24 @@
   ],
   "main": "./out/extension.js",
   "contributes": {
+    "viewsContainers": {
+      "secondarySidebar": [
+        {
+          "id": "codeSpark",
+          "title": "CODESPARK",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "codeSpark": [
+        {
+          "id": "codeSpark.research",
+          "name": "Research",
+          "type": "webview"
+        }
+      ]
+    },
     "commands": [
       {
         "command": "codeSpark.invoke",
@@ -44,6 +62,14 @@
       {
         "command": "codeSpark.resetStats",
         "title": "CodeSpark: Reset Stats"
+      },
+      {
+        "command": "codeSpark.clearResearchSummary",
+        "title": "CodeSpark: Clear Research Summary"
+      },
+      {
+        "command": "codeSpark.openResearch",
+        "title": "CodeSpark: Open Research"
       }
     ],
     "keybindings": [
@@ -51,6 +77,10 @@
         "command": "codeSpark.invoke",
         "key": "cmd+i",
         "when": "editorTextFocus"
+      },
+      {
+        "command": "codeSpark.openResearch",
+        "key": "cmd+shift+i"
       },
       {
         "command": "codeSpark.acceptDiff",
@@ -92,6 +122,11 @@
           "type": "string",
           "default": "",
           "markdownDescription": "API key for the selected provider. Not required for Copilot."
+        },
+        "codeSpark.braveApiKey": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "API key for [Brave Search](https://brave.com/search/api/). Required for the research agent's web search."
         }
       }
     }
@@ -116,6 +151,8 @@
     "@anthropic-ai/claude-code": "^2.1.92",
     "@mariozechner/pi-agent-core": "^0.65.0",
     "@mariozechner/pi-ai": "^0.65.0",
-    "@mariozechner/pi-coding-agent": "^0.65.0"
+    "@mariozechner/pi-coding-agent": "^0.65.0",
+    "marked": "^18.0.0",
+    "preact": "^10.29.1"
   }
 }
