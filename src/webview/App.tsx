@@ -135,7 +135,7 @@ export function App({ vscode, logoUri }: AppProps) {
         if (assistant) {
           ensureTurn();
           const turn = { ...assistant.turns[assistant.turns.length - 1] };
-          turn.tools = [...turn.tools, { name: msg.tool, status: "pending" }];
+          turn.tools = [...turn.tools, { id: msg.toolId, name: msg.tool, status: "pending" }];
           assistant.turns[assistant.turns.length - 1] = turn;
         }
         return { ...prev, entries, activeTool: msg.tool };
@@ -144,7 +144,7 @@ export function App({ vscode, logoUri }: AppProps) {
         if (assistant && assistant.turns.length > 0) {
           const turn = { ...assistant.turns[assistant.turns.length - 1] };
           turn.tools = turn.tools.map((t) =>
-            t.name === msg.tool && t.status === "pending"
+            t.id === msg.toolId
               ? { ...t, status: msg.isError ? "error" as const : "success" as const }
               : t,
           );
@@ -218,6 +218,7 @@ export function App({ vscode, logoUri }: AppProps) {
       const text = textareaRef.current?.value.trim();
       if (!text) return;
       textareaRef.current!.value = "";
+      autoResize();
       send(text);
     }
     if (e.key === "Escape" && state.isStreaming) {
@@ -233,6 +234,7 @@ export function App({ vscode, logoUri }: AppProps) {
     const text = textareaRef.current?.value.trim();
     if (!text) return;
     textareaRef.current!.value = "";
+    autoResize();
     send(text);
   }
 
@@ -425,9 +427,10 @@ function SessionMenu({
 
 function UserMessage({ content }: { content: string }) {
   return (
-    <div class="message message-user">
-      {content}
-    </div>
+    <div
+      class="message message-user"
+      dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }}
+    />
   );
 }
 

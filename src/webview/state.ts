@@ -3,6 +3,7 @@ import type { ChatMessage, SessionInfo } from "./types";
 export type ToolStatus = "pending" | "success" | "error";
 
 export interface ToolEntry {
+  id: number;
   name: string;
   status: ToolStatus;
 }

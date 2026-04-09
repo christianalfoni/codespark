@@ -291,6 +291,8 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
 
     const filesRead = new Set<string>();
     let lastAssistantText = "";
+    let toolIdCounter = 0;
+    const pendingToolIds = new Map<string, number[]>();
 
     const unsub = ag.subscribe((event: any) => {
       if (event.type === "message_start" && event.message?.role === "assistant") {
@@ -308,12 +310,19 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
         if (event.toolName === "read" && event.args?.path) {
           filesRead.add(event.args.path);
         }
-        this._post({ type: "tool-start", tool: event.toolName });
+        const id = ++toolIdCounter;
+        const queue = pendingToolIds.get(event.toolName) || [];
+        queue.push(id);
+        pendingToolIds.set(event.toolName, queue);
+        this._post({ type: "tool-start", tool: event.toolName, toolId: id });
       }
       if (event.type === "tool_execution_end") {
+        const queue = pendingToolIds.get(event.toolName) || [];
+        const id = queue.shift() || 0;
         this._post({
           type: "tool-end",
           tool: event.toolName,
+          toolId: id,
           isError: !!event.isError,
         });
       }

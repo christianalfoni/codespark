@@ -64,10 +64,12 @@ export interface TokenMessage {
 export interface ToolStartMessage {
   type: "tool-start";
   tool: string;
+  toolId: number;
 }
 export interface ToolEndMessage {
   type: "tool-end";
   tool: string;
+  toolId: number;
   isError?: boolean;
 }
 export interface ContextUpdatedMessage {
