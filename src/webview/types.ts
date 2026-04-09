@@ -23,6 +23,15 @@ export interface RunCommandMessage {
   type: "run-command";
   command: string;
 }
+export interface NewSessionMessage {
+  type: "new-session";
+  currentEntries: import("./state").Entry[];
+}
+export interface SwitchSessionMessage {
+  type: "switch-session";
+  id: string;
+  currentEntries: import("./state").Entry[];
+}
 
 export type WebviewToExtension =
   | SendMessage
@@ -30,11 +39,20 @@ export type WebviewToExtension =
   | ClearMessage
   | ReadyMessage
   | OpenFileMessage
-  | RunCommandMessage;
+  | RunCommandMessage
+  | NewSessionMessage
+  | SwitchSessionMessage;
+
+export interface SessionInfo {
+  id: string;
+  name: string;
+}
 
 export interface InitMessage {
   type: "init";
   hasContext: boolean;
+  sessions: SessionInfo[];
+  activeSessionId: string | null;
 }
 export interface TurnStartMessage {
   type: "turn-start";
@@ -65,6 +83,18 @@ export interface ErrorMessage {
   type: "error";
   text: string;
 }
+export interface SessionsUpdatedMessage {
+  type: "sessions-updated";
+  sessions: SessionInfo[];
+  activeSessionId: string | null;
+}
+export interface RestoreMessage {
+  type: "restore";
+  entries: import("./state").Entry[];
+  sessions: SessionInfo[];
+  activeSessionId: string | null;
+  hasContext: boolean;
+}
 
 export type ExtensionToWebview =
   | InitMessage
@@ -75,7 +105,9 @@ export type ExtensionToWebview =
   | ContextUpdatedMessage
   | DoneMessage
   | FocusMessage
-  | ErrorMessage;
+  | ErrorMessage
+  | SessionsUpdatedMessage
+  | RestoreMessage;
 
 export interface ChatMessage {
   role: "user" | "assistant";

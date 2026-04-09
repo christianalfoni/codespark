@@ -1,11 +1,21 @@
 import * as vscode from "vscode";
 import {
-  ensureResearchAgent,
+  createResearchAgent,
+  getLiveAgent,
+  disposeLiveAgent,
   resolveModel,
   resolveResearchModel,
   clearResearchSummary,
   getResearchSummary,
   appendResearchContext,
+  getSessions,
+  getActiveSessionId,
+  getActiveSession,
+  createSession,
+  switchSession,
+  updateSessionEntries,
+  saveAgentMessages,
+  getSessionInfos,
 } from "./research-agent";
 
 function getNonce(): string {
@@ -22,7 +32,6 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewId = "codeSpark.research";
 
   private _view?: vscode.WebviewView;
-  private _currentAgent?: any;
   private _currentUnsub?: () => void;
 
   constructor(
@@ -59,13 +68,19 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
           this._cancelCurrent();
           break;
         case "ready":
-          this._post({ type: "init", hasContext: !!getResearchSummary() });
+          this._sendInit();
           break;
         case "open-file":
           this._openFile(msg.path, msg.line);
           break;
         case "run-command":
           this._runInTerminal(msg.command);
+          break;
+        case "new-session":
+          this._handleNewSession(msg.currentEntries);
+          break;
+        case "switch-session":
+          this._handleSwitchSession(msg.id, msg.currentEntries);
           break;
       }
     });
@@ -86,13 +101,78 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
     this._view?.webview.postMessage(msg);
   }
 
+  private _sendInit(): void {
+    const session = getActiveSession();
+    if (session && session.entries.length > 0) {
+      // Restore previous session
+      this._post({
+        type: "restore",
+        entries: session.entries,
+        sessions: getSessionInfos(),
+        activeSessionId: getActiveSessionId(),
+        hasContext: !!session.summary,
+      });
+    } else {
+      this._post({
+        type: "init",
+        hasContext: !!getResearchSummary(),
+        sessions: getSessionInfos(),
+        activeSessionId: getActiveSessionId(),
+      });
+    }
+  }
+
+  private _sendSessionsUpdate(): void {
+    this._post({
+      type: "sessions-updated",
+      sessions: getSessionInfos(),
+      activeSessionId: getActiveSessionId(),
+    });
+  }
+
   private _cancelCurrent(): void {
-    if (this._currentAgent) {
-      this._currentAgent.abort();
+    const sessionId = getActiveSessionId();
+    if (sessionId) {
+      const agent = getLiveAgent(sessionId);
+      if (agent) {
+        agent.abort();
+      }
     }
     if (this._currentUnsub) {
       this._currentUnsub();
       this._currentUnsub = undefined;
+    }
+  }
+
+  private _handleNewSession(currentEntries: any[]): void {
+    this._saveCurrentSession(currentEntries);
+    this._cancelCurrent();
+    createSession();
+    this._sendSessionsUpdate();
+  }
+
+  private _handleSwitchSession(id: string, currentEntries: any[]): void {
+    this._saveCurrentSession(currentEntries);
+    this._cancelCurrent();
+    const session = switchSession(id);
+    if (session) {
+      this._post({
+        type: "restore",
+        entries: session.entries,
+        sessions: getSessionInfos(),
+        activeSessionId: id,
+        hasContext: !!session.summary,
+      });
+    }
+  }
+
+  private _saveCurrentSession(entries: any[]): void {
+    const sessionId = getActiveSessionId();
+    if (!sessionId) return;
+    updateSessionEntries(sessionId, entries);
+    const agent = getLiveAgent(sessionId);
+    if (agent) {
+      saveAgentMessages(sessionId, [...agent.state.messages]);
     }
   }
 
@@ -119,12 +199,27 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
   }
 
   private _terminal: vscode.Terminal | undefined;
+  private _busyTerminals = new Set<vscode.Terminal>();
+  private _shellListenersReady = false;
+
+  private _ensureShellListeners(): void {
+    if (this._shellListenersReady) return;
+    this._shellListenersReady = true;
+    vscode.window.onDidStartTerminalShellExecution((e) => {
+      this._busyTerminals.add(e.terminal);
+    });
+    vscode.window.onDidEndTerminalShellExecution((e) => {
+      this._busyTerminals.delete(e.terminal);
+    });
+  }
 
   private _getTerminal(): vscode.Terminal {
-    // Reuse existing CodeSpark terminal if it's still open
-    if (this._terminal && !this._terminal.exitStatus) {
+    this._ensureShellListeners();
+
+    if (this._terminal && !this._terminal.exitStatus && !this._busyTerminals.has(this._terminal)) {
       return this._terminal;
     }
+
     this._terminal = vscode.window.createTerminal("CodeSpark");
     return this._terminal;
   }
@@ -158,17 +253,41 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
       return;
     }
 
-    this._log.appendLine(
-      `[research-view] Models resolved, creating agent (head: ${headResolved.piModel?.id}, sub: ${subResolved.piModel?.id})`,
-    );
-    const ag = ensureResearchAgent(
-      headResolved.piModel,
-      subResolved.piModel,
-      headResolved.apiKey,
-      workspaceFolder,
-      this._log,
-    );
-    this._currentAgent = ag;
+    // Ensure we have an active session
+    let sessionId = getActiveSessionId();
+    if (!sessionId) {
+      const session = createSession();
+      sessionId = session.id;
+      this._sendSessionsUpdate();
+    }
+
+    // Get or create agent for this session
+    let ag = getLiveAgent(sessionId);
+    if (!ag) {
+      // Check if session has saved messages to restore
+      const session = getActiveSession();
+      const savedMessages = session?.agentMessages?.length
+        ? session.agentMessages
+        : undefined;
+
+      this._log.appendLine(
+        `[research-view] Models resolved, creating agent (head: ${headResolved.piModel?.id}, sub: ${subResolved.piModel?.id})`,
+      );
+      ag = createResearchAgent(
+        headResolved.piModel,
+        subResolved.piModel,
+        headResolved.apiKey,
+        workspaceFolder,
+        this._log,
+        sessionId,
+        savedMessages,
+      );
+    } else {
+      // Update tools/model on existing agent in case settings changed
+      this._log.appendLine(
+        `[research-view] Reusing live agent for session ${sessionId}`,
+      );
+    }
 
     const filesRead = new Set<string>();
     let lastAssistantText = "";
@@ -208,16 +327,22 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
       await ag.waitForIdle();
       this._log.appendLine(`[research-view] Agent idle`);
 
-      // Append the user prompt + final response + files to inline context
+      // Append the user prompt + final response + files to session context
       if (lastAssistantText.trim()) {
         appendResearchContext(
+          sessionId,
           text,
           lastAssistantText.trim(),
           [...filesRead],
           this._log,
         );
         this._post({ type: "context-updated" });
+        // Update session name in dropdown after first prompt names it
+        this._sendSessionsUpdate();
       }
+
+      // Save agent messages for persistence
+      saveAgentMessages(sessionId, [...ag.state.messages]);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       this._log.appendLine(`[research:error] ${msg}`);
@@ -225,8 +350,15 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
     } finally {
       unsub();
       this._currentUnsub = undefined;
-      this._currentAgent = undefined;
       this._post({ type: "done" });
+    }
+  }
+
+  /** Called from outside to save webview entries into the active session */
+  public saveEntries(entries: any[]): void {
+    const sessionId = getActiveSessionId();
+    if (sessionId) {
+      updateSessionEntries(sessionId, entries);
     }
   }
 

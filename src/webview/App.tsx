@@ -1,6 +1,6 @@
 import * as preact from "preact";
 import { useRef, useState, useEffect } from "preact/hooks";
-import type { ExtensionToWebview } from "./types";
+import type { ExtensionToWebview, SessionInfo } from "./types";
 import {
   type ChatState,
   type Entry,
@@ -37,9 +37,13 @@ export function App({ vscode, logoUri }: AppProps) {
 
   useEffect(() => {
     if (!state.isStreaming) {
-      vscode.setState({ entries: state.entries });
+      vscode.setState({
+        entries: state.entries,
+        sessions: state.sessions,
+        activeSessionId: state.activeSessionId,
+      });
     }
-  }, [state.entries, state.isStreaming]);
+  }, [state.entries, state.isStreaming, state.sessions, state.activeSessionId]);
 
   useEffect(() => {
     if (messageListRef.current && !userScrolledUp.current) {
@@ -87,7 +91,30 @@ export function App({ vscode, logoUri }: AppProps) {
 
     switch (msg.type) {
       case "init": {
-        return { ...prev, contextState: msg.hasContext ? "ready" as ContextState : prev.contextState };
+        return {
+          ...prev,
+          contextState: msg.hasContext ? "ready" as ContextState : prev.contextState,
+          sessions: msg.sessions,
+          activeSessionId: msg.activeSessionId,
+        };
+      }
+      case "restore": {
+        return {
+          ...prev,
+          entries: msg.entries,
+          isStreaming: false,
+          activeTool: null,
+          contextState: msg.hasContext ? "ready" as ContextState : "none" as ContextState,
+          sessions: msg.sessions,
+          activeSessionId: msg.activeSessionId,
+        };
+      }
+      case "sessions-updated": {
+        return {
+          ...prev,
+          sessions: msg.sessions,
+          activeSessionId: msg.activeSessionId,
+        };
       }
       case "turn-start": {
         if (assistant) {
@@ -160,10 +187,21 @@ export function App({ vscode, logoUri }: AppProps) {
     vscode.postMessage({ type: "send", text });
   }
 
-  function reset() {
-    setState({ entries: [], isStreaming: false, activeTool: null, contextState: state.contextState });
-    vscode.postMessage({ type: "clear" });
+  function newSession() {
+    const currentEntries = state.entries;
+    setState((prev) => ({
+      ...prev,
+      entries: [],
+      isStreaming: false,
+      activeTool: null,
+    }));
+    vscode.postMessage({ type: "new-session", currentEntries });
     setTimeout(() => textareaRef.current?.focus(), 0);
+  }
+
+  function switchToSession(id: string) {
+    if (id === state.activeSessionId) return;
+    vscode.postMessage({ type: "switch-session", id, currentEntries: state.entries });
   }
 
   function onScroll() {
@@ -245,6 +283,7 @@ export function App({ vscode, logoUri }: AppProps) {
   }
 
   const isEmpty = state.entries.length === 0;
+  const hasSessions = state.sessions.length > 0;
 
   return (
     <>
@@ -294,13 +333,19 @@ export function App({ vscode, logoUri }: AppProps) {
               onKeyDown={onKeyDown}
             />
             <div class="input-toolbar">
-              {!isEmpty && (
-                <button
-                  class="reset-btn"
-                  title="New session"
+              <button
+                class="reset-btn"
+                title="New session"
+                disabled={state.isStreaming || isEmpty}
+                onClick={newSession}
+                dangerouslySetInnerHTML={{ __html: NEW_SESSION_ICON }}
+              />
+              {hasSessions && state.sessions.length > 1 && (
+                <SessionMenu
+                  sessions={state.sessions}
+                  activeSessionId={state.activeSessionId}
                   disabled={state.isStreaming}
-                  onClick={reset}
-                  dangerouslySetInnerHTML={{ __html: NEW_SESSION_ICON }}
+                  onSwitch={switchToSession}
                 />
               )}
               <div style={{ flex: 1 }} />
@@ -317,6 +362,64 @@ export function App({ vscode, logoUri }: AppProps) {
         </div>
       </div>
     </>
+  );
+}
+
+const HISTORY_ICON = `<svg viewBox="0 0 16 16"><path d="M13.5 8a5.5 5.5 0 1 1-3.2-5l-.8 1.4A4 4 0 1 0 12 8h-2l2.5-3L15 8h-1.5z"/><path d="M8 5v3.2l2.2 1.3-.5.9L7 9V5h1z"/></svg>`;
+
+function SessionMenu({
+  sessions,
+  activeSessionId,
+  disabled,
+  onSwitch,
+}: {
+  sessions: SessionInfo[];
+  activeSessionId: string | null;
+  disabled: boolean;
+  onSwitch: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onClickOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, [open]);
+
+  function handleSelect(id: string) {
+    setOpen(false);
+    onSwitch(id);
+  }
+
+  return (
+    <div class="session-menu-anchor" ref={menuRef}>
+      <button
+        class="reset-btn"
+        title="Switch session"
+        disabled={disabled}
+        onClick={() => setOpen(!open)}
+        dangerouslySetInnerHTML={{ __html: HISTORY_ICON }}
+      />
+      {open && (
+        <div class="session-menu">
+          {sessions.map((s) => (
+            <button
+              key={s.id}
+              class={`session-menu-item${s.id === activeSessionId ? " session-menu-item-active" : ""}`}
+              onClick={() => handleSelect(s.id)}
+            >
+              {s.name.length > 45 ? s.name.slice(0, 42) + "..." : s.name}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -350,7 +453,7 @@ function ContextIndicator({ state }: { state: ContextState }) {
         ? "context-indicator context-indicator-pending"
         : "context-indicator";
 
-  const sparkle = state === "ready" ? "✦" : "✧";
+  const sparkle = state === "ready" ? "\u2726" : "\u2727";
   const label =
     state === "none"
       ? "No Context"

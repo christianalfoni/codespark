@@ -1,4 +1,4 @@
-import type { ChatMessage } from "./types";
+import type { ChatMessage, SessionInfo } from "./types";
 
 export type ToolStatus = "pending" | "success" | "error";
 
@@ -33,6 +33,8 @@ export interface ChatState {
   isStreaming: boolean;
   activeTool: string | null;
   contextState: ContextState;
+  sessions: SessionInfo[];
+  activeSessionId: string | null;
 }
 
 export function createInitialState(saved: any): ChatState {
@@ -41,6 +43,8 @@ export function createInitialState(saved: any): ChatState {
     isStreaming: false,
     activeTool: null,
     contextState: "none",
+    sessions: [],
+    activeSessionId: null,
   };
 
   if (saved?.entries) {
@@ -57,6 +61,13 @@ export function createInitialState(saved: any): ChatState {
         });
       }
     }
+  }
+
+  if (saved?.sessions) {
+    state.sessions = saved.sessions;
+  }
+  if (saved?.activeSessionId) {
+    state.activeSessionId = saved.activeSessionId;
   }
 
   return state;

@@ -462,6 +462,7 @@ body {
   display: flex;
   justify-content: center;
   pointer-events: none;
+  z-index: 10;
 }
 
 .input-area::before {
@@ -490,7 +491,6 @@ body {
   border: 1px solid color-mix(in srgb, var(--vscode-panelTitle-activeBorder) 40%, transparent);
   border-radius: 8px;
   background: var(--vscode-editor-background);
-  overflow: hidden;
   transition: border-color 0.15s, box-shadow 0.15s;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
@@ -584,6 +584,58 @@ body {
   width: 14px;
   height: 14px;
   fill: currentColor;
+}
+
+/* ── Session menu (custom popover) ────────────────────────── */
+
+.session-menu-anchor {
+  position: relative;
+}
+
+.session-menu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  min-width: 400px;
+  padding: 4px 0;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--vscode-editor-background) 82%, transparent);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground) 12%, transparent);
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.35),
+    0 2px 8px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  z-index: 20;
+}
+
+.session-menu-item {
+  display: block;
+  width: 100%;
+  padding: 8px 14px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--vscode-editor-foreground);
+  font-family: var(--vscode-font-family);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background 0.1s;
+}
+
+.session-menu-item:hover {
+  background: color-mix(in srgb, var(--vscode-editor-foreground) 10%, transparent);
+}
+
+.session-menu-item-active {
+  color: var(--vscode-panelTitle-activeBorder);
 }
 
 /* ── Error ────────────────────────────────────────────────── */

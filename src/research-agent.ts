@@ -4,45 +4,120 @@ import * as piAgentCore from "@mariozechner/pi-agent-core";
 import * as piCodingAgent from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { resolveModel, resolveResearchModel } from "./llm-sdk";
+import type { Entry } from "./webview/state";
 
 // ---------------------------------------------------------------------------
-// Summary store (backed by workspaceState)
+// Session types
 // ---------------------------------------------------------------------------
+
+export interface ResearchSession {
+  id: string;
+  name: string;
+  entries: Entry[];
+  agentMessages: any[];
+  summary: string;
+}
+
+// ---------------------------------------------------------------------------
+// Session store (backed by workspaceState)
+// ---------------------------------------------------------------------------
+
+const SESSIONS_KEY = "codeSpark.researchSessions";
+const ACTIVE_SESSION_KEY = "codeSpark.activeResearchSession";
+const MAX_SESSIONS = 5;
+const MAX_SUMMARY_LENGTH = 4000;
 
 let _workspaceState: vscode.Memento | undefined;
-let _summaryCache: string | undefined;
-
-const SUMMARY_KEY = "codeSpark.researchSummary";
-const MAX_SUMMARY_LENGTH = 4000;
+let _sessions: ResearchSession[] = [];
+let _activeSessionId: string | null = null;
 
 export function initResearchSummary(workspaceState: vscode.Memento): void {
   _workspaceState = workspaceState;
-  _summaryCache = workspaceState.get<string>(SUMMARY_KEY);
+  _sessions = workspaceState.get<ResearchSession[]>(SESSIONS_KEY) ?? [];
+  _activeSessionId = workspaceState.get<string>(ACTIVE_SESSION_KEY) ?? null;
+}
+
+function persistSessions(): void {
+  _workspaceState?.update(SESSIONS_KEY, _sessions);
+  _workspaceState?.update(ACTIVE_SESSION_KEY, _activeSessionId);
+}
+
+export function getSessions(): ResearchSession[] {
+  return _sessions;
+}
+
+export function getActiveSessionId(): string | null {
+  return _activeSessionId;
+}
+
+export function getActiveSession(): ResearchSession | undefined {
+  return _sessions.find((s) => s.id === _activeSessionId);
 }
 
 export function getResearchSummary(): string | undefined {
-  return _summaryCache;
+  const session = getActiveSession();
+  return session?.summary || undefined;
 }
 
-function setResearchSummary(summary: string): void {
-  const trimmed = summary.slice(0, MAX_SUMMARY_LENGTH);
-  _summaryCache = trimmed;
-  _workspaceState?.update(SUMMARY_KEY, trimmed);
+export function createSession(): ResearchSession {
+  const session: ResearchSession = {
+    id: `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    name: "",
+    entries: [],
+    agentMessages: [],
+    summary: "",
+  };
+  _sessions.push(session);
+  // Enforce max sessions — drop oldest
+  while (_sessions.length > MAX_SESSIONS) {
+    _sessions.shift();
+  }
+  _activeSessionId = session.id;
+  persistSessions();
+  return session;
 }
 
-export function clearResearchSummary(): void {
-  _summaryCache = undefined;
-  _workspaceState?.update(SUMMARY_KEY, undefined);
+export function switchSession(id: string): ResearchSession | undefined {
+  const session = _sessions.find((s) => s.id === id);
+  if (session) {
+    _activeSessionId = id;
+    persistSessions();
+  }
+  return session;
+}
+
+export function updateSessionEntries(id: string, entries: Entry[]): void {
+  const session = _sessions.find((s) => s.id === id);
+  if (session) {
+    session.entries = entries;
+    persistSessions();
+  }
+}
+
+export function saveAgentMessages(id: string, messages: any[]): void {
+  const session = _sessions.find((s) => s.id === id);
+  if (session) {
+    session.agentMessages = messages;
+    persistSessions();
+  }
 }
 
 export function appendResearchContext(
+  sessionId: string,
   userPrompt: string,
   response: string,
   filesRead: string[],
   log: vscode.OutputChannel,
 ): void {
-  const existing = _summaryCache ?? "";
+  const session = _sessions.find((s) => s.id === sessionId);
+  if (!session) return;
 
+  // Name the session after the first query
+  if (!session.name) {
+    session.name = userPrompt.slice(0, 50);
+  }
+
+  const existing = session.summary;
   const parts: string[] = [];
   if (existing) parts.push(existing);
 
@@ -53,11 +128,23 @@ export function appendResearchContext(
   parts.push(entry);
 
   const newContext = parts.join("\n\n---\n\n");
-  const trimmed = newContext.slice(-MAX_SUMMARY_LENGTH);
+  session.summary = newContext.slice(-MAX_SUMMARY_LENGTH);
 
-  _summaryCache = trimmed;
-  _workspaceState?.update(SUMMARY_KEY, trimmed);
-  log.appendLine(`[research] Inline context updated (${trimmed.length} chars)`);
+  persistSessions();
+  log.appendLine(`[research] Session "${session.name}" context updated (${session.summary.length} chars)`);
+}
+
+export function clearResearchSummary(): void {
+  // Clear active session only
+  const session = getActiveSession();
+  if (session) {
+    session.summary = "";
+    persistSessions();
+  }
+}
+
+export function getSessionInfos(): { id: string; name: string }[] {
+  return _sessions.map((s) => ({ id: s.id, name: s.name || "New session" }));
 }
 
 // ---------------------------------------------------------------------------
@@ -548,51 +635,62 @@ You have two powerful tools:
 Your final response for each question will automatically be shared as context with the inline code editing agent (Cmd+I), so make sure your conclusions are clear and actionable — include specific file paths, function names, API details, and patterns where relevant.`;
 }
 
-let researchAgent: any;
+// Map of session id → live Agent instance (kept in memory, not persisted)
+const _liveAgents = new Map<string, any>();
 
-export function ensureResearchAgent(
+function buildTools(
+  subModel: any,
+  apiKey: string,
+  cwd: string,
+  log: vscode.OutputChannel,
+): piAgentCore.AgentTool[] {
+  return [
+    createSearchAndSummarizeTool(subModel, apiKey, log),
+    createExploreCodebaseTool(subModel, apiKey, cwd, log),
+  ];
+}
+
+export function createResearchAgent(
   headModel: any,
   subAgentModel: any,
   apiKey: string,
   cwd: string,
   log: vscode.OutputChannel,
+  sessionId: string,
+  savedMessages?: any[],
 ): any {
-  const searchTool = createSearchAndSummarizeTool(subAgentModel, apiKey, log);
-  const exploreTool = createExploreCodebaseTool(
-    subAgentModel,
-    apiKey,
-    cwd,
-    log,
+  const tools = buildTools(subAgentModel, apiKey, cwd, log);
+
+  const agent = new piAgentCore.Agent({
+    initialState: {
+      model: headModel,
+      systemPrompt: buildResearchSystemPrompt(),
+      tools,
+      thinkingLevel: "off",
+      ...(savedMessages ? { messages: savedMessages } : {}),
+    },
+    getApiKey: () => apiKey,
+  });
+
+  _liveAgents.set(sessionId, agent);
+
+  log.appendLine(
+    `[research] ${savedMessages ? "Restored" : "Created"} agent for session ${sessionId} (head: ${headModel.id}, sub: ${subAgentModel.id})`,
   );
-  const tools = [searchTool, exploreTool];
 
-  if (!researchAgent) {
-    log.appendLine(
-      `[research] Creating head agent (head: ${headModel.id}, sub: ${subAgentModel.id})`,
-    );
-    researchAgent = new piAgentCore.Agent({
-      initialState: {
-        model: headModel,
-        systemPrompt: buildResearchSystemPrompt(),
-        tools,
-        thinkingLevel: "off",
-      },
-      getApiKey: () => apiKey,
-    });
-  } else {
-    researchAgent.abort();
-    researchAgent.reset();
-    researchAgent.state.model = headModel;
-    researchAgent.state.systemPrompt = buildResearchSystemPrompt();
-    researchAgent.state.tools = tools;
-    researchAgent.state.thinkingLevel = "off";
-    researchAgent.getApiKey = () => apiKey;
-    log.appendLine(
-      `[research] Reusing head agent (head: ${headModel.id}, sub: ${subAgentModel.id})`,
-    );
+  return agent;
+}
+
+export function getLiveAgent(sessionId: string): any | undefined {
+  return _liveAgents.get(sessionId);
+}
+
+export function disposeLiveAgent(sessionId: string): void {
+  const agent = _liveAgents.get(sessionId);
+  if (agent) {
+    agent.abort();
+    _liveAgents.delete(sessionId);
   }
-
-  return researchAgent;
 }
 
 export { resolveModel, resolveResearchModel };

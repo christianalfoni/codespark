@@ -16,14 +16,39 @@ import { evaluateFocusArea } from "./editor";
 /* ── File-level decoration helpers ────────────────────────────── */
 
 /**
- * Scanning effect: a bright band sweeps down through the dimmed file.
+ * Placeholder for empty files: shows a "Generating..." decoration on line 1
+ * with a blinking cursor-style animation via opacity toggling.
+ */
+function startEmptyFilePlaceholder(
+  editor: vscode.TextEditor,
+): { dispose: () => void } {
+  const placeholderType = vscode.window.createTextEditorDecorationType({
+    isWholeLine: true,
+    after: {
+      contentText: "  Generating...",
+      color: "var(--vscode-editorGhostText-foreground, rgba(255,255,255,0.4))",
+      fontStyle: "italic",
+    },
+  });
+
+  editor.setDecorations(placeholderType, [
+    new vscode.Range(0, 0, 0, 0),
+  ]);
+
+  return {
+    dispose() {
+      placeholderType.dispose();
+    },
+  };
+}
+
+/**
+ * Scanning effect: a bright band sweeps down through visible lines only.
  * Lines near the scan position are more opaque, the rest stay dim.
  */
 function startFileScan(
   editor: vscode.TextEditor,
 ): { dispose: () => void } {
-  const lineCount = editor.document.lineCount;
-
   // Pre-create opacity levels — fewer types = better performance.
   // Level 0 = dimmest (base), last = brightest (scan center).
   const BASE_OPACITY = 0.3;
@@ -45,16 +70,28 @@ function startFileScan(
   const BAND_RADIUS = 4;
   const SCAN_SPEED = 2; // lines per tick
   const TICK_MS = 60;
-  let scanPos = 0;
+
+  function getVisibleRange(): { start: number; end: number } {
+    const ranges = editor.visibleRanges;
+    if (ranges.length === 0) {
+      return { start: 0, end: editor.document.lineCount };
+    }
+    return { start: ranges[0].start.line, end: ranges[ranges.length - 1].end.line };
+  }
+
+  let { start: visStart, end: visEnd } = getVisibleRange();
+  let scanPos = visStart;
 
   function applyFrame() {
-    // Group lines by their opacity level
+    // Re-read visible range each frame so scrolling is handled
+    ({ start: visStart, end: visEnd } = getVisibleRange());
+
     const buckets: vscode.Range[][] = Array.from(
       { length: LEVELS },
       () => [],
     );
 
-    for (let line = 0; line < lineCount; line++) {
+    for (let line = visStart; line <= visEnd; line++) {
       const dist = Math.abs(line - scanPos);
       let level: number;
       if (dist >= BAND_RADIUS) {
@@ -77,9 +114,9 @@ function startFileScan(
 
   const interval = setInterval(() => {
     scanPos += SCAN_SPEED;
-    // Wrap around with some overshoot so the band fully exits before restarting
-    if (scanPos > lineCount + BAND_RADIUS) {
-      scanPos = -BAND_RADIUS;
+    // Wrap around within visible area
+    if (scanPos > visEnd + BAND_RADIUS) {
+      scanPos = visStart - BAND_RADIUS;
     }
     applyFrame();
   }, TICK_MS);
@@ -203,7 +240,10 @@ export function createInvokeCommand(
 
     // Start scanning immediately after prompt submission
     invokeDim.dispose();
-    let pulse: { dispose: () => void } = startFileScan(editor);
+    const isEmpty = editor.document.getText().trim().length === 0;
+    let pulse: { dispose: () => void } = isEmpty
+      ? startEmptyFilePlaceholder(editor)
+      : startFileScan(editor);
 
     statusBarItem.text = "$(loading~spin) CodeSpark · thinking...";
 
