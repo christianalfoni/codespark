@@ -58,6 +58,9 @@ export function activate(context: vscode.ExtensionContext) {
   watcher.onDidDelete(onInstructionsChanged("Deleted"));
   context.subscriptions.push(watcher);
 
+  // Research agent webview panel (created before invoke command so it can be passed)
+  const researchView = new ResearchViewProvider(context.extensionUri, log);
+
   context.subscriptions.push(
     vscode.commands.registerCommand(
       "codeSpark.invoke",
@@ -66,6 +69,7 @@ export function activate(context: vscode.ExtensionContext) {
         decorationProvider,
         statusBarItem,
         activeInstructions.update,
+        researchView,
       ),
     ),
   );
@@ -97,9 +101,6 @@ export function activate(context: vscode.ExtensionContext) {
       );
     }),
   );
-
-  // Research agent webview panel
-  const researchView = new ResearchViewProvider(context.extensionUri, log);
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(
       ResearchViewProvider.viewId,

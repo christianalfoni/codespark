@@ -5,6 +5,7 @@ export type ToolStatus = "pending" | "success" | "error";
 export interface ToolEntry {
   id: number;
   name: string;
+  description?: string;
   status: ToolStatus;
 }
 

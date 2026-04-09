@@ -7,10 +7,14 @@ export interface PromptResult {
 export function promptForInstruction(): Promise<PromptResult | undefined> {
   return new Promise((resolve) => {
     const input = vscode.window.createInputBox();
-    input.title = "Edit";
-    input.placeholder = "e.g. Replace with Box";
+    input.title = "CodeSpark";
+    input.placeholder = "e.g. Replace with Box — prefix with > to research";
 
     let resolved = false;
+
+    input.onDidChangeValue((value) => {
+      input.title = value.startsWith(">") ? "CodeSpark Research" : "CodeSpark";
+    });
 
     input.onDidAccept(() => {
       const value = input.value.trim();

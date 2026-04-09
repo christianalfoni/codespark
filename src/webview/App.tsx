@@ -116,6 +116,14 @@ export function App({ vscode, logoUri }: AppProps) {
           activeSessionId: msg.activeSessionId,
         };
       }
+      case "inject-user": {
+        const injected: Entry[] = [
+          ...entries,
+          { role: "user", content: msg.text },
+          { role: "assistant", turns: [] },
+        ];
+        return { ...prev, entries: injected, isStreaming: true, activeTool: null, contextState: "pending" as ContextState };
+      }
       case "turn-start": {
         if (assistant) {
           assistant.turns.push({ text: "", tools: [] });
@@ -135,7 +143,7 @@ export function App({ vscode, logoUri }: AppProps) {
         if (assistant) {
           ensureTurn();
           const turn = { ...assistant.turns[assistant.turns.length - 1] };
-          turn.tools = [...turn.tools, { id: msg.toolId, name: msg.tool, status: "pending" }];
+          turn.tools = [...turn.tools, { id: msg.toolId, name: msg.tool, description: msg.description, status: "pending" }];
           assistant.turns[assistant.turns.length - 1] = turn;
         }
         return { ...prev, entries, activeTool: msg.tool };
@@ -441,7 +449,10 @@ function InlineTools({ tools }: { tools: ToolEntry[] }) {
       {tools.map((t, i) => (
         <span key={i} class="inline-tool">
           <span class={`tool-dot tool-dot-${t.status}`} />
-          {t.name}
+          <span class="tool-label">
+            {t.name}
+            {t.description && <span class="tool-description">{t.description}</span>}
+          </span>
         </span>
       ))}
     </span>

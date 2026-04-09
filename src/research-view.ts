@@ -101,6 +101,12 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
     this._view?.webview.postMessage(msg);
   }
 
+  private _toolDescription(toolName: string, args: any): string | undefined {
+    if (toolName === "search_and_summarize") return args?.query;
+    if (toolName === "explore_codebase") return args?.question;
+    return undefined;
+  }
+
   private _sendInit(): void {
     const session = getActiveSession();
     if (session && session.entries.length > 0) {
@@ -314,7 +320,7 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
         const queue = pendingToolIds.get(event.toolName) || [];
         queue.push(id);
         pendingToolIds.set(event.toolName, queue);
-        this._post({ type: "tool-start", tool: event.toolName, toolId: id });
+        this._post({ type: "tool-start", tool: event.toolName, toolId: id, description: this._toolDescription(event.toolName, event.args) });
       }
       if (event.type === "tool_execution_end") {
         const queue = pendingToolIds.get(event.toolName) || [];
@@ -351,6 +357,193 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
       }
 
       // Save agent messages for persistence
+      saveAgentMessages(sessionId, [...ag.state.messages]);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this._log.appendLine(`[research:error] ${msg}`);
+      this._post({ type: "error", text: msg });
+    } finally {
+      unsub();
+      this._currentUnsub = undefined;
+      this._post({ type: "done" });
+    }
+  }
+
+  /** Send a prompt programmatically (e.g. from CMD+I with > prefix) */
+  public async sendPrompt(opts: {
+    query: string;
+    filePath: string;
+    fileContent: string;
+    cursorLine: number;
+    contextSnippet: string;
+  }): Promise<void> {
+    // Ensure the panel is visible
+    await vscode.commands.executeCommand("codeSpark.research.focus");
+
+    if (this._view) {
+      // Show clean user message + file context indicator in the webview
+      this._post({ type: "inject-user", text: opts.query });
+      this._post({ type: "tool-start", tool: "read", toolId: -1, description: opts.filePath });
+      this._post({ type: "tool-end", tool: "read", toolId: -1, isError: false });
+
+      await this._handlePromptWithContext(opts);
+    }
+  }
+
+  private async _handlePromptWithContext(opts: {
+    query: string;
+    filePath: string;
+    fileContent: string;
+    cursorLine: number;
+    contextSnippet: string;
+  }): Promise<void> {
+    const workspaceFolder =
+      vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!workspaceFolder) {
+      this._post({ type: "error", text: "No workspace folder open." });
+      this._post({ type: "done" });
+      return;
+    }
+
+    let headResolved;
+    let subResolved;
+    try {
+      [headResolved, subResolved] = await Promise.all([
+        resolveResearchModel(this._log),
+        resolveModel(this._log),
+      ]);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this._post({ type: "error", text: `Failed to resolve model: ${msg}` });
+      this._post({ type: "done" });
+      return;
+    }
+
+    let sessionId = getActiveSessionId();
+    if (!sessionId) {
+      const session = createSession();
+      sessionId = session.id;
+      this._sendSessionsUpdate();
+    }
+
+    let ag = getLiveAgent(sessionId);
+    if (!ag) {
+      const session = getActiveSession();
+      const savedMessages = session?.agentMessages?.length
+        ? session.agentMessages
+        : undefined;
+
+      ag = createResearchAgent(
+        headResolved.piModel,
+        subResolved.piModel,
+        headResolved.apiKey,
+        workspaceFolder,
+        this._log,
+        sessionId,
+        savedMessages,
+      );
+    }
+
+    // Inject file context as a fake explore_codebase tool call + result
+    const toolCallId = `ctx-${Date.now()}`;
+    const now = Date.now();
+    const fakeAssistant = {
+      role: "assistant" as const,
+      content: [
+        {
+          type: "text" as const,
+          text: `Let me look at the file the user is currently viewing.`,
+        },
+        {
+          type: "toolCall" as const,
+          id: toolCallId,
+          name: "explore_codebase",
+          arguments: { question: `Read ${opts.filePath} around line ${opts.cursorLine}` },
+        },
+      ],
+      api: "anthropic-messages" as const,
+      provider: "anthropic",
+      model: "",
+      usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+      stopReason: "toolUse" as const,
+      timestamp: now,
+    };
+    const fakeToolResult = {
+      role: "toolResult" as const,
+      toolCallId,
+      toolName: "explore_codebase",
+      content: [{ type: "text" as const, text: `File: ${opts.filePath} (cursor at line ${opts.cursorLine})\n\n${opts.fileContent}` }],
+      isError: false,
+      timestamp: now,
+    };
+
+    // Inject into agent message history before the user prompt
+    const messages = [...ag.state.messages];
+    messages.push(
+      { role: "user" as const, content: opts.query, timestamp: now } as any,
+      fakeAssistant as any,
+      fakeToolResult as any,
+    );
+    ag.state.messages = messages;
+
+    // Now continue the agent (it has user + tool result, will generate next response)
+    const filesRead = new Set<string>();
+    let lastAssistantText = "";
+    let toolIdCounter = 0;
+    const pendingToolIds = new Map<string, number[]>();
+
+    const unsub = ag.subscribe((event: any) => {
+      if (event.type === "message_start" && event.message?.role === "assistant") {
+        this._post({ type: "turn-start" });
+        lastAssistantText = "";
+      }
+      if (event.type === "message_update") {
+        const evt = event.assistantMessageEvent;
+        if (evt?.type === "text_delta") {
+          lastAssistantText += evt.delta;
+          this._post({ type: "token", text: evt.delta });
+        }
+      }
+      if (event.type === "tool_execution_start") {
+        if (event.toolName === "read" && event.args?.path) {
+          filesRead.add(event.args.path);
+        }
+        const id = ++toolIdCounter;
+        const queue = pendingToolIds.get(event.toolName) || [];
+        queue.push(id);
+        pendingToolIds.set(event.toolName, queue);
+        this._post({ type: "tool-start", tool: event.toolName, toolId: id, description: this._toolDescription(event.toolName, event.args) });
+      }
+      if (event.type === "tool_execution_end") {
+        const queue = pendingToolIds.get(event.toolName) || [];
+        const id = queue.shift() || 0;
+        this._post({
+          type: "tool-end",
+          tool: event.toolName,
+          toolId: id,
+          isError: !!event.isError,
+        });
+      }
+    });
+    this._currentUnsub = unsub;
+
+    try {
+      this._log.appendLine(`[research-view] Continuing agent with file context: ${opts.filePath}`);
+      await ag.continue();
+      await ag.waitForIdle();
+
+      if (lastAssistantText.trim()) {
+        appendResearchContext(
+          sessionId,
+          opts.query,
+          lastAssistantText.trim(),
+          [opts.filePath, ...filesRead],
+          this._log,
+        );
+        this._post({ type: "context-updated" });
+        this._sendSessionsUpdate();
+      }
+
       saveAgentMessages(sessionId, [...ag.state.messages]);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);

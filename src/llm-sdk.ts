@@ -65,13 +65,6 @@ function buildSystemPrompt(ctx: ResolvedContext): string {
   return prompt;
 }
 
-function numberLines(content: string): string {
-  return content
-    .split("\n")
-    .map((line, i) => `${i + 1}\t${line}`)
-    .join("\n");
-}
-
 // ---------------------------------------------------------------------------
 // Mutable ref for active file path — allows tool singletons to be reused
 // ---------------------------------------------------------------------------
@@ -516,7 +509,7 @@ export function buildContextMessages(
       role: "toolResult",
       toolCallId: readId,
       toolName: "read",
-      content: [{ type: "text", text: numberLines(fileContent) }],
+      content: [{ type: "text", text: fileContent }],
       isError: false,
       timestamp: now,
     },
@@ -548,7 +541,7 @@ export function buildContextMessages(
         role: "toolResult",
         toolCallId: refId,
         toolName: "read",
-        content: [{ type: "text", text: numberLines(ref.content) }],
+        content: [{ type: "text", text: ref.content }],
         isError: false,
         timestamp: now,
       },

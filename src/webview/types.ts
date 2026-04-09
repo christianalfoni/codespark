@@ -65,12 +65,14 @@ export interface ToolStartMessage {
   type: "tool-start";
   tool: string;
   toolId: number;
+  description?: string;
 }
 export interface ToolEndMessage {
   type: "tool-end";
   tool: string;
   toolId: number;
   isError?: boolean;
+  description?: string;
 }
 export interface ContextUpdatedMessage {
   type: "context-updated";
@@ -98,6 +100,11 @@ export interface RestoreMessage {
   hasContext: boolean;
 }
 
+export interface InjectUserMessage {
+  type: "inject-user";
+  text: string;
+}
+
 export type ExtensionToWebview =
   | InitMessage
   | TurnStartMessage
@@ -109,7 +116,8 @@ export type ExtensionToWebview =
   | FocusMessage
   | ErrorMessage
   | SessionsUpdatedMessage
-  | RestoreMessage;
+  | RestoreMessage
+  | InjectUserMessage;
 
 export interface ChatMessage {
   role: "user" | "assistant";

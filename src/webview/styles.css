@@ -134,7 +134,7 @@ body {
 
 .inline-tool {
   display: inline-flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 6px;
   font-size: 13px;
   font-weight: 600;
@@ -142,11 +142,17 @@ body {
   opacity: 0.8;
 }
 
+.tool-label {
+  display: flex;
+  flex-direction: column;
+}
+
 .tool-dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
+  margin-top: 6px;
 }
 
 .tool-dot-pending {
@@ -160,6 +166,14 @@ body {
 
 .tool-dot-error {
   background: var(--vscode-charts-red, #f14c4c);
+}
+
+.tool-description {
+  display: block;
+  font-weight: 400;
+  font-size: 12px;
+  opacity: 0.6;
+  line-height: 1.4;
 }
 
 /* ── Context indicator (in toolbar) ────────────────────────── */
@@ -210,15 +224,15 @@ body {
 
 /* ── Markdown content styling ─────────────────────────────── */
 
-.message-assistant p {
+.message p {
   margin-bottom: 8px;
 }
 
-.message-assistant p:last-child {
+.message p:last-child {
   margin-bottom: 0;
 }
 
-.message-assistant code {
+.message code {
   font-family: var(--vscode-editor-font-family);
   font-size: var(--vscode-editor-font-size);
   color: var(--vscode-editor-foreground);
@@ -227,7 +241,7 @@ body {
   border-radius: 3px;
 }
 
-.message-assistant pre {
+.message pre {
   margin: 8px 0;
   padding: 12px;
   background: var(--vscode-textCodeBlock-background, rgba(255, 255, 255, 0.06));
@@ -236,52 +250,52 @@ body {
   position: relative;
 }
 
-.message-assistant pre code {
+.message pre code {
   background: none;
   padding: 0;
   font-size: var(--vscode-editor-font-size);
   line-height: 1.5;
 }
 
-.message-assistant ul,
-.message-assistant ol {
+.message ul,
+.message ol {
   margin: 8px 0;
   padding-left: 20px;
 }
 
-.message-assistant li {
+.message li {
   margin-bottom: 4px;
 }
 
-.message-assistant a {
+.message a {
   color: var(--vscode-textLink-foreground);
   text-decoration: none;
 }
 
-.message-assistant a:hover {
+.message a:hover {
   text-decoration: underline;
 }
 
-.message-assistant blockquote {
+.message blockquote {
   border-left: 3px solid var(--vscode-textBlockQuote-border, var(--vscode-panel-border));
   padding: 4px 12px;
   margin: 8px 0;
   opacity: 0.8;
 }
 
-.message-assistant h1,
-.message-assistant h2,
-.message-assistant h3,
-.message-assistant h4 {
+.message h1,
+.message h2,
+.message h3,
+.message h4 {
   margin: 12px 0 6px;
   font-weight: 600;
 }
 
-.message-assistant h1 { font-size: 1.3em; }
-.message-assistant h2 { font-size: 1.15em; }
-.message-assistant h3 { font-size: 1.05em; }
+.message h1 { font-size: 1.3em; }
+.message h2 { font-size: 1.15em; }
+.message h3 { font-size: 1.05em; }
 
-.message-assistant hr {
+.message hr {
   border: none;
   border-top: 1px solid var(--vscode-panel-border);
   margin: 12px 0;
@@ -289,7 +303,7 @@ body {
 
 /* ── Clickable file paths ─────────────────────────────────── */
 
-.message-assistant .code-path {
+.message .code-path {
   cursor: pointer;
   text-decoration: underline;
   text-decoration-style: dotted;
@@ -299,13 +313,13 @@ body {
   padding: 0;
 }
 
-.message-assistant .code-path:hover {
+.message .code-path:hover {
   text-decoration-style: solid;
 }
 
 /* ── Code block actions (copy / run) ─────────────────────── */
 
-.message-assistant pre {
+.message pre {
   position: relative;
 }
 
@@ -319,7 +333,7 @@ body {
   transition: opacity 0.15s;
 }
 
-.message-assistant pre:hover .code-actions {
+.message pre:hover .code-actions {
   opacity: 1;
 }
 
@@ -441,7 +455,7 @@ body {
 
 /* ── Streaming cursor ─────────────────────────────────────── */
 
-.streaming .message-assistant:last-of-type .assistant-content > *:last-child::after {
+.streaming .message-assistant:last-of-type > .assistant-content > *:last-child::after {
   content: " ▍";
   animation: blink 0.8s step-end infinite;
   opacity: 0.7;
