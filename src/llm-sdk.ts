@@ -674,7 +674,6 @@ export async function callLLMWithSDK(
       const isEdit = event.toolName === "edit" && (event.args?.edits?.length > 0 || event.args?.oldText);
       if (isCurrentFile && (isWrite || isEdit)) {
         hasEdits = true;
-        resolveOnToolDone?.();
       }
       if (!firstToolSeen) {
         firstToolSeen = true;
@@ -693,6 +692,10 @@ export async function callLLMWithSDK(
         );
       } else {
         log.appendLine(`[sdk:tool] ${event.toolName} done (${toolMs}ms)`);
+      }
+      // Resolve after the edit/write tool finishes executing on the current file
+      if (hasEdits) {
+        resolveOnToolDone?.();
       }
     }
   });
