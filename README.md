@@ -26,6 +26,8 @@ CodeSpark includes a research agent that lives in the secondary sidebar (`CMD+Sh
 
 The research agent can read files, search with Brave, and fetch web pages — but it cannot edit anything. Every conversation automatically builds up context that the inline agent picks up on its next invocation. Ask a question in the research panel, and the next time you press `CMD+I`, the inline agent knows what you learned.
 
+You can also reach the research agent directly from `CMD+I` by prefixing your prompt with `>`. The current file and cursor position are automatically shared as context, so you can ask questions about the code you're looking at without leaving the editor. For example: `> What does this function do?` or `> Are there better patterns for this?`.
+
 This means you can research an unfamiliar API, explore how a feature is implemented, or look up documentation — and then immediately make edits with that knowledge baked in.
 
 To use web search, add a [Brave Search API key](https://brave.com/search/api/) in settings (`codeSpark.braveApiKey`).
