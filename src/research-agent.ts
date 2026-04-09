@@ -156,7 +156,7 @@ export function getSessionInfos(): { id: string; name: string }[] {
 function createWebSearchTool(): piAgentCore.AgentTool {
   const schema = Type.Object({
     query: Type.String({ description: "The search query" }),
-  });
+  }) as any;
 
   return {
     name: "web_search",
@@ -220,7 +220,7 @@ function createWebSearchTool(): piAgentCore.AgentTool {
 function createWebFetchTool(): piAgentCore.AgentTool {
   const schema = Type.Object({
     url: Type.String({ description: "The URL to fetch" }),
-  });
+  }) as any;
 
   return {
     name: "web_fetch",
@@ -285,7 +285,7 @@ function execGit(args: string[], cwd: string): Promise<string> {
 }
 
 function createGitStatusTool(cwd: string): piAgentCore.AgentTool {
-  const schema = Type.Object({});
+  const schema = Type.Object({}) as any;
 
   return {
     name: "git_status",
@@ -313,7 +313,7 @@ function createGitLogTool(cwd: string): piAgentCore.AgentTool {
     ref: Type.Optional(
       Type.String({ description: "Branch, tag, or commit ref to start from" }),
     ),
-  });
+  }) as any;
 
   return {
     name: "git_log",
@@ -360,7 +360,7 @@ function createGitDiffTool(cwd: string): piAgentCore.AgentTool {
     file: Type.Optional(
       Type.String({ description: "Limit diff to a specific file path" }),
     ),
-  });
+  }) as any;
 
   return {
     name: "git_diff",
@@ -397,7 +397,7 @@ function createGitBlameTool(cwd: string): piAgentCore.AgentTool {
     endLine: Type.Optional(
       Type.Number({ description: "End line number (1-based)" }),
     ),
-  });
+  }) as any;
 
   return {
     name: "git_blame",
@@ -501,7 +501,7 @@ function createSearchAndSummarizeTool(
           "Additional context to help the sub-agent understand what to look for",
       }),
     ),
-  });
+  }) as any;
 
   const webSearchTool = createWebSearchTool();
   const webFetchTool = createWebFetchTool();
@@ -557,7 +557,7 @@ function createExploreCodebaseTool(
       description:
         "What to explore or find out about the codebase (e.g. 'How does authentication work?', 'Find all API endpoints', 'What does the User model look like?')",
     }),
-  });
+  }) as any;
 
   const readOnlyTools = piCodingAgent.createReadOnlyTools(cwd);
   const gitTools = [
