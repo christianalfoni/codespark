@@ -131,7 +131,9 @@ export function appendResearchContext(
   session.summary = newContext.slice(-MAX_SUMMARY_LENGTH);
 
   persistSessions();
-  log.appendLine(`[research] Session "${session.name}" context updated (${session.summary.length} chars)`);
+  log.appendLine(
+    `[research] Session "${session.name}" context updated (${session.summary.length} chars)`,
+  );
 }
 
 export function clearResearchSummary(): void {
@@ -351,7 +353,9 @@ function createGitDiffTool(cwd: string): piAgentCore.AgentTool {
       }),
     ),
     staged: Type.Optional(
-      Type.Boolean({ description: "Show staged (cached) changes instead of unstaged" }),
+      Type.Boolean({
+        description: "Show staged (cached) changes instead of unstaged",
+      }),
     ),
     file: Type.Optional(
       Type.String({ description: "Limit diff to a specific file path" }),
@@ -384,7 +388,9 @@ function createGitDiffTool(cwd: string): piAgentCore.AgentTool {
 
 function createGitBlameTool(cwd: string): piAgentCore.AgentTool {
   const schema = Type.Object({
-    file: Type.String({ description: "File path to annotate (relative to workspace root)" }),
+    file: Type.String({
+      description: "File path to annotate (relative to workspace root)",
+    }),
     startLine: Type.Optional(
       Type.Number({ description: "Start line number (1-based)" }),
     ),
@@ -400,7 +406,11 @@ function createGitBlameTool(cwd: string): piAgentCore.AgentTool {
       "Show git blame for a file — who last changed each line and when. Optionally limit to a line range.",
     parameters: schema,
     execute: async (_toolCallId, rawParams) => {
-      const p = rawParams as { file: string; startLine?: number; endLine?: number };
+      const p = rawParams as {
+        file: string;
+        startLine?: number;
+        endLine?: number;
+      };
       const args = ["blame", "--no-color", "--date=short"];
       if (p.startLine && p.endLine) {
         args.push(`-L${p.startLine},${p.endLine}`);
@@ -463,9 +473,7 @@ async function runSubAgent(
     sub.prompt(task);
     await sub.waitForIdle();
     const result = extractAssistantText(sub);
-    log.appendLine(
-      `[research:sub] Sub-agent done (${result.length} chars)`,
-    );
+    log.appendLine(`[research:sub] Sub-agent done (${result.length} chars)`);
     return result || "(sub-agent returned no text)";
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -601,10 +609,15 @@ Be thorough but concise. Include actual code snippets where they help explain th
 // Research agent (head)
 // ---------------------------------------------------------------------------
 
-function buildResearchSystemPrompt(): string {
+function buildResearchSystemPrompt(workspaceFolder: string): string {
   const now = new Date();
   const date = now.toISOString().split("T")[0];
-  const platform = process.platform === "darwin" ? "macOS" : process.platform === "win32" ? "Windows" : "Linux";
+  const platform =
+    process.platform === "darwin"
+      ? "macOS"
+      : process.platform === "win32"
+        ? "Windows"
+        : "Linux";
 
   return `You are the research orchestrator for the CodeSpark coding extension. You help users understand code and find information by delegating to specialized sub-agents.
 
@@ -612,6 +625,11 @@ function buildResearchSystemPrompt(): string {
 - Current date: ${date}
 - Platform: ${platform}
 - Editor: VS Code
+
+## Workspace
+- Workspace root: ${workspaceFolder}
+- All file paths in your responses should be relative to the workspace root
+- Example: Use \`src/foo.ts\` not \`/Users/name/project/src/foo.ts\`
 
 ## Tools
 
@@ -665,7 +683,7 @@ export function createResearchAgent(
   const agent = new piAgentCore.Agent({
     initialState: {
       model: headModel,
-      systemPrompt: buildResearchSystemPrompt(),
+      systemPrompt: buildResearchSystemPrompt(cwd),
       tools,
       thinkingLevel: "off",
       ...(savedMessages ? { messages: savedMessages } : {}),
