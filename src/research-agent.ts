@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import * as childProcess from "child_process";
 import * as piAgentCore from "@mariozechner/pi-agent-core";
 import * as piCodingAgent from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
@@ -174,6 +175,160 @@ function createWebFetchTool(): piAgentCore.AgentTool {
 }
 
 // ---------------------------------------------------------------------------
+// Git tools (used by explore_codebase sub-agent)
+// ---------------------------------------------------------------------------
+
+function execGit(args: string[], cwd: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    childProcess.execFile(
+      "git",
+      args,
+      { cwd, maxBuffer: 1024 * 256, timeout: 15000 },
+      (err, stdout, stderr) => {
+        if (err) {
+          reject(new Error(stderr.trim() || err.message));
+        } else {
+          resolve(stdout.trim());
+        }
+      },
+    );
+  });
+}
+
+function createGitStatusTool(cwd: string): piAgentCore.AgentTool {
+  const schema = Type.Object({});
+
+  return {
+    name: "git_status",
+    label: "Git Status",
+    description:
+      "Show the current git status: branch name, staged, modified, and untracked files.",
+    parameters: schema,
+    execute: async () => {
+      const branch = await execGit(["branch", "--show-current"], cwd);
+      const status = await execGit(["status", "--short"], cwd);
+      const text = `Branch: ${branch}\n\n${status || "(clean working tree)"}`;
+      return { content: [{ type: "text", text }], details: undefined };
+    },
+  };
+}
+
+function createGitLogTool(cwd: string): piAgentCore.AgentTool {
+  const schema = Type.Object({
+    count: Type.Optional(
+      Type.Number({ description: "Number of commits to show (default 20)" }),
+    ),
+    file: Type.Optional(
+      Type.String({ description: "Limit history to a specific file path" }),
+    ),
+    ref: Type.Optional(
+      Type.String({ description: "Branch, tag, or commit ref to start from" }),
+    ),
+  });
+
+  return {
+    name: "git_log",
+    label: "Git Log",
+    description:
+      "View git commit history. Returns commit hash, date, author, and message. Optionally filter by file or ref.",
+    parameters: schema,
+    execute: async (_toolCallId, rawParams) => {
+      const p = rawParams as { count?: number; file?: string; ref?: string };
+      const args = [
+        "log",
+        `--max-count=${p.count ?? 20}`,
+        "--format=%h %ad %an: %s",
+        "--date=short",
+        "--no-color",
+      ];
+      if (p.ref) args.push(p.ref);
+      if (p.file) {
+        args.push("--");
+        args.push(p.file);
+      }
+      const text = await execGit(args, cwd);
+      return {
+        content: [{ type: "text", text: text || "(no commits found)" }],
+        details: undefined,
+      };
+    },
+  };
+}
+
+function createGitDiffTool(cwd: string): piAgentCore.AgentTool {
+  const schema = Type.Object({
+    ref: Type.Optional(
+      Type.String({
+        description:
+          "Ref or ref range to diff (e.g. 'HEAD~3', 'main..feature', 'abc123'). Omit for unstaged working-tree changes.",
+      }),
+    ),
+    staged: Type.Optional(
+      Type.Boolean({ description: "Show staged (cached) changes instead of unstaged" }),
+    ),
+    file: Type.Optional(
+      Type.String({ description: "Limit diff to a specific file path" }),
+    ),
+  });
+
+  return {
+    name: "git_diff",
+    label: "Git Diff",
+    description:
+      "Show a git diff. By default shows unstaged working-tree changes. Use 'staged' for cached changes, or provide a ref/range.",
+    parameters: schema,
+    execute: async (_toolCallId, rawParams) => {
+      const p = rawParams as { ref?: string; staged?: boolean; file?: string };
+      const args = ["diff", "--no-color"];
+      if (p.staged) args.push("--cached");
+      if (p.ref) args.push(p.ref);
+      if (p.file) {
+        args.push("--");
+        args.push(p.file);
+      }
+      const text = await execGit(args, cwd);
+      return {
+        content: [{ type: "text", text: text || "(no differences)" }],
+        details: undefined,
+      };
+    },
+  };
+}
+
+function createGitBlameTool(cwd: string): piAgentCore.AgentTool {
+  const schema = Type.Object({
+    file: Type.String({ description: "File path to annotate (relative to workspace root)" }),
+    startLine: Type.Optional(
+      Type.Number({ description: "Start line number (1-based)" }),
+    ),
+    endLine: Type.Optional(
+      Type.Number({ description: "End line number (1-based)" }),
+    ),
+  });
+
+  return {
+    name: "git_blame",
+    label: "Git Blame",
+    description:
+      "Show git blame for a file — who last changed each line and when. Optionally limit to a line range.",
+    parameters: schema,
+    execute: async (_toolCallId, rawParams) => {
+      const p = rawParams as { file: string; startLine?: number; endLine?: number };
+      const args = ["blame", "--no-color", "--date=short"];
+      if (p.startLine && p.endLine) {
+        args.push(`-L${p.startLine},${p.endLine}`);
+      }
+      args.push(p.file);
+      const text = await execGit(args, cwd);
+      return {
+        content: [{ type: "text", text: text || "(no blame output)" }],
+        details: undefined,
+      };
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Sub-agent runner
 // ---------------------------------------------------------------------------
 
@@ -310,15 +465,22 @@ function createExploreCodebaseTool(
   });
 
   const readOnlyTools = piCodingAgent.createReadOnlyTools(cwd);
+  const gitTools = [
+    createGitStatusTool(cwd),
+    createGitLogTool(cwd),
+    createGitDiffTool(cwd),
+    createGitBlameTool(cwd),
+  ];
 
-  const systemPrompt = `You are a codebase exploration sub-agent. Your job is to read files in the workspace to answer questions about the code.
+  const systemPrompt = `You are a codebase exploration sub-agent. Your job is to read files in the workspace and inspect git state to answer questions about the code.
 
-Use the available tools to navigate the codebase. Read relevant files, follow imports, and trace through the code to build understanding.
+Use the available tools to navigate the codebase. Read relevant files, follow imports, and trace through the code to build understanding. Use git tools to check recent changes, authorship, diffs, and branch state when relevant.
 
 Return a clear, structured summary of your findings. Include:
 - Relevant file paths and line numbers
 - Key code patterns, function signatures, or type definitions
 - How different parts connect to each other
+- Git context (recent changes, authors, branch info) when relevant
 
 Be thorough but concise. Include actual code snippets where they help explain the answer.`;
 
@@ -335,7 +497,7 @@ Be thorough but concise. Include actual code snippets where they help explain th
         subModel,
         apiKey,
         systemPrompt,
-        readOnlyTools,
+        [...readOnlyTools, ...gitTools],
         params.question,
         log,
       );
@@ -368,7 +530,7 @@ function buildResearchSystemPrompt(): string {
 
 You have two powerful tools:
 - **search_and_summarize**: Delegates web research to a fast sub-agent that searches and reads web pages. Use this for documentation, API references, tutorials, specs, etc.
-- **explore_codebase**: Delegates codebase exploration to a fast sub-agent that reads workspace files. Use this for understanding code structure, finding implementations, tracing logic, etc.
+- **explore_codebase**: Delegates codebase exploration to a fast sub-agent that reads workspace files and inspects git state. Use this for understanding code structure, finding implementations, tracing logic, checking recent changes, diffs, blame, and branch status.
 
 **Call multiple tools in parallel whenever possible.** For example, if the user asks something that involves both understanding their code AND looking up documentation, call both explore_codebase and search_and_summarize in the same response — they will run concurrently.
 
