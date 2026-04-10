@@ -13,6 +13,7 @@ import {
   getActiveSession,
   createSession,
   switchSession,
+  deleteSession,
   updateSessionEntries,
   saveAgentMessages,
   getSessionInfos,
@@ -181,6 +182,11 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
   private _saveCurrentSession(entries: any[]): void {
     const sessionId = getActiveSessionId();
     if (!sessionId) return;
+    const hasAssistantResponse = entries.some((e: any) => e.role === "assistant" && e.turns?.length > 0);
+    if (!hasAssistantResponse) {
+      deleteSession(sessionId);
+      return;
+    }
     updateSessionEntries(sessionId, entries);
     const agent = getLiveAgent(sessionId);
     if (agent) {
@@ -382,6 +388,10 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
     this._log.appendLine(
       `[research-view] File context set: ${ctx.filePath}:${ctx.cursorLine}`,
     );
+  }
+
+  public get isVisible(): boolean {
+    return !!this._view?.visible;
   }
 
   public focusInput(): void {

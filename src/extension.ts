@@ -88,8 +88,9 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(
     vscode.commands.registerCommand("codeSpark.openResearch", async () => {
+      const alreadyOpen = researchView.isVisible;
       const editor = vscode.window.activeTextEditor;
-      if (editor) {
+      if (alreadyOpen && editor) {
         const filePath = vscode.workspace.asRelativePath(
           editor.document.uri.fsPath,
         );

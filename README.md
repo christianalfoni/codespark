@@ -14,12 +14,32 @@ Project-level agents like Claude Code, Copilot Agent, and Cursor are powerful �
 
 ## Shortcuts
 
-| Mac | Windows / Linux | What it does |
-| --- | --- | --- |
-| `Cmd+I` | `Ctrl+I` | Open the inline agent — describe a change and it edits the file at your cursor |
-| `Cmd+Shift+I` | `Ctrl+Shift+I` | Open the research agent — attaches the current file and cursor position as context, even if the panel is already open |
+| Mac           | Windows / Linux | What it does                                                                                                      |
+| ------------- | --------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `Cmd+I`       | `Ctrl+I`        | Open the inline agent — describe a change and it edits the file at your cursor                                    |
+| `Cmd+Shift+I` | `Ctrl+Shift+I`  | Open the research agent — attaches the current file and cursor position as context when the panel is already open |
 
 Research findings carry over to the next inline agent invocation.
+
+These shortcuts may conflict with other extensions (e.g. GitHub Copilot uses the same bindings). To rebind them, open the command palette and search for "Preferences: Open Keyboard Shortcuts (JSON)", then add your preferred bindings:
+
+**Mac** — `Cmd+Shift+P` → "Preferences: Open Keyboard Shortcuts (JSON)"
+
+```json
+[
+  { "key": "cmd+i", "command": "codeSpark.invoke", "when": "editorTextFocus" },
+  { "key": "cmd+shift+i", "command": "codeSpark.openResearch" }
+]
+```
+
+**Windows / Linux** — `Ctrl+Shift+P` → "Preferences: Open Keyboard Shortcuts (JSON)"
+
+```json
+[
+  { "key": "ctrl+i", "command": "codeSpark.invoke", "when": "editorTextFocus" },
+  { "key": "ctrl+shift+i", "command": "codeSpark.openResearch" }
+]
+```
 
 ## Project context
 

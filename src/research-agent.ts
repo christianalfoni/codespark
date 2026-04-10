@@ -86,6 +86,14 @@ export function switchSession(id: string): ResearchSession | undefined {
   return session;
 }
 
+export function deleteSession(id: string): void {
+  const idx = _sessions.findIndex((s) => s.id === id);
+  if (idx !== -1) {
+    _sessions.splice(idx, 1);
+    persistSessions();
+  }
+}
+
 export function updateSessionEntries(id: string, entries: Entry[]): void {
   const session = _sessions.find((s) => s.id === id);
   if (session) {

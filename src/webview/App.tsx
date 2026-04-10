@@ -71,7 +71,12 @@ export function App({ vscode }: AppProps) {
       fileContext: null,
     }));
     vscode.postMessage({ type: "new-session", currentEntries });
-    setTimeout(() => textareaRef.current?.focus(), 0);
+    setTimeout(() => {
+      if (textareaRef.current) {
+        textareaRef.current.value = "";
+        textareaRef.current.focus();
+      }
+    }, 0);
   }
 
   function switchToSession(id: string) {
