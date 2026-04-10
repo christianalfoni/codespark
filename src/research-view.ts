@@ -260,6 +260,7 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
       text,
       workspaceFolder,
       this._log,
+      this._extensionUri.fsPath,
       sessionId,
       savedSdkSessionId,
     );
@@ -401,6 +402,7 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
       contextPrompt,
       workspaceFolder,
       this._log,
+      this._extensionUri.fsPath,
       sessionId,
       savedSdkSessionId,
     );

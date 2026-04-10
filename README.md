@@ -14,9 +14,8 @@ This isn't a replacement for Claude Code — it's a different mode of working. C
 
 ## Getting started
 
-1. Install [Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview) (`curl -fsSL https://claude.ai/install.sh | bash`)
-2. Install CodeSpark Extensio: [Install in VSCode](vscode:extension/codespark.codespark-agent)
-3. Set `codeSpark.apiKey` in settings. You get one from [Claude Console](https://platform.claude.com/settings/workspaces/default/keys)
+1. Install CodeSpark Extension: [Install in VSCode](vscode:extension/codespark.codespark-agent)
+2. Set `codeSpark.apiKey` in settings. You get one from [Claude Console](https://platform.claude.com/settings/workspaces/default/keys)
 
 ## How it works
 

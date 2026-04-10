@@ -1,4 +1,5 @@
 import * as childProcess from "child_process";
+import * as path from "path";
 import * as readline from "readline";
 import * as vscode from "vscode";
 
@@ -80,6 +81,7 @@ export function createResearchQuery(
   prompt: string,
   cwd: string,
   log: vscode.OutputChannel,
+  extensionPath: string,
   resumeSessionId?: string,
 ): ResearchQueryHandle {
   log.appendLine(
@@ -90,13 +92,26 @@ export function createResearchQuery(
     .getConfiguration("codeSpark")
     .get<string>("apiKey", "");
 
+  // Resolve the bundled Claude Code CLI from the extension's node_modules
+  const cliPath = path.join(
+    extensionPath,
+    "node_modules",
+    "@anthropic-ai",
+    "claude-code",
+    "cli.js",
+  );
+
   const args = [
+    cliPath,
     "--print",
     "--output-format", "stream-json",
     "--verbose",
     "--include-partial-messages",
     "--model", "sonnet",
     "--dangerously-skip-permissions",
+    "--bare",
+    "--disable-slash-commands",
+    "--strict-mcp-config",
     "--tools", "Read,Glob,Grep,WebSearch,WebFetch",
     "--system-prompt", buildResearchSystemPrompt(cwd),
   ];
@@ -112,7 +127,7 @@ export function createResearchQuery(
     env.ANTHROPIC_API_KEY = apiKey;
   }
 
-  const proc = childProcess.spawn("claude", args, {
+  const proc = childProcess.spawn(process.execPath, args, {
     cwd,
     env,
     stdio: ["ignore", "pipe", "pipe"],
