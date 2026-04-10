@@ -4,13 +4,27 @@
 
 <p align="center"><em>A coding agent at the tip of your cursor</em></p>
 
-> You don't need to own every keystroke — but you do need to own the expression of your intent. And that happens at the file level, where you're closest to the code — not from a project-wide prompt.
+> You don't need to own every keystroke — but you do need to own the expression of your intent. And that happens at the file level, where you're closest to the code.
 
-CodeSpark is a full-fledged coding agent — but it works from your cursor, not from a separate prompt window. Instead of manually navigating files and typing out changes, you describe what should happen in natural language. You're still the one learning the codebase, still the one deciding what changes to make. The agent just replaces the mechanical parts — the searching, the boilerplate, the repetitive edits — so you can stay focused on intent.
+CodeSpark combines two complementary agents into one workflow: a fast **inline agent** for editing code at your cursor, and a powerful **research agent** backed by Claude Code for deep codebase exploration and web search. The inline agent replaces the mechanical parts — searching, boilerplate, repetitive edits — while the research agent gives you a way to understand before you change.
 
-Project-level agents like Claude Code, Copilot Agent, and Cursor are powerful — great for project-wide mundane tasks like large refactors, boilerplate generation, and scaffolding. But they take on the decision-making and ownership of the code, which is something you normally don't want to give up. CodeSpark keeps that ownership with you: short sessions, fast momentum, every change under your eye.
+This isn't a replacement for Claude Code — it's a different mode of working. Claude Code is a project-level tool: great for large refactors, scaffolding, and tasks where you want the agent to drive. CodeSpark is for when you want to stay in the driver's seat. You're the one navigating the codebase, deciding what to change, building your understanding. The agents handle the mechanics so you can focus on intent.
 
 ![CodeSpark in action](./media/screenshot.png)
+
+## Getting started
+
+1. Install [Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview) (`curl -fsSL https://claude.ai/install.sh | bash`)
+2. Install CodeSpark Extensio: [Install in VSCode](vscode:extension/codespark.codespark-agent)
+3. Set `codeSpark.apiKey` in settings. You get one from [Claude Console](https://platform.claude.com/settings/workspaces/default/keys)
+
+## How it works
+
+**Inline agent** (`Cmd+I`) — A lightweight agent powered by [pi.dev](https://pi.dev), optimized for speed. It works from your cursor, editing the file you're looking at. Most edits are fast, single-turn, file-scoped changes. When the task demands it, the agent reads additional files and goes as wide as it needs — but it always stays within the code, never running commands or reaching outside the project.
+
+**Research agent** (`Cmd+Shift+I`) — Powered by the [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk-typescript), this is Claude Code running as a dedicated research tool. It can read files, grep through your codebase, search the web, and fetch documentation — but it cannot edit anything. Every conversation automatically builds context that the inline agent picks up on its next invocation.
+
+The two agents are connected: ask a question in the research panel, and the next time you invoke the inline agent, it knows what you learned.
 
 ## Shortcuts
 
@@ -19,11 +33,9 @@ Project-level agents like Claude Code, Copilot Agent, and Cursor are powerful �
 | `Cmd+I`       | `Ctrl+I`        | Open the inline agent — describe a change and it edits the file at your cursor                                    |
 | `Cmd+Shift+I` | `Ctrl+Shift+I`  | Open the research agent — attaches the current file and cursor position as context when the panel is already open |
 
-Research findings carry over to the next inline agent invocation.
-
 These shortcuts may conflict with other extensions (e.g. GitHub Copilot uses the same bindings). To rebind them, open the command palette and search for "Preferences: Open Keyboard Shortcuts (JSON)", then add your preferred bindings:
 
-**Mac** — `Cmd+Shift+P` → "Preferences: Open Keyboard Shortcuts (JSON)"
+**Mac** — `Cmd+Shift+P` > "Preferences: Open Keyboard Shortcuts (JSON)"
 
 ```json
 [
@@ -32,7 +44,7 @@ These shortcuts may conflict with other extensions (e.g. GitHub Copilot uses the
 ]
 ```
 
-**Windows / Linux** — `Ctrl+Shift+P` → "Preferences: Open Keyboard Shortcuts (JSON)"
+**Windows / Linux** — `Ctrl+Shift+P` > "Preferences: Open Keyboard Shortcuts (JSON)"
 
 ```json
 [
@@ -46,41 +58,3 @@ These shortcuts may conflict with other extensions (e.g. GitHub Copilot uses the
 Context is progressively included starting from where your cursor is. Sometimes the code at the cursor is enough. Other times it needs the surrounding block, the full file, your `CLAUDE.md` / `AGENT.md` files and any resources they reference, or research from the sidebar. This progressive approach is optimized for keeping context small and relevant — but when the task demands it, the agent will explore additional files and go as wide as it needs on its own.
 
 You can link to files and directories from your `CLAUDE.md` and `AGENT.md` files. Linked files are read into context so the agent understands their contents. Linked directories are expanded to show their filenames, giving the agent awareness of the project structure without loading every file.
-
-These same files also improve your project-level agents — giving them better guidance for planning refactors, suggesting implementation approaches, and understanding how your codebase works.
-
-## Research agent
-
-CodeSpark includes a research agent that lives in the secondary sidebar. Use it to explore your codebase, search the web, and build understanding before you edit.
-
-The research agent can read files, search with Brave, and fetch web pages — but it cannot edit anything. Every conversation automatically builds up context that the inline agent picks up on its next invocation. Ask a question in the research panel, and the next time you invoke the inline agent, it knows what you learned.
-
-Open the research agent from any file (`Cmd+Shift+I` / `Ctrl+Shift+I`) to attach that file as context. Research an unfamiliar API, explore how a feature is implemented, or look up documentation — then immediately make edits with that knowledge baked in.
-
-To use web search, add a [Brave Search API key](https://brave.com/search/api/) in settings (`codeSpark.braveApiKey`).
-
-## Getting started
-
-1. Install the extension
-2. Choose a provider in settings: **Copilot** (default, uses your GitHub Copilot subscription) or bring your own API key for Anthropic, OpenAI, Google, Mistral, Groq, xAI, OpenRouter, or Together
-3. Add `CLAUDE.md` or `AGENT.md` files to guide CodeSpark. Place one in your project root for general conventions, and additional ones in subdirectories to describe the patterns, dependencies, and guidelines specific to each domain of your codebase
-4. Open a file, press `Cmd+I` (`Ctrl+I` on Windows/Linux), type an instruction — the edit lands directly in your file
-5. Press `Cmd+Shift+I` (`Ctrl+Shift+I`) to open the research agent when you need to explore before editing
-
-## Under the hood
-
-CodeSpark uses a real agent harness powered by [pi.dev](https://pi.dev), configured with deterministic context and awareness of where your cursor is. Most edits are fast, single-turn file-scoped changes — but when the task demands it, the agent can read additional files and go as wide as it needs, just like a traditional agent. The difference is that it always stays within its bounds: working with the code of the project, never running commands or reaching outside it.
-
-## Default models per provider
-
-| Provider   | Default Model                               |
-| ---------- | ------------------------------------------- |
-| copilot    | `claude-haiku-4.5`                          |
-| anthropic  | `claude-haiku-4-5-20251001`                 |
-| openai     | `gpt-4.1-mini`                              |
-| google     | `gemini-2.5-flash`                          |
-| openrouter | `anthropic/claude-haiku-4-5-20251001`       |
-| groq       | `llama-4-scout-17b-16e-instruct`            |
-| xai        | `grok-3-mini`                               |
-| mistral    | `mistral-medium-latest`                     |
-| together   | `meta-llama/Llama-4-Scout-17B-16E-Instruct` |

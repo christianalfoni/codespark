@@ -34,11 +34,26 @@ export function AssistantMessage({
   const currentTurnHasText = lastTurn?.text.trim();
 
   const elements: preact.JSX.Element[] = [];
+  let pendingTools: ToolEntry[] = [];
+  let groupIndex = 0;
+
+  function flushTools() {
+    if (pendingTools.length > 0) {
+      elements.push(
+        <div key={`tools-${groupIndex}`} class="message message-tools">
+          <InlineTools tools={pendingTools} />
+        </div>,
+      );
+      pendingTools = [];
+      groupIndex++;
+    }
+  }
 
   for (let i = 0; i < entry.turns.length; i++) {
     const turn = entry.turns[i];
 
     if (turn.text.trim()) {
+      flushTools();
       elements.push(
         <div key={`text-${i}`} class="message message-assistant">
           <div
@@ -50,13 +65,11 @@ export function AssistantMessage({
     }
 
     if (turn.tools.length > 0) {
-      elements.push(
-        <div key={`tools-${i}`} class="message message-tools">
-          <InlineTools tools={turn.tools} />
-        </div>,
-      );
+      pendingTools = [...pendingTools, ...turn.tools];
     }
   }
+
+  flushTools();
 
   if (isStreaming && (activeTool || !currentTurnHasText)) {
     elements.push(

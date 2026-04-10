@@ -308,6 +308,29 @@ body {
   margin: 12px 0;
 }
 
+.message table {
+  border-collapse: collapse;
+  margin: 8px 0;
+  width: 100%;
+  font-size: var(--vscode-font-size);
+}
+
+.message th,
+.message td {
+  border: 2px solid var(--vscode-sideBar-background);
+  padding: 6px 10px;
+  text-align: left;
+}
+
+.message th {
+  font-weight: 600;
+  background: var(--vscode-textCodeBlock-background, rgba(255, 255, 255, 0.06));
+}
+
+.message td {
+  background: var(--vscode-input-background);
+}
+
 /* ── Clickable file paths ─────────────────────────────────── */
 
 .message .code-path {

@@ -2,7 +2,7 @@
   "name": "codespark-agent",
   "displayName": "CodeSpark",
   "description": "A coding agent at the tip of your cursor",
-  "version": "0.7.3",
+  "version": "0.8.0",
   "publisher": "codespark",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -91,41 +91,10 @@
     "configuration": {
       "title": "CodeSpark",
       "properties": {
-        "codeSpark.provider": {
-          "type": "string",
-          "enum": [
-            "copilot",
-            "anthropic",
-            "openai",
-            "google",
-            "openrouter",
-            "groq",
-            "xai",
-            "mistral",
-            "together"
-          ],
-          "default": "copilot",
-          "markdownDescription": "AI provider. **Copilot** uses your GitHub Copilot subscription (no API key needed). All others require an API key."
-        },
-        "codeSpark.model": {
-          "type": "string",
-          "default": "",
-          "markdownDescription": "Model to use. Leave empty for a sensible default per provider."
-        },
         "codeSpark.apiKey": {
           "type": "string",
           "default": "",
-          "markdownDescription": "API key for the selected provider. Not required for Copilot."
-        },
-        "codeSpark.researchModel": {
-          "type": "string",
-          "default": "",
-          "markdownDescription": "Model for the research agent's head (orchestrator). Defaults to a smarter model per provider (e.g. Sonnet). The sub-agents use `#codeSpark.model#`."
-        },
-        "codeSpark.braveApiKey": {
-          "type": "string",
-          "default": "",
-          "markdownDescription": "API key for [Brave Search](https://brave.com/search/api/). Required for the research agent's web search."
+          "markdownDescription": "Anthropic API key for the research agent."
         }
       }
     }
