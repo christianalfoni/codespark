@@ -55,6 +55,7 @@ export function App({ vscode }: AppProps) {
       isStreaming: true,
       activeTool: null,
       contextState: "pending",
+      fileContext: null,
     });
     userScrolledUp.current = false;
     vscode.postMessage({ type: "send", text });
@@ -67,6 +68,7 @@ export function App({ vscode }: AppProps) {
       entries: [],
       isStreaming: false,
       activeTool: null,
+      fileContext: null,
     }));
     vscode.postMessage({ type: "new-session", currentEntries });
     setTimeout(() => textareaRef.current?.focus(), 0);
@@ -183,7 +185,7 @@ export function App({ vscode }: AppProps) {
           <div class="input-wrapper">
             <textarea
               ref={textareaRef}
-              placeholder="Ask about your codebase or the web..."
+              placeholder="Do some research to learn and get suggestions..."
               rows={1}
               onInput={autoResize}
               onKeyDown={onKeyDown}
@@ -192,7 +194,7 @@ export function App({ vscode }: AppProps) {
               <button
                 class="reset-btn"
                 title="New session"
-                disabled={state.isStreaming || isEmpty}
+                disabled={state.isStreaming}
                 onClick={newSession}
                 dangerouslySetInnerHTML={{ __html: NEW_SESSION_ICON }}
               />
@@ -203,6 +205,14 @@ export function App({ vscode }: AppProps) {
                   disabled={state.isStreaming}
                   onSwitch={switchToSession}
                 />
+              )}
+              <div style={{ flex: 1 }} />
+              {state.fileContext && (
+                <div class="file-context-badge">
+                  <span class="file-context-path">
+                    {state.fileContext.filePath}:{state.fileContext.cursorLine}
+                  </span>
+                </div>
               )}
               <div style={{ flex: 1 }} />
               <button

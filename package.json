@@ -2,7 +2,7 @@
   "name": "codespark-agent",
   "displayName": "CodeSpark",
   "description": "A coding agent at the tip of your cursor",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "publisher": "codespark",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -75,22 +75,16 @@
     "keybindings": [
       {
         "command": "codeSpark.invoke",
-        "key": "cmd+i",
+        "mac": "cmd+i",
+        "win": "ctrl+i",
+        "linux": "ctrl+i",
         "when": "editorTextFocus"
       },
       {
         "command": "codeSpark.openResearch",
-        "key": "cmd+shift+i"
-      },
-      {
-        "command": "codeSpark.acceptDiff",
-        "key": "cmd+enter",
-        "when": "editorTextFocus && codeSpark.hasPendingDiff"
-      },
-      {
-        "command": "codeSpark.rejectDiff",
-        "key": "cmd+backspace",
-        "when": "editorTextFocus && codeSpark.hasPendingDiff"
+        "mac": "cmd+shift+i",
+        "win": "ctrl+shift+i",
+        "linux": "ctrl+shift+i"
       }
     ],
     "colors": [],

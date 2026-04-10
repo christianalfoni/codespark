@@ -12,6 +12,15 @@ Project-level agents like Claude Code, Copilot Agent, and Cursor are powerful �
 
 ![CodeSpark in action](./media/screenshot.png)
 
+## Shortcuts
+
+| Mac | Windows / Linux | What it does |
+| --- | --- | --- |
+| `Cmd+I` | `Ctrl+I` | Open the inline agent — describe a change and it edits the file at your cursor |
+| `Cmd+Shift+I` | `Ctrl+Shift+I` | Open the research agent — attaches the current file and cursor position as context, even if the panel is already open |
+
+Research findings carry over to the next inline agent invocation.
+
 ## Project context
 
 Context is progressively included starting from where your cursor is. Sometimes the code at the cursor is enough. Other times it needs the surrounding block, the full file, your `CLAUDE.md` / `AGENT.md` files and any resources they reference, or research from the sidebar. This progressive approach is optimized for keeping context small and relevant — but when the task demands it, the agent will explore additional files and go as wide as it needs on its own.
@@ -22,13 +31,11 @@ These same files also improve your project-level agents — giving them better g
 
 ## Research agent
 
-CodeSpark includes a research agent that lives in the secondary sidebar (`CMD+Shift+I`). Use it to explore your codebase, search the web, and build understanding before you edit.
+CodeSpark includes a research agent that lives in the secondary sidebar. Use it to explore your codebase, search the web, and build understanding before you edit.
 
-The research agent can read files, search with Brave, and fetch web pages — but it cannot edit anything. Every conversation automatically builds up context that the inline agent picks up on its next invocation. Ask a question in the research panel, and the next time you press `CMD+I`, the inline agent knows what you learned.
+The research agent can read files, search with Brave, and fetch web pages — but it cannot edit anything. Every conversation automatically builds up context that the inline agent picks up on its next invocation. Ask a question in the research panel, and the next time you invoke the inline agent, it knows what you learned.
 
-You can also reach the research agent directly from `CMD+I` by prefixing your prompt with `>`. The current file and cursor position are automatically shared as context, so you can ask questions about the code you're looking at without leaving the editor. For example: `> What does this function do?` or `> Are there better patterns for this?`.
-
-This means you can research an unfamiliar API, explore how a feature is implemented, or look up documentation — and then immediately make edits with that knowledge baked in.
+Open the research agent from any file (`Cmd+Shift+I` / `Ctrl+Shift+I`) to attach that file as context. Research an unfamiliar API, explore how a feature is implemented, or look up documentation — then immediately make edits with that knowledge baked in.
 
 To use web search, add a [Brave Search API key](https://brave.com/search/api/) in settings (`codeSpark.braveApiKey`).
 
@@ -37,8 +44,8 @@ To use web search, add a [Brave Search API key](https://brave.com/search/api/) i
 1. Install the extension
 2. Choose a provider in settings: **Copilot** (default, uses your GitHub Copilot subscription) or bring your own API key for Anthropic, OpenAI, Google, Mistral, Groq, xAI, OpenRouter, or Together
 3. Add `CLAUDE.md` or `AGENT.md` files to guide CodeSpark. Place one in your project root for general conventions, and additional ones in subdirectories to describe the patterns, dependencies, and guidelines specific to each domain of your codebase
-4. Open a file, press `CMD+I`, type an instruction — the edit lands directly in your file
-5. Press `CMD+Shift+I` to open the research agent when you need to explore before editing
+4. Open a file, press `Cmd+I` (`Ctrl+I` on Windows/Linux), type an instruction — the edit lands directly in your file
+5. Press `Cmd+Shift+I` (`Ctrl+Shift+I`) to open the research agent when you need to explore before editing
 
 ## Under the hood
 

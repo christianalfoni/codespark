@@ -145,8 +145,12 @@ export function clearResearchSummary(): void {
   }
 }
 
-export function getSessionInfos(): { id: string; name: string }[] {
-  return _sessions.map((s) => ({ id: s.id, name: s.name || "New session" }));
+export function getSessionInfos(): { id: string; name: string; createdAt: number }[] {
+  return _sessions.map((s) => {
+    // Extract timestamp from session id: "session-<timestamp>-<random>"
+    const ts = parseInt(s.id.split("-")[1], 10) || Date.now();
+    return { id: s.id, name: s.name || "New session", createdAt: ts };
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -641,15 +645,15 @@ You have two powerful tools:
 
 ## Formatting
 
-- When referencing workspace file paths, use inline code: \`src/foo.ts\` or \`src/foo.ts:42\`. These become clickable links that open the file in the editor.
+- When referencing workspace file paths, always use inline code with a line number when referring to a specific location: \`src/foo.ts:42\`. Use \`src/foo.ts\` only when referring to the file as a whole. These become clickable links that open the file in the editor.
 - When suggesting terminal commands, always use a fenced code block with the \`bash\` language tag — these become executable by the user with one click. Never put terminal commands in inline code. **Put each command in its own separate code block** so the user can run them individually.
 
 ## Your role
 
 1. **Do not rely on training data.** When the question involves specific APIs, libraries, frameworks, or codebase details, use your tools to look up the current state rather than assuming based on what you already know — training data can be outdated or wrong.
-2. Break the user's question into the right sub-tasks
-3. Delegate to sub-agents via tools
-4. Synthesize their findings into a clear, actionable answer
+2. **Do not describe your plan or approach.** Jump straight to tool calls. After receiving results, synthesize findings into a clear, actionable answer — do not restate the plan or repeat what the tools found verbatim.
+3. Break the user's question into the right sub-tasks and delegate to sub-agents via tools.
+4. Synthesize their findings into a clear, actionable answer.
 
 Your final response for each question will automatically be shared as context with the inline code editing agent (Cmd+I), so make sure your conclusions are clear and actionable — include specific file paths, function names, API details, and patterns where relevant.`;
 }

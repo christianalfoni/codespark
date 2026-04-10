@@ -46,6 +46,7 @@ export type WebviewToExtension =
 export interface SessionInfo {
   id: string;
   name: string;
+  createdAt: number;
 }
 
 export interface InitMessage {
@@ -105,6 +106,12 @@ export interface InjectUserMessage {
   text: string;
 }
 
+export interface SetFileContextMessage {
+  type: "set-file-context";
+  filePath: string | null;
+  cursorLine: number;
+}
+
 export type ExtensionToWebview =
   | InitMessage
   | TurnStartMessage
@@ -117,7 +124,8 @@ export type ExtensionToWebview =
   | ErrorMessage
   | SessionsUpdatedMessage
   | RestoreMessage
-  | InjectUserMessage;
+  | InjectUserMessage
+  | SetFileContextMessage;
 
 export interface ChatMessage {
   role: "user" | "assistant";

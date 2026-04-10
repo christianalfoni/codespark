@@ -69,7 +69,6 @@ export function activate(context: vscode.ExtensionContext) {
         decorationProvider,
         statusBarItem,
         activeInstructions.update,
-        researchView,
       ),
     ),
   );
@@ -88,8 +87,17 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("codeSpark.openResearch", () => {
-      vscode.commands.executeCommand("codeSpark.research.focus");
+    vscode.commands.registerCommand("codeSpark.openResearch", async () => {
+      const editor = vscode.window.activeTextEditor;
+      if (editor) {
+        const filePath = vscode.workspace.asRelativePath(
+          editor.document.uri.fsPath,
+        );
+        const cursorLine = editor.selection.active.line + 1;
+        researchView.setFileContext({ filePath, cursorLine });
+      }
+      await vscode.commands.executeCommand("codeSpark.research.focus");
+      researchView.focusInput();
     }),
   );
 

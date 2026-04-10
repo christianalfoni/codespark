@@ -37,6 +37,7 @@ export interface ChatState {
   contextState: ContextState;
   sessions: SessionInfo[];
   activeSessionId: string | null;
+  fileContext: { filePath: string; cursorLine: number } | null;
 }
 
 export function createInitialState(saved: any): ChatState {
@@ -47,6 +48,7 @@ export function createInitialState(saved: any): ChatState {
     contextState: "none",
     sessions: [],
     activeSessionId: null,
+    fileContext: null,
   };
 
   if (saved?.entries) {

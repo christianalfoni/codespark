@@ -33,6 +33,7 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
 
   private _view?: vscode.WebviewView;
   private _currentUnsub?: () => void;
+  private _pendingFileContext?: { filePath: string; cursorLine: number };
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
@@ -59,7 +60,11 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
 
       switch (msg.type) {
         case "send":
-          this._handlePrompt(msg.text);
+          if (this._pendingFileContext) {
+            this._handleSendWithContext(msg.text);
+          } else {
+            this._handlePrompt(msg.text);
+          }
           break;
         case "cancel":
           this._cancelCurrent();
@@ -153,6 +158,7 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
   private _handleNewSession(currentEntries: any[]): void {
     this._saveCurrentSession(currentEntries);
     this._cancelCurrent();
+    this._pendingFileContext = undefined;
     createSession();
     this._sendSessionsUpdate();
   }
@@ -369,6 +375,19 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
+  /** Set file context to be attached to the next query from the webview */
+  public setFileContext(ctx: { filePath: string; cursorLine: number }): void {
+    this._pendingFileContext = ctx;
+    this._post({ type: "set-file-context", filePath: ctx.filePath, cursorLine: ctx.cursorLine });
+    this._log.appendLine(
+      `[research-view] File context set: ${ctx.filePath}:${ctx.cursorLine}`,
+    );
+  }
+
+  public focusInput(): void {
+    this._post({ type: "focus" });
+  }
+
   /** Send a prompt programmatically (e.g. from CMD+I with > prefix) */
   public async sendPrompt(opts: {
     query: string;
@@ -388,6 +407,44 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
 
       await this._handlePromptWithContext(opts);
     }
+  }
+
+  private async _handleSendWithContext(text: string): Promise<void> {
+    const ctx = this._pendingFileContext!;
+    this._pendingFileContext = undefined;
+    this._post({ type: "set-file-context", filePath: null, cursorLine: 0 });
+
+    const workspaceFolder =
+      vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!workspaceFolder) {
+      this._post({ type: "error", text: "No workspace folder open." });
+      this._post({ type: "done" });
+      return;
+    }
+
+    const path = await import("path");
+    const fs = await import("fs");
+    const absolute = path.resolve(workspaceFolder, ctx.filePath);
+    let fileContent: string;
+    try {
+      fileContent = await fs.promises.readFile(absolute, "utf-8");
+    } catch {
+      this._post({ type: "error", text: `Could not read file: ${ctx.filePath}` });
+      this._post({ type: "done" });
+      return;
+    }
+
+    // Show file context indicator in tool list
+    this._post({ type: "tool-start", tool: "read", toolId: -1, description: ctx.filePath });
+    this._post({ type: "tool-end", tool: "read", toolId: -1, isError: false });
+
+    await this._handlePromptWithContext({
+      query: text,
+      filePath: ctx.filePath,
+      fileContent,
+      cursorLine: ctx.cursorLine,
+      contextSnippet: "",
+    });
   }
 
   private async _handlePromptWithContext(opts: {

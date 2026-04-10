@@ -2,7 +2,6 @@ import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
 import { InstructionFileDecorationProvider } from "./instructionDecorations";
-import type { ResearchViewProvider } from "./research-view";
 import {
   callLLMWithSDK,
   resolveModel,
@@ -139,7 +138,6 @@ export function createInvokeCommand(
   decorationProvider: InstructionFileDecorationProvider,
   statusBarItem: vscode.StatusBarItem,
   updateActiveInstructions: () => void,
-  researchView: ResearchViewProvider,
 ) {
   return async () => {
     const editor = vscode.window.activeTextEditor;
@@ -221,24 +219,6 @@ export function createInvokeCommand(
     if (!promptResult) {
       invokeDim.dispose();
       decorationProvider.deactivate();
-      return;
-    }
-
-    // Route to research agent if prompt starts with >
-    if (promptResult.instruction.startsWith(">")) {
-      invokeDim.dispose();
-      decorationProvider.deactivate();
-
-      const query = promptResult.instruction.slice(1).trim();
-      if (!query) return;
-
-      researchView.sendPrompt({
-        query,
-        filePath,
-        fileContent,
-        cursorLine: cursorLineNum + 1,
-        contextSnippet: focusArea.lines.join("\n"),
-      });
       return;
     }
 

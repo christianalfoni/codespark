@@ -138,6 +138,14 @@ export function useMessageHandling(
       case "context-updated": {
         return { ...prev, contextState: "ready" as ContextState };
       }
+      case "set-file-context": {
+        return {
+          ...prev,
+          fileContext: msg.filePath
+            ? { filePath: msg.filePath, cursorLine: msg.cursorLine }
+            : null,
+        };
+      }
       case "done": {
         return { ...prev, entries, isStreaming: false, activeTool: null };
       }
