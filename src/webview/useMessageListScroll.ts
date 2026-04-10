@@ -8,7 +8,12 @@ export function useMessageListScroll(
 
   useEffect(() => {
     if (messageListRef.current && !userScrolledUp.current) {
-      messageListRef.current.scrollTop = messageListRef.current.scrollHeight;
+      requestAnimationFrame(() => {
+        if (messageListRef.current) {
+          messageListRef.current.scrollTop =
+            messageListRef.current.scrollHeight;
+        }
+      });
     }
   });
 
