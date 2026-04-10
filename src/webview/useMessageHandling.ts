@@ -175,5 +175,5 @@ export function useMessageHandling(
     window.addEventListener("message", onMessage);
     vscode.postMessage({ type: "ready" });
     return () => window.removeEventListener("message", onMessage);
-  }, [handleMessage, textareaRef, vscode, setState]);
+  }, []);
 }
