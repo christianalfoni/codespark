@@ -34,7 +34,7 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
 
   private _view?: vscode.WebviewView;
   private _currentUnsub?: () => void;
-  private _pendingFileContext?: { filePath: string; cursorLine: number };
+  private _pendingFileContext?: { filePath: string; cursorLine: number; selection?: string };
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
@@ -249,6 +249,7 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
   }
 
   private async _handlePrompt(text: string): Promise<void> {
+    this._log.appendLine(`[research-view:prompt] ${text}`);
     const workspaceFolder =
       vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     if (!workspaceFolder) {
@@ -382,9 +383,9 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
   }
 
   /** Set file context to be attached to the next query from the webview */
-  public setFileContext(ctx: { filePath: string; cursorLine: number }): void {
+  public setFileContext(ctx: { filePath: string; cursorLine: number; selection?: string }): void {
     this._pendingFileContext = ctx;
-    this._post({ type: "set-file-context", filePath: ctx.filePath, cursorLine: ctx.cursorLine });
+    this._post({ type: "set-file-context", filePath: ctx.filePath, cursorLine: ctx.cursorLine, selection: ctx.selection ?? null });
     this._log.appendLine(
       `[research-view] File context set: ${ctx.filePath}:${ctx.cursorLine}`,
     );
@@ -422,7 +423,7 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
   private async _handleSendWithContext(text: string): Promise<void> {
     const ctx = this._pendingFileContext!;
     this._pendingFileContext = undefined;
-    this._post({ type: "set-file-context", filePath: null, cursorLine: 0 });
+    this._post({ type: "set-file-context", filePath: null, cursorLine: 0, selection: null });
 
     const workspaceFolder =
       vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
@@ -448,8 +449,13 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
     this._post({ type: "tool-start", tool: "read", toolId: -1, description: ctx.filePath });
     this._post({ type: "tool-end", tool: "read", toolId: -1, isError: false });
 
+    const query = ctx.selection
+      ? `\`\`\`\n${ctx.selection}\n\`\`\`\n\n${text}`
+      : text;
+    this._log.appendLine(`[research-view:prompt] ${query}`);
+
     await this._handlePromptWithContext({
-      query: text,
+      query,
       filePath: ctx.filePath,
       fileContent,
       cursorLine: ctx.cursorLine,

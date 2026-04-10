@@ -142,7 +142,7 @@ export function useMessageHandling(
         return {
           ...prev,
           fileContext: msg.filePath
-            ? { filePath: msg.filePath, cursorLine: msg.cursorLine }
+            ? { filePath: msg.filePath, cursorLine: msg.cursorLine, selection: msg.selection ?? undefined }
             : null,
         };
       }

@@ -598,7 +598,11 @@ export async function callLLMWithSDK(
   }
 
   // Build the user instruction (no file content needed — it's in the fake reads)
-  const instruction = `I am currently looking at this area of the file ${ctx.filePath} (around line ${ctx.cursorLine}):\n\n\`\`\`\n${ctx.contextSnippet}\n\`\`\`\n\n${ctx.instruction}`;
+  const selectionPrefix = ctx.selection
+    ? `\`\`\`\n${ctx.selection}\n\`\`\`\n\n`
+    : "";
+  const instruction = `I am currently looking at this area of the file ${ctx.filePath} (around line ${ctx.cursorLine}):\n\n\`\`\`\n${ctx.contextSnippet}\n\`\`\`\n\n${selectionPrefix}${ctx.instruction}`;
+  log.appendLine(`[sdk:prompt] ${instruction}`);
 
   const startTime = Date.now();
   let inputTokens = 0;
@@ -697,6 +701,17 @@ export async function callLLMWithSDK(
     ag.prompt(instruction); // fire — don't await
     // Resolve when either: a tool completes (fast path) or the agent finishes (fallback)
     await Promise.race([toolDonePromise, ag.waitForIdle()]);
+
+    // If the agent finished without making edits, nudge it to actually apply the change
+    if (!hasEdits) {
+      const nudge = `You did not edit the file. Please make the edit to ${ctx.filePath} now.`;
+      log.appendLine(`[sdk:nudge] ${nudge}`);
+      const nudgeToolDone = new Promise<void>((resolve) => {
+        resolveOnToolDone = resolve;
+      });
+      ag.prompt(nudge);
+      await Promise.race([nudgeToolDone, ag.waitForIdle()]);
+    }
   } catch (err: unknown) {
     const errMsg = err instanceof Error ? err.message : String(err);
     log.appendLine(`[sdk:error] ${errMsg}`);

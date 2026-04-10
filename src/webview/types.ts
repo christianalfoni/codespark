@@ -110,6 +110,7 @@ export interface SetFileContextMessage {
   type: "set-file-context";
   filePath: string | null;
   cursorLine: number;
+  selection: string | null;
 }
 
 export type ExtensionToWebview =

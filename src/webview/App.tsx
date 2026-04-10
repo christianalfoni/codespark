@@ -1,4 +1,4 @@
-import { useRef, useEffect } from "preact/hooks";
+import { useRef, useEffect, useState } from "preact/hooks";
 import { Logo } from "./Logo";
 import { type Entry } from "./state";
 import { renderMarkdown, CLIPBOARD_ICON, CHECK_ICON } from "./markdown";
@@ -215,7 +215,9 @@ export function App({ vscode }: AppProps) {
               {state.fileContext && (
                 <div class="file-context-badge">
                   <span class="file-context-path">
-                    {state.fileContext.filePath}:{state.fileContext.cursorLine}
+                    {state.fileContext.selection
+                      ? `${state.fileContext.filePath} (selection)`
+                      : `${state.fileContext.filePath}:${state.fileContext.cursorLine}`}
                   </span>
                 </div>
               )}
@@ -236,11 +238,39 @@ export function App({ vscode }: AppProps) {
   );
 }
 
+const MAX_LINES = 3;
+const MAX_CHARS = 200;
+
+function truncateContent(text: string): { truncated: string; isTruncated: boolean } {
+  const lines = text.split("\n");
+  if (lines.length <= MAX_LINES && text.length <= MAX_CHARS) {
+    return { truncated: text, isTruncated: false };
+  }
+  let result = lines.slice(0, MAX_LINES).join("\n");
+  if (result.length > MAX_CHARS) {
+    result = result.slice(0, MAX_CHARS);
+  }
+  return { truncated: result.trimEnd() + "…", isTruncated: true };
+}
+
 function UserMessage({ content }: { content: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const { truncated, isTruncated } = truncateContent(content);
+  const display = expanded ? content : truncated;
+
   return (
     <div
       class="message message-user"
-      dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }}
-    />
+      onClick={isTruncated ? () => setExpanded((e) => !e) : undefined}
+      style={isTruncated ? { cursor: "pointer" } : undefined}
+    >
+      <div dangerouslySetInnerHTML={{ __html: renderMarkdown(display) }} />
+      {isTruncated && (
+        <span class="message-user__toggle" dangerouslySetInnerHTML={{ __html: expanded
+          ? '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 5.5l-4.5 4 .7.8L8 6.9l3.8 3.4.7-.8z"/></svg>'
+          : '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 10.5l4.5-4-.7-.8L8 9.1 4.2 5.7l-.7.8z"/></svg>'
+        }} />
+      )}
+    </div>
   );
 }

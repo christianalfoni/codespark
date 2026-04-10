@@ -108,6 +108,15 @@ body {
   z-index: 2;
 }
 
+.message-user__toggle {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  color: var(--vscode-descriptionForeground);
+  line-height: 0;
+  opacity: 0.7;
+}
+
 .message-assistant {
   padding: 4px 12px;
 }

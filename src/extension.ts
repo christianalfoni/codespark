@@ -95,7 +95,10 @@ export function activate(context: vscode.ExtensionContext) {
           editor.document.uri.fsPath,
         );
         const cursorLine = editor.selection.active.line + 1;
-        researchView.setFileContext({ filePath, cursorLine });
+        const selection = editor.selection.isEmpty
+          ? undefined
+          : editor.document.getText(editor.selection);
+        researchView.setFileContext({ filePath, cursorLine, selection });
       }
       await vscode.commands.executeCommand("codeSpark.research.focus");
       researchView.focusInput();
