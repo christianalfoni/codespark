@@ -235,6 +235,7 @@ export async function prepareInlineAgent(
     throw new Error("No workspace folder open");
   }
 
+  const t0 = Date.now();
   const systemPrompt = buildSystemPrompt(ctx);
 
   // Build session with fake Read results + assistant prefill
@@ -257,6 +258,7 @@ export async function prepareInlineAgent(
   const sessionContent = buildSessionJSONL(sessionId, workspaceFolder, files);
   await fs.promises.mkdir(sessionDir, { recursive: true });
   await fs.promises.writeFile(sessionFile, sessionContent);
+  log.appendLine(`[cli-inline:timing] Session prep: ${Date.now() - t0}ms (${files.length} file(s))`);
 
   const args = [
     "--print",
@@ -297,11 +299,14 @@ export async function prepareInlineAgent(
   const shouldPrewarm = estimatedTokens > 4096;
 
   if (shouldPrewarm) {
+    log.appendLine(`[cli-inline] Pre-caching enabled (${estimatedTokens} estimated tokens)`);
     const warmupMsg = JSON.stringify({
       type: "user",
       message: { role: "user", content: "Ok, hold on. I'll tell you what to do next." },
     });
     proc.stdin!.write(warmupMsg + "\n");
+  } else {
+    log.appendLine(`[cli-inline] Pre-caching skipped (${estimatedTokens} estimated tokens, below 4096 threshold)`);
   }
 
   return { proc, sessionFile, prewarmed: shouldPrewarm };
@@ -374,6 +379,8 @@ export async function executeInlineAgent(
   let firstToolSeen = false;
   let inputTokens = 0;
   let outputTokens = 0;
+  let cacheCreationInputTokens = 0;
+  let cacheReadInputTokens = 0;
   let numTurns = 0;
   const editedLines: Array<{ startLine: number; endLine: number }> = [];
 
@@ -392,6 +399,7 @@ export async function executeInlineAgent(
   function markEditsApplied() {
     if (!hasEdits) {
       hasEdits = true;
+      log.appendLine(`[cli-inline:timing] Edits confirmed: ${Date.now() - tSend}ms`);
       resolveOnEdit?.();
     }
   }
@@ -454,6 +462,7 @@ export async function executeInlineAgent(
 
               if (!firstToolSeen) {
                 firstToolSeen = true;
+                log.appendLine(`[cli-inline:timing] First tool call: ${ms}ms (${toolName})`);
                 if (!isEditOrWrite && onAgentMode) {
                   onAgentMode();
                 }
@@ -477,6 +486,8 @@ export async function executeInlineAgent(
           if (usage) {
             inputTokens += usage.input_tokens || 0;
             outputTokens += usage.output_tokens || 0;
+            cacheCreationInputTokens += usage.cache_creation_input_tokens || 0;
+            cacheReadInputTokens += usage.cache_read_input_tokens || 0;
           }
         }
 
@@ -486,7 +497,12 @@ export async function executeInlineAgent(
           }
 
           if (msg.subtype === "success") {
-            // success
+            log.appendLine(
+              `[cli-inline] Done (${msg.num_turns ?? numTurns} turns, $${msg.total_cost_usd?.toFixed(4) ?? "?"})`,
+            );
+            log.appendLine(
+              `[cli-inline:cache] creation=${cacheCreationInputTokens}, read=${cacheReadInputTokens}, input=${inputTokens}, output=${outputTokens}`,
+            );
           } else {
             const errors = msg.errors?.join("; ") ?? "Unknown error";
             log.appendLine(`[cli-inline] Error: ${errors}`);
@@ -514,6 +530,7 @@ export async function executeInlineAgent(
   ipcEditSub.dispose();
 
   const latencyMs = Date.now() - tSend;
+  log.appendLine(`[cli-inline:timing] Total (user-perceived): ${latencyMs}ms`);
 
   return {
     hasEdits,
