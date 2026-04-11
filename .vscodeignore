@@ -3,6 +3,7 @@
 src/**
 node_modules/**
 !node_modules/@anthropic-ai/**
+!node_modules/tiktoken/**
 .gitignore
 tsconfig.json
 **/*.ts
