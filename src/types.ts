@@ -13,6 +13,9 @@ export interface ResolvedContext {
 
 export interface LLMResult {
   hasEdits: boolean;
+  editedLines: Array<{ startLine: number; endLine: number }>;
+  preEditSelection?: { anchor: { line: number; character: number }; active: { line: number; character: number } };
+  preEditVisibleRange?: { startLine: number; endLine: number };
   latencyMs: number;
   inputTokens: number;
   outputTokens: number;

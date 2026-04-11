@@ -354,13 +354,14 @@ body {
 }
 
 .code-actions {
-  position: absolute;
+  position: sticky;
   top: 6px;
-  right: 6px;
+  float: right;
   display: flex;
   gap: 4px;
   opacity: 0;
   transition: opacity 0.15s;
+  z-index: 2;
 }
 
 .message pre:hover .code-actions {

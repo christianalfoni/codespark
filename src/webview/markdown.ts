@@ -40,6 +40,11 @@ const renderer: RendererObject = {
     return `<pre><div class="code-actions">${runBtn}${copyBtn}</div><code class="hljs">${highlighted}</code></pre>`;
   },
 
+  html({ text }: { text: string }) {
+    // Don't render raw HTML — escape it so it displays as text
+    return escapeHtml(text);
+  },
+
   codespan({ text }: { text: string }) {
     const decoded = decodeHtmlEntities(text);
     const match = decoded.match(PATH_RE);

@@ -19,8 +19,9 @@ When you hand everything to an agent, you don't just lose control — you lose c
 
 ## Getting started
 
-1. Install the CodeSpark extension: [Install in VS Code](vscode:extension/codespark.codespark-agent)
-2. Make sure `claude` is available in your terminal (`claude --version`)
+1. Install the [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) and authenticate (`claude` in your terminal)
+2. Install the CodeSpark extension: [Install in VS Code](vscode:extension/codespark.codespark-agent)
+3. **Restart VS Code** after installing Claude Code so the extension can find the `claude` binary in your PATH
 
 ## How it works
 
@@ -74,3 +75,15 @@ These shortcuts may conflict with other extensions (e.g. GitHub Copilot uses the
   { "key": "ctrl+shift+i", "command": "codeSpark.openResearch" }
 ]
 ```
+
+## Inline agent performance
+
+The inline agent is optimized for low-latency edits (~1.5–2s typical). Here's how:
+
+**Long-lived MCP server.** The MCP server that bridges the Claude CLI and VS Code uses Streamable HTTP transport, started once at extension activation. Each CLI invocation connects to the already-running server instead of spawning a new process, eliminating ~300ms of MCP boot overhead per edit.
+
+**Session pre-population.** When you press `Cmd+I`, the CLI process is spawned immediately and a session file is pre-built with fake `Read` tool results containing the current file content. This puts the file in context without requiring an actual Read tool call, and an assistant prefill message primes the model to go straight to `edit_file` without explanatory text.
+
+**Prompt cache warming.** The Anthropic API caches prompt prefixes — system prompt, tool definitions, and conversation history — so repeated edits process only the new instruction. When the estimated token count exceeds the caching threshold (4,096 for Haiku), a lightweight pre-warm message is sent to the CLI while the user types their prompt. By the time the real instruction is submitted, the cache is hot and the API skips reprocessing the prefix.
+
+**All edits go through VS Code.** File modifications use the `WorkspaceEdit` API via an IPC server, keeping edits in the undo stack and integrated with the editor. The diff between before/after text (via the `diff` library) determines which lines changed, driving both the focus scroll and the post-edit dimming effect.

@@ -20,17 +20,34 @@ export function activate(context: vscode.ExtensionContext) {
   initStats(context.workspaceState);
   initResearchSummary(context.workspaceState);
 
-  // Start IPC server and write MCP config for inline agent
+  // Start IPC server and MCP server (long-lived HTTP transport)
   const ipcServer = startIpcServer(log);
   context.subscriptions.push({ dispose: () => ipcServer.dispose() });
 
+  const mcpPort = 30000 + (process.pid % 10000);
   const mcpServerScript = path.join(context.extensionPath, "out", "mcp-server.js");
+  const mcpProc = require("child_process").spawn("node", [mcpServerScript], {
+    env: {
+      ...process.env,
+      CODESPARK_SOCKET: ipcServer.socketPath,
+      CODESPARK_MCP_PORT: String(mcpPort),
+    },
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  mcpProc.stderr?.on("data", (chunk: Buffer) => {
+    log.appendLine(`[mcp-server] ${chunk.toString().trim()}`);
+  });
+  context.subscriptions.push({
+    dispose: () => {
+      mcpProc.kill("SIGTERM");
+    },
+  });
+
   const mcpConfig = {
     mcpServers: {
       codespark: {
-        command: "node",
-        args: [mcpServerScript],
-        env: { CODESPARK_SOCKET: ipcServer.socketPath },
+        type: "http",
+        url: `http://localhost:${mcpPort}/mcp`,
       },
     },
   };

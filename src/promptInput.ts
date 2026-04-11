@@ -4,14 +4,14 @@ export interface PromptResult {
   instruction: string;
 }
 
-export function promptForInstruction(): Promise<PromptResult | undefined> {
-  return new Promise((resolve) => {
-    const input = vscode.window.createInputBox();
-    input.title = "CodeSpark";
-    input.placeholder = "e.g. Replace with Box";
+export function promptForInstruction(): { result: Promise<PromptResult | undefined> } {
+  const input = vscode.window.createInputBox();
+  input.title = "CodeSpark";
+  input.placeholder = "e.g. Replace with Box";
 
-    let resolved = false;
+  let resolved = false;
 
+  const result = new Promise<PromptResult | undefined>((resolve) => {
     input.onDidAccept(() => {
       const value = input.value.trim();
       resolved = true;
@@ -31,7 +31,9 @@ export function promptForInstruction(): Promise<PromptResult | undefined> {
         resolve(undefined);
       }
     });
-
-    input.show();
   });
+
+  input.show();
+
+  return { result };
 }

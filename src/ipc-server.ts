@@ -1,10 +1,14 @@
 import * as net from "net";
 import * as fs from "fs";
 import * as vscode from "vscode";
+import { diffLines } from "diff";
+
+export type EditedRange = { startLine: number; endLine: number };
 
 export type EditListener = (
   filePath: string,
   editCount: number,
+  editedRanges: EditedRange[],
   focusRange?: {
     startLine: number;
     startChar: number;
@@ -23,14 +27,22 @@ interface EditRequest {
   id: string;
   type: "edit_file";
   file_path: string;
-  edits: Array<{ old_string: string; new_string: string; focus?: boolean }>;
+  edits: Array<{ old_string: string; new_string: string }>;
 }
 
-interface EditResponse {
+interface WriteRequest {
+  id: string;
+  type: "write_file";
+  file_path: string;
+  content: string;
+}
+
+interface IpcResponse {
   id: string;
   success: boolean;
   message?: string;
   error?: string;
+  editedRanges?: EditedRange[];
   focusRange?: {
     startLine: number;
     startChar: number;
@@ -77,50 +89,45 @@ function computeTextEdits(
   return { success: true, textEdits };
 }
 
-function calculateFocusRange(
-  originalText: string,
-  doc: vscode.TextDocument,
-  edits: Array<{ old_string: string; new_string: string; focus?: boolean }>,
-): EditResponse["focusRange"] | undefined {
-  const focusIdx = edits.findIndex((e) => e.focus);
-  if (focusIdx === -1) {
-    return undefined;
-  }
+/**
+ * Diff the before/after text line-by-line and return:
+ * - editedRanges: all added/modified line ranges in the new text
+ * - focusRange: the largest added/modified range (best place to scroll to)
+ */
+function computeDiffRanges(
+  before: string,
+  after: string,
+): { editedRanges: EditedRange[]; focusRange: IpcResponse["focusRange"] } {
+  const changes = diffLines(before, after);
+  const editedRanges: EditedRange[] = [];
+  let line = 0;
 
-  // Find each edit's position in the original text
-  const editOffsets = edits.map((e) => ({
-    originalIdx: originalText.indexOf(e.old_string),
-    oldLen: e.old_string.length,
-    newLen: e.new_string.length,
-  }));
-
-  const focusOriginalIdx = editOffsets[focusIdx].originalIdx;
-  if (focusOriginalIdx === -1) {
-    return undefined;
-  }
-
-  // Sum the length changes from edits that appear *before* the focused one
-  let shift = 0;
-  for (let i = 0; i < edits.length; i++) {
-    if (i === focusIdx) continue;
-    if (editOffsets[i].originalIdx < focusOriginalIdx) {
-      shift += editOffsets[i].newLen - editOffsets[i].oldLen;
+  for (const change of changes) {
+    const lineCount = change.count ?? 0;
+    if (change.added) {
+      editedRanges.push({ startLine: line, endLine: line + lineCount - 1 });
+      line += lineCount;
+    } else if (change.removed) {
+      // Removals don't advance the line counter in the new text
+    } else {
+      line += lineCount;
     }
   }
 
-  const newStartOffset = focusOriginalIdx + shift;
-  const newEndOffset = newStartOffset + edits[focusIdx].new_string.length;
+  // Pick the largest range as focus
+  let largest: EditedRange | undefined;
+  for (const range of editedRanges) {
+    const size = range.endLine - range.startLine + 1;
+    if (!largest || size > largest.endLine - largest.startLine + 1) {
+      largest = range;
+    }
+  }
 
-  // doc is live after applyEdit — positionAt works on the updated content
-  const startPos = doc.positionAt(newStartOffset);
-  const endPos = doc.positionAt(newEndOffset);
+  const focusRange = largest
+    ? { startLine: largest.startLine, startChar: 0, endLine: largest.endLine, endChar: 0 }
+    : undefined;
 
-  return {
-    startLine: startPos.line,
-    startChar: startPos.character,
-    endLine: endPos.line,
-    endChar: endPos.character,
-  };
+  return { editedRanges, focusRange };
 }
 
 function handleConnectionData(
@@ -139,7 +146,7 @@ function handleConnectionData(
 
     if (!line) continue;
 
-    let req: EditRequest;
+    let req: { id: string; type: string; [key: string]: unknown };
     try {
       req = JSON.parse(line);
     } catch {
@@ -147,30 +154,50 @@ function handleConnectionData(
       continue;
     }
 
+    const handleResult = (filePath: string, editCount: number) => (res: IpcResponse) => {
+      conn.write(JSON.stringify(res) + "\n");
+      if (res.success) {
+        for (const listener of editListeners) {
+          listener(filePath, editCount, res.editedRanges ?? [], res.focusRange);
+        }
+      }
+    };
+
+    const handleError = (id: string) => (err: unknown) => {
+      const res: IpcResponse = {
+        id,
+        success: false,
+        error: err instanceof Error ? err.message : String(err),
+      };
+      conn.write(JSON.stringify(res) + "\n");
+    };
+
     if (req.type === "edit_file") {
-      handleEditRequest(req, log)
-        .then((res) => {
-          conn.write(JSON.stringify(res) + "\n");
-          if (res.success) {
-            for (const listener of editListeners) {
-              listener(req.file_path, req.edits.length, res.focusRange);
-            }
-          }
-        })
-        .catch((err) => {
-          const res: EditResponse = {
-            id: req.id,
-            success: false,
-            error: err instanceof Error ? err.message : String(err),
-          };
-          conn.write(JSON.stringify(res) + "\n");
-        });
+      const editReq = req as unknown as EditRequest;
+      handleEditRequest(editReq, log)
+        .then(handleResult(editReq.file_path, editReq.edits.length))
+        .catch(handleError(editReq.id));
+    } else if (req.type === "write_file") {
+      const writeReq = req as unknown as WriteRequest;
+      handleWriteRequest(writeReq, log)
+        .then(handleResult(writeReq.file_path, 1))
+        .catch(handleError(writeReq.id));
+    } else if (req.type === "move_file") {
+      const moveReq = req as unknown as { id: string; source: string; destination: string };
+      handleMoveRequest(moveReq, log)
+        .then((res) => conn.write(JSON.stringify(res) + "\n"))
+        .catch(handleError(moveReq.id));
+    } else if (req.type === "delete_file") {
+      const deleteReq = req as unknown as { id: string; file_path: string };
+      handleDeleteRequest(deleteReq, log)
+        .then((res) => conn.write(JSON.stringify(res) + "\n"))
+        .catch(handleError(deleteReq.id));
     } else {
       conn.write(
         JSON.stringify({
           id: req.id,
           success: false,
-          error: `Unknown request type: ${req.type}`,
+          error: `Unknown request type: ${(req as any).type}`,
         }) + "\n",
       );
     }
@@ -182,7 +209,7 @@ function handleConnectionData(
 async function handleEditRequest(
   req: EditRequest,
   log: vscode.OutputChannel,
-): Promise<EditResponse> {
+): Promise<IpcResponse> {
   const uri = vscode.Uri.file(req.file_path);
 
   let doc: vscode.TextDocument;
@@ -198,9 +225,9 @@ async function handleEditRequest(
     };
   }
 
-  const text = doc.getText();
+  const before = doc.getText();
 
-  const editsResult = computeTextEdits(text, doc, req.edits);
+  const editsResult = computeTextEdits(before, doc, req.edits);
   if (!editsResult.success) {
     return {
       id: req.id,
@@ -211,7 +238,6 @@ async function handleEditRequest(
 
   const textEdits = editsResult.textEdits;
 
-  // Phase 2: apply all edits atomically
   const wsEdit = new vscode.WorkspaceEdit();
   wsEdit.set(uri, textEdits);
 
@@ -224,14 +250,118 @@ async function handleEditRequest(
     };
   }
 
-  log.appendLine(
-    `[ipc] Applied ${textEdits.length} edit(s) to ${req.file_path}: ${JSON.stringify(req.edits)}`,
-  );
+  const after = doc.getText();
+  const { editedRanges, focusRange } = computeDiffRanges(before, after);
+
   return {
     id: req.id,
     success: true,
     message: `Applied ${textEdits.length} edit(s)`,
-    focusRange: calculateFocusRange(text, doc, req.edits),
+    editedRanges,
+    focusRange,
+  };
+}
+
+async function handleWriteRequest(
+  req: WriteRequest,
+  log: vscode.OutputChannel,
+): Promise<IpcResponse> {
+  const uri = vscode.Uri.file(req.file_path);
+
+  const wsEdit = new vscode.WorkspaceEdit();
+
+  let doc: vscode.TextDocument | undefined;
+  try {
+    doc = vscode.workspace.textDocuments.find((d) => d.uri.fsPath === uri.fsPath) ??
+      (await vscode.workspace.openTextDocument(uri));
+  } catch {
+    // File doesn't exist — create it
+  }
+
+  const before = doc?.getText() ?? "";
+
+  if (doc) {
+    const fullRange = new vscode.Range(
+      doc.positionAt(0),
+      doc.positionAt(before.length),
+    );
+    wsEdit.replace(uri, fullRange, req.content);
+  } else {
+    wsEdit.createFile(uri, { overwrite: true });
+    wsEdit.insert(uri, new vscode.Position(0, 0), req.content);
+  }
+
+  const applied = await vscode.workspace.applyEdit(wsEdit);
+  if (!applied) {
+    return {
+      id: req.id,
+      success: false,
+      error: "WorkspaceEdit failed to apply",
+    };
+  }
+
+  const { editedRanges, focusRange } = computeDiffRanges(before, req.content);
+  const lineCount = req.content.split("\n").length;
+
+  return {
+    id: req.id,
+    success: true,
+    message: `Wrote ${lineCount} lines`,
+    editedRanges,
+    focusRange,
+  };
+}
+
+async function handleMoveRequest(
+  req: { id: string; source: string; destination: string },
+  log: vscode.OutputChannel,
+): Promise<IpcResponse> {
+  const sourceUri = vscode.Uri.file(req.source);
+  const destUri = vscode.Uri.file(req.destination);
+
+  const wsEdit = new vscode.WorkspaceEdit();
+  wsEdit.renameFile(sourceUri, destUri, { overwrite: false });
+
+  const applied = await vscode.workspace.applyEdit(wsEdit);
+  if (!applied) {
+    return {
+      id: req.id,
+      success: false,
+      error: `Failed to move ${req.source} to ${req.destination}`,
+    };
+  }
+
+  log.appendLine(`[ipc] Moved ${req.source} → ${req.destination}`);
+  return {
+    id: req.id,
+    success: true,
+    message: `Moved to ${req.destination}`,
+  };
+}
+
+async function handleDeleteRequest(
+  req: { id: string; file_path: string },
+  log: vscode.OutputChannel,
+): Promise<IpcResponse> {
+  const uri = vscode.Uri.file(req.file_path);
+
+  const wsEdit = new vscode.WorkspaceEdit();
+  wsEdit.deleteFile(uri, { ignoreIfNotExists: false });
+
+  const applied = await vscode.workspace.applyEdit(wsEdit);
+  if (!applied) {
+    return {
+      id: req.id,
+      success: false,
+      error: `Failed to delete ${req.file_path}`,
+    };
+  }
+
+  log.appendLine(`[ipc] Deleted ${req.file_path}`);
+  return {
+    id: req.id,
+    success: true,
+    message: `Deleted ${req.file_path}`,
   };
 }
 

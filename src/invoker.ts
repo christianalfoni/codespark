@@ -188,7 +188,6 @@ export function createInvokeCommand(
           : undefined;
     }
 
-    const savePromise = editor.document.save();
     const referenceFiles = isInstructionFile
       ? []
       : (await Promise.all(
@@ -205,17 +204,17 @@ export function createInvokeCommand(
           (r): r is { path: string; content: string } => r !== null,
         );
 
-    // Pre-spawn the CLI while the user types — it boots in ~1s
+    // Pre-spawn the CLI while the user types (session has file content + prefill)
     const agentPromise = prepareInlineAgent(
       { fileContent, filePath, referenceFiles, instructionContent, isInstructionFile },
       log,
       mcpConfigPath,
     );
 
-    const promptResult = await promptForInstruction();
+    const prompt = promptForInstruction();
+    const promptResult = await prompt.result;
 
     if (!promptResult) {
-      // User cancelled — abort the pre-spawned CLI
       agentPromise.then((agent) => abortInlineAgent(agent)).catch(() => {});
       invokeDim.dispose();
       decorationProvider.deactivate();
@@ -245,17 +244,10 @@ export function createInvokeCommand(
 
     statusBarItem.text = "$(loading~spin) CodeSpark · thinking...";
 
-    // Wait for save, focus area, and the pre-spawned agent in parallel
-    const tWait = Date.now();
-    const [, focusArea, agent] = await Promise.all([
-      savePromise,
+    const [focusArea, agent] = await Promise.all([
       focusAreaPromise,
       agentPromise,
     ]);
-    const waitMs = Date.now() - tWait;
-    if (waitMs > 50) {
-      log.appendLine(`[cli-inline:timing] Waited ${waitMs}ms for CLI to be ready`);
-    }
 
     const contextSnippet =
       focusArea.focusStartLine === 0 &&
@@ -301,6 +293,63 @@ export function createInvokeCommand(
 
       decorationProvider.deactivate();
       statusBarItem.text = `$(sparkle) CodeSpark · edited`;
+
+      // Keep non-edited lines dimmed; fade in only the changed lines
+      if (result.editedLines.length > 0 && editor) {
+        const editedLineSet = new Set<number>();
+        for (const range of result.editedLines) {
+          for (let l = range.startLine; l <= range.endLine; l++) {
+            editedLineSet.add(l);
+          }
+        }
+
+        const dimType = vscode.window.createTextEditorDecorationType({
+          isWholeLine: true,
+          opacity: "0.3",
+        });
+
+        const dimRanges: vscode.Range[] = [];
+        for (let l = 0; l < editor.document.lineCount; l++) {
+          if (!editedLineSet.has(l)) {
+            dimRanges.push(new vscode.Range(l, 0, l, 0));
+          }
+        }
+        editor.setDecorations(dimType, dimRanges);
+
+        function cleanup() {
+          dimType.dispose();
+          saveListener.dispose();
+          changeListener.dispose();
+        }
+
+        // Restore full opacity when the file is saved
+        const saveListener = vscode.workspace.onDidSaveTextDocument((doc) => {
+          if (doc.uri.fsPath === editor.document.uri.fsPath) {
+            cleanup();
+          }
+        });
+
+        // Restore full opacity and cursor position on undo
+        const changeListener = vscode.workspace.onDidChangeTextDocument((e) => {
+          if (
+            e.document.uri.fsPath === editor.document.uri.fsPath &&
+            e.reason === vscode.TextDocumentChangeReason.Undo
+          ) {
+            cleanup();
+            if (result.preEditSelection) {
+              const anchor = new vscode.Position(result.preEditSelection.anchor.line, result.preEditSelection.anchor.character);
+              const active = new vscode.Position(result.preEditSelection.active.line, result.preEditSelection.active.character);
+              editor.selection = new vscode.Selection(anchor, active);
+            }
+            if (result.preEditVisibleRange) {
+              editor.revealRange(
+                new vscode.Range(result.preEditVisibleRange.startLine, 0, result.preEditVisibleRange.endLine, 0),
+                vscode.TextEditorRevealType.InCenter,
+              );
+            }
+          }
+        });
+      }
     } catch (err: unknown) {
       pulse.dispose();
       decorationProvider.deactivate();

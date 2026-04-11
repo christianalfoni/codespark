@@ -5,6 +5,7 @@ import * as os from "os";
 import * as path from "path";
 import * as readline from "readline";
 import * as vscode from "vscode";
+import { countTokens } from "@anthropic-ai/tokenizer";
 import { ResolvedContext, LLMResult } from "./types";
 import { getResearchSummary } from "./research-agent";
 import { IpcServer } from "./ipc-server";
@@ -13,19 +14,14 @@ import { IpcServer } from "./ipc-server";
 // System prompt
 // ---------------------------------------------------------------------------
 
-const SYSTEM_PROMPT = `You are a code editor assistant. The user will show you a file and tell you what they want changed. Do NOT read the file — it has already been read into context.
+const SYSTEM_PROMPT = `You are a code editing tool. You MUST respond with tool calls only. Never include text content blocks — your entire response must consist solely of tool_use blocks. Any text output is discarded and wastes time.
 
-To edit the current file, use the edit_file tool (NOT Edit or Write). You can pass multiple edits in a single call. For example, updating an import AND changing code should be one edit_file call with two entries in the edits array, not two separate calls.
-
-Always call edit_file as the LAST tool call. Do all reads and other file edits first, then apply changes to the current file with edit_file.
-
-If you need to modify other files (not the current one), use the Edit or Write tools for those.
-
-Do not add code comments unless the user explicitly asks for them.
-
-The user will indicate where they are looking in the file. Make edits in that area based on their instruction. You may make multiple edits if needed (e.g. updating imports alongside the main change).
-
-Do not read files that are already in context. If the user's instruction references other files that would help you make better edits (e.g. types, interfaces, utilities, or related components), use the read tool to read them before editing.`;
+- Use edit_file to modify files, write_file to create new files
+- Batch multiple edits in a single edit_file call (e.g. import + code change = one call with two edits)
+- Edit the current file LAST — do reads and other file edits first
+- Do not add code comments unless asked
+- Do not read files already in context
+- If the instruction references other files that would help (types, utilities, etc.), read them first`;
 
 const SYSTEM_PROMPT_CLAUDE_MD = `You are editing an instruction file (CLAUDE.md). These files provide instructions and context to AI code editors when working with files in this directory.
 
@@ -62,12 +58,8 @@ function buildSystemPrompt(
 }
 
 // ---------------------------------------------------------------------------
-// Session pre-population — write fake Read tool results into a JSONL session
+// Helpers
 // ---------------------------------------------------------------------------
-
-function encodeCwdPath(cwd: string): string {
-  return cwd.replace(/\//g, "-");
-}
 
 function formatFileContentWithLineNumbers(content: string): string {
   return content
@@ -76,10 +68,17 @@ function formatFileContentWithLineNumbers(content: string): string {
     .join("\n");
 }
 
+// ---------------------------------------------------------------------------
+// Session pre-population — prime the model with file content + tool-use pattern
+// ---------------------------------------------------------------------------
+
+function encodeCwdPath(cwd: string): string {
+  return cwd.replace(/\//g, "-");
+}
+
 interface SessionFile {
   absPath: string;
   content: string;
-  numLines: number;
 }
 
 function buildSessionJSONL(
@@ -101,12 +100,14 @@ function buildSessionJSONL(
 
   let prevUuid: string | null = null;
 
+  // Fake Read tool results — inject file content into context
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
     const toolUseId = `toolu_preread_${i}`;
     const assistantUuid = crypto.randomUUID();
     const resultUuid = crypto.randomUUID();
     const numberedContent = formatFileContentWithLineNumbers(file.content);
+    const numLines = file.content.split("\n").length;
 
     lines.push(
       JSON.stringify({
@@ -158,9 +159,9 @@ function buildSessionJSONL(
           file: {
             filePath: file.absPath,
             content: file.content,
-            numLines: file.numLines,
+            numLines,
             startLine: 1,
-            totalLines: file.numLines,
+            totalLines: numLines,
           },
         },
         sourceToolAssistantUUID: assistantUuid,
@@ -171,21 +172,51 @@ function buildSessionJSONL(
     prevUuid = resultUuid;
   }
 
+  // Assistant prefill — prime the model to go straight to tool use
+  const prefillUuid = crypto.randomUUID();
+  lines.push(
+    JSON.stringify({
+      parentUuid: prevUuid,
+      isSidechain: false,
+      type: "assistant",
+      message: {
+        model: "claude-sonnet-4-6",
+        id: "msg_prefill",
+        type: "message",
+        role: "assistant",
+        content: [
+          {
+            type: "text",
+            text: "I've read the file, I'll evaluate if I need to do anything else first or use the edit_file tool immediately.",
+          },
+        ],
+        stop_reason: "end_turn",
+        stop_sequence: null,
+        usage: { input_tokens: 0, output_tokens: 0 },
+      },
+      uuid: prefillUuid,
+      timestamp: now,
+      ...baseFields,
+    }),
+  );
+
   return lines.join("\n") + "\n";
 }
 
 // ---------------------------------------------------------------------------
-// Prepared agent handle — CLI is spawned and booting, waiting for instruction
+// Prepared agent handle
 // ---------------------------------------------------------------------------
 
 export interface PreparedInlineAgent {
   proc: childProcess.ChildProcess;
   sessionFile: string;
+  /** Whether a pre-warm message was sent (executeInlineAgent must skip the first result). */
+  prewarmed: boolean;
 }
 
 /**
- * Pre-spawns the CLI with --input-format stream-json so it boots while the
- * user types. The process waits for a JSON message on stdin (no timeout).
+ * Pre-spawns the CLI with session containing fake file reads + assistant prefill
+ * to prime the model for tool-only responses.
  */
 export async function prepareInlineAgent(
   ctx: Pick<
@@ -204,61 +235,43 @@ export async function prepareInlineAgent(
     throw new Error("No workspace folder open");
   }
 
-  const t0 = Date.now();
   const systemPrompt = buildSystemPrompt(ctx);
 
-  // Pre-populate session with fake Read tool results
+  // Build session with fake Read results + assistant prefill
   const sessionId = crypto.randomUUID();
   const encodedCwd = encodeCwdPath(workspaceFolder);
   const sessionDir = path.join(os.homedir(), ".claude", "projects", encodedCwd);
   const sessionFile = path.join(sessionDir, `${sessionId}.jsonl`);
 
   const absFilePath = path.resolve(workspaceFolder, ctx.filePath);
-  const fileLines = ctx.fileContent.split("\n").length;
-
   const files: SessionFile[] = [
-    { absPath: absFilePath, content: ctx.fileContent, numLines: fileLines },
+    { absPath: absFilePath, content: ctx.fileContent },
   ];
-
   for (const ref of ctx.referenceFiles) {
-    const refAbsPath = path.resolve(workspaceFolder, ref.path);
     files.push({
-      absPath: refAbsPath,
+      absPath: path.resolve(workspaceFolder, ref.path),
       content: ref.content,
-      numLines: ref.content.split("\n").length,
     });
   }
 
   const sessionContent = buildSessionJSONL(sessionId, workspaceFolder, files);
-
   await fs.promises.mkdir(sessionDir, { recursive: true });
   await fs.promises.writeFile(sessionFile, sessionContent);
-  const tSession = Date.now();
-  log.appendLine(
-    `[cli-inline:timing] Session prep: ${tSession - t0}ms (${files.length} file(s))`,
-  );
 
-  // Spawn CLI with stream-json input — no stdin timeout
   const args = [
     "--print",
-    "--input-format",
-    "stream-json",
-    "--output-format",
-    "stream-json",
+    "--input-format", "stream-json",
+    "--output-format", "stream-json",
     "--verbose",
-    "--model",
-    "claude-haiku-4-5-20251001",
+    "--model", "claude-haiku-4-5-20251001",
     "--dangerously-skip-permissions",
     "--disable-slash-commands",
     "--strict-mcp-config",
-    "--mcp-config",
-    mcpConfigPath,
-    "--tools",
-    "Read,Edit,Write",
-    "--system-prompt",
-    systemPrompt,
-    "--resume",
-    sessionId,
+    "--mcp-config", mcpConfigPath,
+    "--include-partial-messages",
+    "--tools", "Read",
+    "--system-prompt", systemPrompt,
+    "--resume", sessionId,
   ];
 
   const env = { ...process.env, MAX_THINKING_TOKENS: "0" };
@@ -273,16 +286,25 @@ export async function prepareInlineAgent(
     log.appendLine(`[cli-inline:stderr] ${chunk.toString().trim()}`);
   });
 
-  // Clean up session file when process exits
   proc.on("exit", () => {
     fs.promises.unlink(sessionFile).catch(() => {});
   });
 
-  log.appendLine(
-    `[cli-inline] CLI spawned (stream-json), waiting for instruction...`,
-  );
+  // Count tokens to decide if pre-warming the prompt cache is worthwhile.
+  // Add ~2500 for CLI's own system additions (deferred tools, MCP instructions, etc.).
+  const contentText = systemPrompt + files.map((f) => f.content).join("\n");
+  const estimatedTokens = countTokens(contentText) + 2500;
+  const shouldPrewarm = estimatedTokens > 4096;
 
-  return { proc, sessionFile };
+  if (shouldPrewarm) {
+    const warmupMsg = JSON.stringify({
+      type: "user",
+      message: { role: "user", content: "Ok, hold on. I'll tell you what to do next." },
+    });
+    proc.stdin!.write(warmupMsg + "\n");
+  }
+
+  return { proc, sessionFile, prewarmed: shouldPrewarm };
 }
 
 /**
@@ -308,31 +330,44 @@ export async function executeInlineAgent(
   const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath!;
   const { proc } = agent;
 
-  // Build user instruction
+  // File content is already in the session via fake Read results.
+  // User message only needs the instruction + cursor context.
   const selectionPrefix = ctx.selection
     ? `\`\`\`\n${ctx.selection}\n\`\`\`\n\n`
     : "";
-  const userInstruction = `I am currently looking at this area of the file ${ctx.filePath} (around line ${ctx.cursorLine}):\n\n\`\`\`\n${ctx.contextSnippet}\n\`\`\`\n\n${selectionPrefix}${ctx.instruction}`;
+  const userInstruction = `I am currently looking at this area of the file ${ctx.filePath} (around line ${ctx.cursorLine}):\n\`\`\`\n${ctx.contextSnippet}\n\`\`\`\n\n${selectionPrefix}${ctx.instruction}`;
 
   const tSend = Date.now();
   log.appendLine(`[cli-inline] File: ${ctx.filePath}`);
   log.appendLine(`[cli-inline:prompt] ${ctx.instruction}`);
 
+  // Set up readline first — must be before sending any messages
+  const rl = readline.createInterface({ input: proc.stdout! });
+
+  // If pre-warmed, wait for the first result (pre-warm response) before sending real instruction
+  if (agent.prewarmed) {
+    await new Promise<void>((resolve) => {
+      const onLine = (line: string) => {
+        if (!line.trim()) return;
+        try {
+          const msg = JSON.parse(line);
+          if (msg.type === "result") {
+            rl.removeListener("line", onLine);
+            resolve();
+          }
+        } catch {}
+      };
+      rl.on("line", onLine);
+    });
+  }
+
   // Send instruction as stream-json user message
   const inputMsg = JSON.stringify({
     type: "user",
-    message: {
-      role: "user",
-      content: userInstruction,
-    },
+    message: { role: "user", content: userInstruction },
   });
   proc.stdin!.write(inputMsg + "\n");
   proc.stdin!.end();
-
-  // ---------------------------------------------------------------------------
-  // Parse NDJSON stream
-  // ---------------------------------------------------------------------------
-  const rl = readline.createInterface({ input: proc.stdout! });
 
   let hasEdits = false;
   let editToolSeen = false;
@@ -340,6 +375,7 @@ export async function executeInlineAgent(
   let inputTokens = 0;
   let outputTokens = 0;
   let numTurns = 0;
+  const editedLines: Array<{ startLine: number; endLine: number }> = [];
 
   let resolveOnEdit: (() => void) | undefined;
   const editDonePromise = new Promise<void>((resolve) => {
@@ -356,18 +392,18 @@ export async function executeInlineAgent(
   function markEditsApplied() {
     if (!hasEdits) {
       hasEdits = true;
-      log.appendLine(
-        `[cli-inline:timing] Edits confirmed: ${Date.now() - tSend}ms`,
-      );
       resolveOnEdit?.();
     }
   }
 
-  // Listen for edits applied via IPC — this fires immediately when WorkspaceEdit succeeds,
-  // before the MCP response even reaches the CLI stream
-  const ipcEditSub = ipcServer.onEdit((_filePath, _count, focusRange) => {
+  // Save the pre-edit cursor position so it can be restored on undo
+  const preEditSelection = vscode.window.activeTextEditor?.selection;
+  const preEditVisibleRange = vscode.window.activeTextEditor?.visibleRanges[0];
+
+  // Listen for edits applied via IPC
+  const ipcEditSub = ipcServer.onEdit((_filePath, _count, editedRanges, focusRange) => {
     markEditsApplied();
-    log.appendLine(`[EDIT]: Edit appended: ${JSON.stringify(focusRange)}`);
+    editedLines.push(...editedRanges);
     if (focusRange) {
       const editor = vscode.window.activeTextEditor;
       if (editor) {
@@ -398,54 +434,9 @@ export async function executeInlineAgent(
           continue;
         }
 
-        // Readable debug logging with timestamps
         const ms = Date.now() - tSend;
-        if (msg.type === "assistant") {
-          const content = msg.message?.content;
-          if (Array.isArray(content)) {
-            const summary = content
-              .map((b: any) => {
-                if (b.type === "tool_use") return `tool_use:${b.name}`;
-                if (b.type === "thinking") return "thinking";
-                if (b.type === "text")
-                  return `text:"${b.text?.slice(0, 100) ?? ""}"`;
-                return b.type;
-              })
-              .join(", ");
-            log.appendLine(`[cli-inline +${ms}ms] assistant: [${summary}]`);
-          }
-        } else if (msg.type === "user") {
-          const content = msg.message?.content;
-          if (Array.isArray(content)) {
-            const summary = content
-              .map((b: any) => {
-                if (b.type === "tool_result") {
-                  const resultText = Array.isArray(b.content)
-                    ? b.content
-                        .map((c: any) => c.text ?? "")
-                        .join("")
-                        .slice(0, 300)
-                    : String(b.content ?? "").slice(0, 300);
-                  return `tool_result(${b.is_error ? "ERROR" : "ok"}): "${resultText}"`;
-                }
-                return b.type;
-              })
-              .join(", ");
-            log.appendLine(`[cli-inline +${ms}ms] user: [${summary}]`);
-          }
-        } else if (msg.type === "result") {
-          log.appendLine(
-            `[cli-inline +${ms}ms] result: subtype=${msg.subtype}, turns=${msg.num_turns}, cost=$${msg.total_cost_usd?.toFixed(4) ?? "?"}`,
-          );
-        } else if (msg.type === "system") {
-          log.appendLine(`[cli-inline +${ms}ms] system: ${msg.subtype ?? ""}`);
-        } else if (
-          msg.type !== "stream_event" &&
-          msg.type !== "rate_limit_event"
-        ) {
-          log.appendLine(`[cli-inline +${ms}ms] ${msg.type}`);
-        }
 
+        // Stream event handling
         if (msg.type === "stream_event") {
           const evt = msg.event;
 
@@ -455,10 +446,7 @@ export async function executeInlineAgent(
 
               const isEditOrWrite =
                 toolName === "mcp__codespark__edit_file" ||
-                toolName === "Edit" ||
-                toolName === "Write" ||
-                toolName === "edit" ||
-                toolName === "write";
+                toolName === "mcp__codespark__write_file";
 
               if (isEditOrWrite) {
                 editToolSeen = true;
@@ -466,9 +454,6 @@ export async function executeInlineAgent(
 
               if (!firstToolSeen) {
                 firstToolSeen = true;
-                log.appendLine(
-                  `[cli-inline:timing] First tool call: ${Date.now() - tSend}ms`,
-                );
                 if (!isEditOrWrite && onAgentMode) {
                   onAgentMode();
                 }
@@ -486,6 +471,7 @@ export async function executeInlineAgent(
           }
         }
 
+        // Token counting
         if (msg.type === "assistant") {
           const usage = msg.message?.usage;
           if (usage) {
@@ -500,9 +486,7 @@ export async function executeInlineAgent(
           }
 
           if (msg.subtype === "success") {
-            log.appendLine(
-              `[cli-inline] Done (${msg.num_turns ?? numTurns} turns, $${msg.total_cost_usd?.toFixed(4) ?? "?"})`,
-            );
+            // success
           } else {
             const errors = msg.errors?.join("; ") ?? "Unknown error";
             log.appendLine(`[cli-inline] Error: ${errors}`);
@@ -530,10 +514,16 @@ export async function executeInlineAgent(
   ipcEditSub.dispose();
 
   const latencyMs = Date.now() - tSend;
-  log.appendLine(`[cli-inline:timing] Total (user-perceived): ${latencyMs}ms`);
 
   return {
     hasEdits,
+    editedLines,
+    preEditSelection: preEditSelection
+      ? { anchor: { line: preEditSelection.anchor.line, character: preEditSelection.anchor.character }, active: { line: preEditSelection.active.line, character: preEditSelection.active.character } }
+      : undefined,
+    preEditVisibleRange: preEditVisibleRange
+      ? { startLine: preEditVisibleRange.start.line, endLine: preEditVisibleRange.end.line }
+      : undefined,
     latencyMs,
     inputTokens,
     outputTokens,

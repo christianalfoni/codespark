@@ -136,7 +136,7 @@ export function appendResearchContext(
   parts.push(entry);
 
   const newContext = parts.join("\n\n---\n\n");
-  session.summary = newContext.slice(-MAX_SUMMARY_LENGTH);
+  session.summary = newContext;
 
   persistSessions();
   log.appendLine(
