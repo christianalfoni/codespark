@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
 
-const INSTRUCTION_FILENAMES = ["CLAUDE.md", "AGENT.md"];
+const INSTRUCTION_FILENAMES = ["CLAUDE.md"];
 
 /**
  * Process markdown links in CLAUDE.md content:
@@ -103,7 +103,7 @@ export function findInstructionsForFile(fileUri: vscode.Uri): ResolvedInstructio
   const rootPath = workspaceFolder.uri.fsPath;
   const allReferencedFiles: string[] = [];
 
-  // Always try to load root instruction file (CLAUDE.md or AGENT.md)
+  // Always try to load root instruction file (CLAUDE.md)
   let root: ResolvedInstructions["root"];
   let rootCandidate: string | undefined;
   for (const filename of INSTRUCTION_FILENAMES) {

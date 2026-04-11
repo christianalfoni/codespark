@@ -21,6 +21,17 @@ const extensionOpts = {
 };
 
 /** @type {import('esbuild').BuildOptions} */
+/** @type {import('esbuild').BuildOptions} */
+const mcpServerOpts = {
+  entryPoints: ["./src/mcp-server.ts"],
+  bundle: true,
+  outfile: "out/mcp-server.js",
+  format: "cjs",
+  platform: "node",
+  sourcemap: true,
+};
+
+/** @type {import('esbuild').BuildOptions} */
 const webviewOpts = {
   entryPoints: ["./src/webview/main.tsx"],
   bundle: true,
@@ -35,15 +46,17 @@ const webviewOpts = {
 };
 
 if (watch) {
-  const [extCtx, webCtx] = await Promise.all([
+  const [extCtx, mcpCtx, webCtx] = await Promise.all([
     esbuild.context(extensionOpts),
+    esbuild.context(mcpServerOpts),
     esbuild.context(webviewOpts),
   ]);
-  await Promise.all([extCtx.watch(), webCtx.watch()]);
-  process.stdout.write("Watching extension + webview...\n");
+  await Promise.all([extCtx.watch(), mcpCtx.watch(), webCtx.watch()]);
+  process.stdout.write("Watching extension + mcp-server + webview...\n");
 } else {
   await Promise.all([
     esbuild.build(extensionOpts),
+    esbuild.build(mcpServerOpts),
     esbuild.build(webviewOpts),
   ]);
 }

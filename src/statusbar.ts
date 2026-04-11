@@ -34,7 +34,7 @@ export function createUpdateActiveInstructions(
       statusBarItem.show();
     } else {
       statusBarItem.text = "$(sparkle) CodeSpark";
-      statusBarItem.tooltip = "No CLAUDE.md or AGENT.md found for this file";
+      statusBarItem.tooltip = "No CLAUDE.md found for this file";
       statusBarItem.show();
     }
   }

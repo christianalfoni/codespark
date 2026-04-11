@@ -1,6 +1,8 @@
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
 import * as vscode from "vscode";
 import { InstructionFileDecorationProvider } from "./instructionDecorations";
-import { warmupSession, closeSession } from "./llm-sdk";
 import { initStats, showStats, resetStats } from "./stats";
 import { createInvokeCommand } from "./invoker";
 import { createUpdateActiveInstructions } from "./statusbar";
@@ -9,6 +11,7 @@ import {
   clearResearchSummary,
 } from "./research-agent";
 import { ResearchViewProvider } from "./research-view";
+import { startIpcServer } from "./ipc-server";
 
 export function activate(context: vscode.ExtensionContext) {
   const log = vscode.window.createOutputChannel("CodeSpark");
@@ -17,8 +20,27 @@ export function activate(context: vscode.ExtensionContext) {
   initStats(context.workspaceState);
   initResearchSummary(context.workspaceState);
 
-  // Prewarm pi modules on startup
-  warmupSession(log);
+  // Start IPC server and write MCP config for inline agent
+  const ipcServer = startIpcServer(log);
+  context.subscriptions.push({ dispose: () => ipcServer.dispose() });
+
+  const mcpServerScript = path.join(context.extensionPath, "out", "mcp-server.js");
+  const mcpConfig = {
+    mcpServers: {
+      codespark: {
+        command: "node",
+        args: [mcpServerScript],
+        env: { CODESPARK_SOCKET: ipcServer.socketPath },
+      },
+    },
+  };
+  const mcpConfigPath = path.join(os.tmpdir(), `codespark-mcp-${process.pid}.json`);
+  fs.writeFileSync(mcpConfigPath, JSON.stringify(mcpConfig));
+  context.subscriptions.push({
+    dispose: () => {
+      try { fs.unlinkSync(mcpConfigPath); } catch { /* ignore */ }
+    },
+  });
 
   // File decoration provider for context files
   const decorationProvider = new InstructionFileDecorationProvider();
@@ -43,9 +65,9 @@ export function activate(context: vscode.ExtensionContext) {
     ),
   );
 
-  // Watch for CLAUDE.md and AGENT.md file changes
+  // Watch for CLAUDE.md file changes
   const watcher = vscode.workspace.createFileSystemWatcher(
-    "**/{CLAUDE,AGENT}.md",
+    "**/CLAUDE.md",
   );
   const onInstructionsChanged = (type: string) => (uri: vscode.Uri) => {
     log.appendLine(
@@ -69,6 +91,8 @@ export function activate(context: vscode.ExtensionContext) {
         decorationProvider,
         statusBarItem,
         activeInstructions.update,
+        mcpConfigPath,
+        ipcServer,
       ),
     ),
   );
@@ -122,6 +146,4 @@ export function activate(context: vscode.ExtensionContext) {
   );
 }
 
-export function deactivate() {
-  closeSession();
-}
+export function deactivate() {}

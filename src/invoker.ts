@@ -2,16 +2,12 @@ import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
 import { InstructionFileDecorationProvider } from "./instructionDecorations";
-import {
-  callLLMWithSDK,
-  resolveModel,
-  buildContextMessages,
-  ResolvedModel,
-} from "./llm-sdk";
-import { ResolvedContext } from "./types";
+import { prepareInlineAgent, executeInlineAgent, abortInlineAgent } from "./claude-code-inline";
+import { ResolvedContext, LLMResult } from "./types";
 import { promptForInstruction } from "./promptInput";
 import { recordQuery } from "./stats";
 import { evaluateFocusArea } from "./editor";
+import { IpcServer } from "./ipc-server";
 
 /* ── File-level decoration helpers ────────────────────────────── */
 
@@ -138,6 +134,8 @@ export function createInvokeCommand(
   decorationProvider: InstructionFileDecorationProvider,
   statusBarItem: vscode.StatusBarItem,
   updateActiveInstructions: () => void,
+  mcpConfigPath: string,
+  ipcServer: IpcServer,
 ) {
   return async () => {
     const editor = vscode.window.activeTextEditor;
@@ -155,12 +153,8 @@ export function createInvokeCommand(
     const cursorLine = editor.document.lineAt(cursorLineNum);
     const cursorOnEmptyLine = cursorLine.isEmptyOrWhitespace;
 
-    const focusArea = await evaluateFocusArea(editor);
-    const contextSnippet =
-      focusArea.focusStartLine === 0 &&
-      focusArea.focusEndLine === editor.document.lineCount - 1
-        ? "The whole file"
-        : focusArea.lines.join("\n");
+    // Fire off focus area evaluation without blocking — result needed after prompt
+    const focusAreaPromise = evaluateFocusArea(editor);
 
     const pendingRange = new vscode.Range(
       new vscode.Position(0, 0),
@@ -177,7 +171,7 @@ export function createInvokeCommand(
     const filePath = vscode.workspace.asRelativePath(editor.document.uri);
     const basename = path.basename(editor.document.uri.fsPath);
     const isInstructionFile =
-      basename === "CLAUDE.md" || basename === "AGENT.md";
+      basename === "CLAUDE.md";
 
     let instructionContent: string | undefined;
     if (!isInstructionFile) {
@@ -195,10 +189,9 @@ export function createInvokeCommand(
     }
 
     const savePromise = editor.document.save();
-    const modelPromise = resolveModel(log).catch((err) => err as Error);
-    const refFilesPromise = isInstructionFile
-      ? Promise.resolve([] as { path: string; content: string }[])
-      : Promise.all(
+    const referenceFiles = isInstructionFile
+      ? []
+      : (await Promise.all(
           instructions.referencedFiles.map(async (absPath) => {
             try {
               const content = await fs.promises.readFile(absPath, "utf-8");
@@ -208,15 +201,22 @@ export function createInvokeCommand(
               return null;
             }
           }),
-        ).then((results) =>
-          results.filter(
-            (r): r is { path: string; content: string } => r !== null,
-          ),
+        )).filter(
+          (r): r is { path: string; content: string } => r !== null,
         );
+
+    // Pre-spawn the CLI while the user types — it boots in ~1s
+    const agentPromise = prepareInlineAgent(
+      { fileContent, filePath, referenceFiles, instructionContent, isInstructionFile },
+      log,
+      mcpConfigPath,
+    );
 
     const promptResult = await promptForInstruction();
 
     if (!promptResult) {
+      // User cancelled — abort the pre-spawned CLI
+      agentPromise.then((agent) => abortInlineAgent(agent)).catch(() => {});
       invokeDim.dispose();
       decorationProvider.deactivate();
       return;
@@ -224,9 +224,7 @@ export function createInvokeCommand(
 
     const instruction = promptResult.instruction;
 
-    log.appendLine(
-      `[context] Cursor at line ${cursorLineNum + 1}, focus lines ${focusArea.focusStartLine + 1}-${focusArea.focusEndLine + 1}`,
-    );
+    log.appendLine(`[context] Cursor at line ${cursorLineNum + 1}`);
     if (instructions.root) {
       log.appendLine(
         `[context] Root CLAUDE.md: ${vscode.workspace.asRelativePath(instructions.root.uri)}`,
@@ -247,11 +245,23 @@ export function createInvokeCommand(
 
     statusBarItem.text = "$(loading~spin) CodeSpark · thinking...";
 
-    const [, modelResult, referenceFiles] = await Promise.all([
+    // Wait for save, focus area, and the pre-spawned agent in parallel
+    const tWait = Date.now();
+    const [, focusArea, agent] = await Promise.all([
       savePromise,
-      modelPromise,
-      refFilesPromise,
+      focusAreaPromise,
+      agentPromise,
     ]);
+    const waitMs = Date.now() - tWait;
+    if (waitMs > 50) {
+      log.appendLine(`[cli-inline:timing] Waited ${waitMs}ms for CLI to be ready`);
+    }
+
+    const contextSnippet =
+      focusArea.focusStartLine === 0 &&
+      focusArea.focusEndLine === editor.document.lineCount - 1
+        ? "The whole file"
+        : focusArea.lines.join("\n");
 
     const ctx: ResolvedContext = {
       fileContent,
@@ -262,35 +272,21 @@ export function createInvokeCommand(
       contextSnippet,
       instruction,
       instructionContent,
-      referenceFiles: [],
+      referenceFiles,
       isInstructionFile,
     };
 
     try {
-      if (modelResult instanceof Error) {
-        throw modelResult;
-      }
-
-      const resolved = modelResult as ResolvedModel;
-
-      const contextMessages = buildContextMessages(
-        fileContent,
-        filePath,
-        referenceFiles,
-        resolved.piModel,
-      );
-
-      ctx.referenceFiles = referenceFiles;
-
-      const result = await callLLMWithSDK(
+      const result = await executeInlineAgent(
+        agent,
         ctx,
         log,
-        resolved,
-        contextMessages,
+        ipcServer,
         () => {
           statusBarItem.text = "$(loading~spin) CodeSpark · agent working...";
         },
       );
+
       pulse.dispose();
 
       recordQuery({
@@ -302,13 +298,6 @@ export function createInvokeCommand(
         success: true,
         timestamp: Date.now(),
       });
-
-      if (!result.hasEdits) {
-        decorationProvider.deactivate();
-        vscode.window.showInformationMessage("CodeSpark: No edits suggested.");
-        updateActiveInstructions();
-        return;
-      }
 
       decorationProvider.deactivate();
       statusBarItem.text = `$(sparkle) CodeSpark · edited`;

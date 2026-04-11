@@ -28,7 +28,7 @@ export class InstructionFileDecorationProvider
 
     const instructions = findInstructionsForFile(editorUri);
 
-    // Track CLAUDE.md / AGENT.md files (inlined into context)
+    // Track CLAUDE.md files (inlined into context)
     if (instructions.root) {
       this.inlinedFileUris.add(instructions.root.uri.fsPath);
     }
