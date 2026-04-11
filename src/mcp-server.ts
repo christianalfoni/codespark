@@ -25,7 +25,10 @@ if (!SOCKET_PATH) {
 
 let ipcSocket: net.Socket | null = null;
 let requestId = 0;
-const pending = new Map<string, { resolve: (v: any) => void; reject: (e: Error) => void }>();
+const pending = new Map<
+  string,
+  { resolve: (v: any) => void; reject: (e: Error) => void }
+>();
 
 function connectIpc(): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -66,7 +69,10 @@ function connectIpc(): Promise<void> {
   });
 }
 
-function sendIpcRequest(type: string, payload: Record<string, unknown>): Promise<any> {
+function sendIpcRequest(
+  type: string,
+  payload: Record<string, unknown>,
+): Promise<any> {
   if (!ipcSocket) {
     return Promise.reject(new Error("IPC socket not connected"));
   }
@@ -95,22 +101,32 @@ Each edit replaces \`old_string\` with \`new_string\`. All edit ranges are compu
 against the original document text before any replacements are applied, so edits
 do not affect each other's positions — you do not need to account for offset shifts.
 
+Mark one edit with \`focus: true\` to scroll the editor to that change — 
+use this on the primary/meaningful edit rather than supporting changes like imports.
+
 If any edit fails (e.g. old_string not found or is ambiguous), the entire batch
 is rejected and no changes are made.
 
 Example: to update an import AND change code, pass both edits in one call:
   edits: [
     { "old_string": "import { A }", "new_string": "import { A, B }" },
-    { "old_string": "doSomething(A)", "new_string": "doSomething(A, B)" }
+    { "old_string": "doSomething(A)", "new_string": "doSomething(A, B)", focus: true },
   ]`,
   {
     file_path: z.string().describe("Absolute path to the file to edit"),
-    edits: z.array(
-      z.object({
-        old_string: z.string().describe("The exact text to find in the file"),
-        new_string: z.string().describe("The replacement text"),
-      }),
-    ).describe("Array of edits to apply atomically"),
+    edits: z
+      .array(
+        z.object({
+          old_string: z.string().describe("The exact text to find in the file"),
+          new_string: z.string().describe("The replacement text"),
+          focus: z
+            .boolean()
+            .describe(
+              "Set to true on the single edit the user should see first — the editor will scroll to it. If omitted, no scroll happens.",
+            ),
+        }),
+      )
+      .describe("Array of edits to apply atomically"),
   },
   async ({ file_path, edits }) => {
     try {
@@ -118,11 +134,17 @@ Example: to update an import AND change code, pass both edits in one call:
       if (res.success) {
         return { content: [{ type: "text" as const, text: res.message }] };
       } else {
-        return { content: [{ type: "text" as const, text: `Error: ${res.error}` }], isError: true };
+        return {
+          content: [{ type: "text" as const, text: `Error: ${res.error}` }],
+          isError: true,
+        };
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      return { content: [{ type: "text" as const, text: `IPC error: ${msg}` }], isError: true };
+      return {
+        content: [{ type: "text" as const, text: `IPC error: ${msg}` }],
+        isError: true,
+      };
     }
   },
 );

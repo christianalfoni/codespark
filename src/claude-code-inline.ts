@@ -40,7 +40,9 @@ Write in markdown format. Be concise and practical — write for an AI that alre
 
 Use the edit tool to make changes.`;
 
-function buildSystemPrompt(ctx: Pick<ResolvedContext, "isInstructionFile" | "instructionContent">): string {
+function buildSystemPrompt(
+  ctx: Pick<ResolvedContext, "isInstructionFile" | "instructionContent">,
+): string {
   if (ctx.isInstructionFile) {
     return SYSTEM_PROMPT_CLAUDE_MD;
   }
@@ -106,57 +108,65 @@ function buildSessionJSONL(
     const resultUuid = crypto.randomUUID();
     const numberedContent = formatFileContentWithLineNumbers(file.content);
 
-    lines.push(JSON.stringify({
-      parentUuid: prevUuid,
-      isSidechain: false,
-      type: "assistant",
-      message: {
-        model: "claude-haiku-4-5-20251001",
-        id: `msg_preread_${i}`,
-        type: "message",
-        role: "assistant",
-        content: [{
-          type: "tool_use",
-          id: toolUseId,
-          name: "Read",
-          input: { file_path: file.absPath },
-        }],
-        stop_reason: "tool_use",
-        stop_sequence: null,
-        usage: { input_tokens: 0, output_tokens: 0 },
-      },
-      uuid: assistantUuid,
-      timestamp: now,
-      ...baseFields,
-    }));
-
-    lines.push(JSON.stringify({
-      parentUuid: assistantUuid,
-      isSidechain: false,
-      type: "user",
-      message: {
-        role: "user",
-        content: [{
-          tool_use_id: toolUseId,
-          type: "tool_result",
-          content: numberedContent,
-        }],
-      },
-      uuid: resultUuid,
-      timestamp: now,
-      toolUseResult: {
-        type: "text",
-        file: {
-          filePath: file.absPath,
-          content: file.content,
-          numLines: file.numLines,
-          startLine: 1,
-          totalLines: file.numLines,
+    lines.push(
+      JSON.stringify({
+        parentUuid: prevUuid,
+        isSidechain: false,
+        type: "assistant",
+        message: {
+          model: "claude-haiku-4-5-20251001",
+          id: `msg_preread_${i}`,
+          type: "message",
+          role: "assistant",
+          content: [
+            {
+              type: "tool_use",
+              id: toolUseId,
+              name: "Read",
+              input: { file_path: file.absPath },
+            },
+          ],
+          stop_reason: "tool_use",
+          stop_sequence: null,
+          usage: { input_tokens: 0, output_tokens: 0 },
         },
-      },
-      sourceToolAssistantUUID: assistantUuid,
-      ...baseFields,
-    }));
+        uuid: assistantUuid,
+        timestamp: now,
+        ...baseFields,
+      }),
+    );
+
+    lines.push(
+      JSON.stringify({
+        parentUuid: assistantUuid,
+        isSidechain: false,
+        type: "user",
+        message: {
+          role: "user",
+          content: [
+            {
+              tool_use_id: toolUseId,
+              type: "tool_result",
+              content: numberedContent,
+            },
+          ],
+        },
+        uuid: resultUuid,
+        timestamp: now,
+        toolUseResult: {
+          type: "text",
+          file: {
+            filePath: file.absPath,
+            content: file.content,
+            numLines: file.numLines,
+            startLine: 1,
+            totalLines: file.numLines,
+          },
+        },
+        sourceToolAssistantUUID: assistantUuid,
+        ...baseFields,
+      }),
+    );
 
     prevUuid = resultUuid;
   }
@@ -178,7 +188,14 @@ export interface PreparedInlineAgent {
  * user types. The process waits for a JSON message on stdin (no timeout).
  */
 export async function prepareInlineAgent(
-  ctx: Pick<ResolvedContext, "fileContent" | "filePath" | "referenceFiles" | "instructionContent" | "isInstructionFile">,
+  ctx: Pick<
+    ResolvedContext,
+    | "fileContent"
+    | "filePath"
+    | "referenceFiles"
+    | "instructionContent"
+    | "isInstructionFile"
+  >,
   log: vscode.OutputChannel,
   mcpConfigPath: string,
 ): Promise<PreparedInlineAgent> {
@@ -217,22 +234,31 @@ export async function prepareInlineAgent(
   await fs.promises.mkdir(sessionDir, { recursive: true });
   await fs.promises.writeFile(sessionFile, sessionContent);
   const tSession = Date.now();
-  log.appendLine(`[cli-inline:timing] Session prep: ${tSession - t0}ms (${files.length} file(s))`);
+  log.appendLine(
+    `[cli-inline:timing] Session prep: ${tSession - t0}ms (${files.length} file(s))`,
+  );
 
   // Spawn CLI with stream-json input — no stdin timeout
   const args = [
     "--print",
-    "--input-format", "stream-json",
-    "--output-format", "stream-json",
+    "--input-format",
+    "stream-json",
+    "--output-format",
+    "stream-json",
     "--verbose",
-    "--model", "claude-haiku-4-5-20251001",
+    "--model",
+    "claude-haiku-4-5-20251001",
     "--dangerously-skip-permissions",
     "--disable-slash-commands",
     "--strict-mcp-config",
-    "--mcp-config", mcpConfigPath,
-    "--tools", "Read,Edit,Write",
-    "--system-prompt", systemPrompt,
-    "--resume", sessionId,
+    "--mcp-config",
+    mcpConfigPath,
+    "--tools",
+    "Read,Edit,Write",
+    "--system-prompt",
+    systemPrompt,
+    "--resume",
+    sessionId,
   ];
 
   const env = { ...process.env, MAX_THINKING_TOKENS: "0" };
@@ -252,7 +278,9 @@ export async function prepareInlineAgent(
     fs.promises.unlink(sessionFile).catch(() => {});
   });
 
-  log.appendLine(`[cli-inline] CLI spawned (stream-json), waiting for instruction...`);
+  log.appendLine(
+    `[cli-inline] CLI spawned (stream-json), waiting for instruction...`,
+  );
 
   return { proc, sessionFile };
 }
@@ -328,15 +356,34 @@ export async function executeInlineAgent(
   function markEditsApplied() {
     if (!hasEdits) {
       hasEdits = true;
-      log.appendLine(`[cli-inline:timing] Edits confirmed: ${Date.now() - tSend}ms`);
+      log.appendLine(
+        `[cli-inline:timing] Edits confirmed: ${Date.now() - tSend}ms`,
+      );
       resolveOnEdit?.();
     }
   }
 
   // Listen for edits applied via IPC — this fires immediately when WorkspaceEdit succeeds,
   // before the MCP response even reaches the CLI stream
-  const ipcEditSub = ipcServer.onEdit(() => {
+  const ipcEditSub = ipcServer.onEdit((_filePath, _count, focusRange) => {
     markEditsApplied();
+    log.appendLine(`[EDIT]: Edit appended: ${JSON.stringify(focusRange)}`);
+    if (focusRange) {
+      const editor = vscode.window.activeTextEditor;
+      if (editor) {
+        const range = new vscode.Range(
+          focusRange.startLine,
+          focusRange.startChar,
+          focusRange.endLine,
+          focusRange.endChar,
+        );
+        editor.revealRange(
+          range,
+          vscode.TextEditorRevealType.InCenterIfOutsideViewport,
+        );
+        editor.selection = new vscode.Selection(range.start, range.start);
+      }
+    }
   });
 
   (async () => {
@@ -356,33 +403,46 @@ export async function executeInlineAgent(
         if (msg.type === "assistant") {
           const content = msg.message?.content;
           if (Array.isArray(content)) {
-            const summary = content.map((b: any) => {
-              if (b.type === "tool_use") return `tool_use:${b.name}`;
-              if (b.type === "thinking") return "thinking";
-              if (b.type === "text") return `text:"${b.text?.slice(0, 100) ?? ""}"`;
-              return b.type;
-            }).join(", ");
+            const summary = content
+              .map((b: any) => {
+                if (b.type === "tool_use") return `tool_use:${b.name}`;
+                if (b.type === "thinking") return "thinking";
+                if (b.type === "text")
+                  return `text:"${b.text?.slice(0, 100) ?? ""}"`;
+                return b.type;
+              })
+              .join(", ");
             log.appendLine(`[cli-inline +${ms}ms] assistant: [${summary}]`);
           }
         } else if (msg.type === "user") {
           const content = msg.message?.content;
           if (Array.isArray(content)) {
-            const summary = content.map((b: any) => {
-              if (b.type === "tool_result") {
-                const resultText = Array.isArray(b.content)
-                  ? b.content.map((c: any) => c.text ?? "").join("").slice(0, 300)
-                  : String(b.content ?? "").slice(0, 300);
-                return `tool_result(${b.is_error ? "ERROR" : "ok"}): "${resultText}"`;
-              }
-              return b.type;
-            }).join(", ");
+            const summary = content
+              .map((b: any) => {
+                if (b.type === "tool_result") {
+                  const resultText = Array.isArray(b.content)
+                    ? b.content
+                        .map((c: any) => c.text ?? "")
+                        .join("")
+                        .slice(0, 300)
+                    : String(b.content ?? "").slice(0, 300);
+                  return `tool_result(${b.is_error ? "ERROR" : "ok"}): "${resultText}"`;
+                }
+                return b.type;
+              })
+              .join(", ");
             log.appendLine(`[cli-inline +${ms}ms] user: [${summary}]`);
           }
         } else if (msg.type === "result") {
-          log.appendLine(`[cli-inline +${ms}ms] result: subtype=${msg.subtype}, turns=${msg.num_turns}, cost=$${msg.total_cost_usd?.toFixed(4) ?? "?"}`);
+          log.appendLine(
+            `[cli-inline +${ms}ms] result: subtype=${msg.subtype}, turns=${msg.num_turns}, cost=$${msg.total_cost_usd?.toFixed(4) ?? "?"}`,
+          );
         } else if (msg.type === "system") {
           log.appendLine(`[cli-inline +${ms}ms] system: ${msg.subtype ?? ""}`);
-        } else if (msg.type !== "stream_event" && msg.type !== "rate_limit_event") {
+        } else if (
+          msg.type !== "stream_event" &&
+          msg.type !== "rate_limit_event"
+        ) {
           log.appendLine(`[cli-inline +${ms}ms] ${msg.type}`);
         }
 
@@ -395,8 +455,10 @@ export async function executeInlineAgent(
 
               const isEditOrWrite =
                 toolName === "mcp__codespark__edit_file" ||
-                toolName === "Edit" || toolName === "Write" ||
-                toolName === "edit" || toolName === "write";
+                toolName === "Edit" ||
+                toolName === "Write" ||
+                toolName === "edit" ||
+                toolName === "write";
 
               if (isEditOrWrite) {
                 editToolSeen = true;
@@ -404,7 +466,9 @@ export async function executeInlineAgent(
 
               if (!firstToolSeen) {
                 firstToolSeen = true;
-                log.appendLine(`[cli-inline:timing] First tool call: ${Date.now() - tSend}ms`);
+                log.appendLine(
+                  `[cli-inline:timing] First tool call: ${Date.now() - tSend}ms`,
+                );
                 if (!isEditOrWrite && onAgentMode) {
                   onAgentMode();
                 }
