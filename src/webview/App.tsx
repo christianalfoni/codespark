@@ -223,7 +223,7 @@ export function App({ vscode }: AppProps) {
               <button
                 class="reset-btn"
                 title="New session"
-                disabled={state.isStreaming || state.isReviewMode}
+                disabled={state.isStreaming}
                 onClick={newSession}
                 dangerouslySetInnerHTML={{ __html: NEW_SESSION_ICON }}
               />
@@ -231,7 +231,7 @@ export function App({ vscode }: AppProps) {
                 <SessionMenu
                   sessions={state.sessions}
                   activeSessionId={state.activeSessionId}
-                  disabled={state.isStreaming || state.isReviewMode}
+                  disabled={state.isStreaming}
                   onSwitch={switchToSession}
                 />
               )}

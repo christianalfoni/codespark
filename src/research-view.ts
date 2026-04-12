@@ -173,7 +173,17 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
+  private _exitReviewModeIfActive(): void {
+    if (!this._isReviewMode) return;
+    this._isReviewMode = false;
+    this._reviewSuggestions = [];
+    clearEditLog();
+    this._post({ type: "review-mode", active: false });
+    this._post({ type: "edit-log-count", count: 0 });
+  }
+
   private _handleNewSession(currentEntries: any[]): void {
+    this._exitReviewModeIfActive();
     this._saveCurrentSession(currentEntries);
     this._cancelCurrent();
     this._pendingFileContext = undefined;
@@ -182,6 +192,7 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
   }
 
   private _handleSwitchSession(id: string, currentEntries: any[]): void {
+    this._exitReviewModeIfActive();
     this._saveCurrentSession(currentEntries);
     this._cancelCurrent();
     const session = switchSession(id);
@@ -652,12 +663,8 @@ After calling update_suggestions, respond only with "Suggestions updated" — do
     }
 
     // Both approve-all and dismiss exit review mode and clear the log
-    this._isReviewMode = false;
-    this._reviewSuggestions = [];
-    clearEditLog();
+    this._exitReviewModeIfActive();
     this._cancelCurrent();
-    this._post({ type: "review-mode", active: false });
-    this._post({ type: "edit-log-count", count: 0 });
 
     // Start a fresh session
     createSession();
