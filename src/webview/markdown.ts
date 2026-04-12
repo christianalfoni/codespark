@@ -5,10 +5,6 @@ const CLIPBOARD_ICON = `<svg width="14" height="14" viewBox="0 0 16 16" fill="cu
 const CHECK_ICON = `<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0z"/></svg>`;
 const PLAY_ICON = `<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M4 2l10 6-10 6V2z"/></svg>`;
 
-// Path pattern: looks like a file path with extension, optionally with :line
-export const PATH_RE =
-  /^((?:\.{0,2}\/)?(?:[\w@.-]+\/)*[\w@.-]+\.\w+)(?::(\d+)(?:-\d+)?)?$/;
-
 const RUNNABLE_LANGS = new Set([
   "bash",
   "sh",
@@ -54,13 +50,6 @@ const renderer: RendererObject = {
   },
 
   codespan({ text }: { text: string }) {
-    const decoded = decodeHtmlEntities(text);
-    const match = decoded.match(PATH_RE);
-    if (match) {
-      const filePath = match[1];
-      const line = match[2] || "";
-      return `<code class="code-path" data-path="${escapeAttr(filePath)}" data-line="${escapeAttr(line)}">${text}</code>`;
-    }
     return `<code>${text}</code>`;
   },
 };
@@ -94,10 +83,3 @@ function escapeAttr(text: string): string {
     .replace(/>/g, "&gt;");
 }
 
-function decodeHtmlEntities(text: string): string {
-  return text
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"');
-}

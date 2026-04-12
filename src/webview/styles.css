@@ -348,22 +348,6 @@ body {
   background: var(--vscode-input-background);
 }
 
-/* ── Clickable file paths ─────────────────────────────────── */
-
-.message .code-path {
-  cursor: pointer;
-  text-decoration: underline;
-  text-decoration-style: dotted;
-  text-underline-offset: 2px;
-  color: var(--vscode-textLink-foreground);
-  background: none;
-  padding: 0;
-}
-
-.message .code-path:hover {
-  text-decoration-style: solid;
-}
-
 /* ── Code block actions (copy / run) ─────────────────────── */
 
 .message pre {

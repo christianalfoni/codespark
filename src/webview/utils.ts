@@ -17,21 +17,6 @@ export function copyCodeWithFeedback(
   }, 1000);
 }
 
-export function handleFilePathClick(
-  codePath: HTMLElement,
-  postMessage: (msg: unknown) => void
-) {
-  const path = codePath.dataset.path;
-  const line = codePath.dataset.line;
-  if (path) {
-    postMessage({
-      type: "open-file",
-      path,
-      line: line ? parseInt(line, 10) : undefined,
-    });
-  }
-}
-
 export function handleCommandClick(
   button: HTMLButtonElement,
   postMessage: (msg: unknown) => void

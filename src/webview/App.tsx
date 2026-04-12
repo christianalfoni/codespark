@@ -5,7 +5,6 @@ import {
   renderMarkdown,
   CLIPBOARD_ICON,
   CHECK_ICON,
-  PATH_RE,
 } from "./markdown";
 import { AssistantMessage } from "./AssistantMessage";
 import { SessionMenu } from "./SessionMenu";
@@ -18,7 +17,6 @@ import {
   STOP_ICON,
   NEW_SESSION_ICON,
   copyCodeWithFeedback,
-  handleFilePathClick,
   handleCommandClick,
 } from "./utils";
 
@@ -123,28 +121,19 @@ export function App({ vscode }: AppProps) {
   function onMessageListClick(e: MouseEvent) {
     const target = e.target as HTMLElement;
     const btn = target.closest("button");
-    const codePath = target.closest(".code-path") as HTMLElement | null;
 
     const anchor = target.closest("a") as HTMLAnchorElement | null;
     if (anchor) {
       e.preventDefault();
       const href = anchor.getAttribute("href") ?? "";
-      // Check if it looks like a file path (not a URL)
-      if (href && !href.startsWith("http://") && !href.startsWith("https://")) {
-        const match = href.match(PATH_RE);
-        if (match) {
-          postMessage({
-            type: "open-file",
-            path: match[1],
-            line: match[2] ? parseInt(match[2], 10) : undefined,
-          });
-        }
+      if (href.startsWith("vscode://file/")) {
+        const pathWithLine = href.slice("vscode://file".length);
+        const colonIdx = pathWithLine.lastIndexOf(":");
+        const hasLine = colonIdx > 0 && /^\d+$/.test(pathWithLine.slice(colonIdx + 1));
+        const filePath = hasLine ? pathWithLine.slice(0, colonIdx) : pathWithLine;
+        const line = hasLine ? parseInt(pathWithLine.slice(colonIdx + 1), 10) : undefined;
+        postMessage({ type: "open-file", path: filePath, line });
       }
-      return;
-    }
-
-    if (codePath) {
-      handleFilePathClick(codePath, vscode.postMessage.bind(vscode));
       return;
     }
 

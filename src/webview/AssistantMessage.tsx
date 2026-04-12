@@ -1,6 +1,7 @@
 import * as preact from "preact";
 import type { AssistantEntry, ToolEntry } from "./state";
 import { renderMarkdown } from "./markdown";
+import { prepareForRender } from "./prepareForRender";
 
 function InlineTools({ tools }: { tools: ToolEntry[] }) {
   if (tools.length === 0) return null;
@@ -58,7 +59,7 @@ export function AssistantMessage({
         <div key={`text-${i}`} class="message message-assistant">
           <div
             class="assistant-content"
-            dangerouslySetInnerHTML={{ __html: renderMarkdown(turn.text) }}
+            dangerouslySetInnerHTML={{ __html: renderMarkdown(prepareForRender(turn.text)) }}
           />
         </div>,
       );
