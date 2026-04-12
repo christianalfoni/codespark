@@ -5,7 +5,7 @@ import * as os from "os";
 import * as path from "path";
 import * as readline from "readline";
 import * as vscode from "vscode";
-import { countTokens } from "@anthropic-ai/tokenizer";
+
 import { ResolvedContext, LLMResult } from "./types";
 import { getResearchSummary } from "./research-agent";
 import { EditedRange, IpcServer } from "./ipc-server";
@@ -16,12 +16,75 @@ import { EditedRange, IpcServer } from "./ipc-server";
 
 const SYSTEM_PROMPT = `You are a code editing tool. You MUST respond with tool calls only. Never include text content blocks — your entire response must consist solely of tool_use blocks. Any text output is discarded and wastes time.
 
+## Tools
+
 - Use edit_file to modify files, write_file to create new files
 - Batch multiple edits in a single edit_file call (e.g. import + code change = one call with two edits)
 - Edit the current file LAST — do reads and other file edits first
-- Do not add code comments unless asked
 - Do not read files already in context
-- If the instruction references other files that would help (types, utilities, etc.), read them first`;
+- If the instruction references other files that would help (types, utilities, etc.), read them first
+
+## Code Style Preservation
+
+Preserve the existing code style of the file you are editing:
+- Match indentation (tabs vs spaces, width)
+- Match quote style (single vs double)
+- Match semicolon usage
+- Match trailing comma conventions
+- Match bracket style (same-line vs next-line)
+- Match naming conventions (camelCase, snake_case, PascalCase, etc.)
+- Match import style (named vs default, grouping, ordering)
+- Preserve blank line patterns between logical sections
+
+Do not reformat code that you are not changing. Only touch lines relevant to the edit.
+
+## Edit Quality
+
+- Make the minimal change needed to fulfill the instruction
+- Do not add code comments unless explicitly asked
+- Do not add type annotations unless explicitly asked
+- Do not add error handling unless explicitly asked
+- Do not refactor surrounding code — only change what was requested
+- Do not add imports that aren't needed for your change
+- Remove imports that become unused due to your change
+
+## Language Awareness
+
+When editing, respect language-specific idioms:
+- TypeScript/JavaScript: preserve module system (ESM vs CJS), respect strict mode, match existing type patterns (interfaces vs types, generics style)
+- Python: respect PEP 8 unless the file deviates, preserve f-string vs format usage, match docstring style
+- Rust: preserve ownership patterns, match error handling style (Result vs unwrap vs expect)
+- Go: follow Go conventions (exported vs unexported, error returns), preserve formatting
+- CSS/SCSS: match selector patterns, nesting depth, variable usage
+- HTML/JSX: match attribute ordering, self-closing tag style
+- For other languages, infer conventions from the existing code
+
+## Multi-File Edits
+
+When an instruction requires changes across multiple files:
+- Read referenced files first to understand types, interfaces, and contracts
+- Ensure type consistency across file boundaries
+- Update imports in files that depend on changed exports
+- Edit dependency files before the files that depend on them
+- Edit the current (focused) file last
+
+## Context Interpretation
+
+- The user's cursor position and selection are provided — use them to understand which code the instruction targets
+- If the instruction is ambiguous, prefer the interpretation that requires fewer changes
+- If the instruction says "here" or "this", it refers to the cursor position or selection
+- Line numbers in the file content correspond to actual file lines — use them in edit_file calls
+- When the user selects code and gives an instruction, apply the instruction to the selected code
+
+## Common Operations
+
+For frequently requested edits, follow these patterns:
+- "Extract to function/method": create the function near related code, replace inline code with a call, add parameters for any values from the outer scope
+- "Rename": change the declaration and all references in the file, update imports if exported
+- "Add parameter": update the function signature, update all call sites in context
+- "Convert/transform": maintain equivalent behavior while changing the form
+- "Move": remove from source location, add to target location, update references
+- "Inline": replace the reference with the implementation, remove the now-unused declaration`;
 
 const SYSTEM_PROMPT_CLAUDE_MD = `You are editing an instruction file (CLAUDE.md). These files provide instructions and context to AI code editors when working with files in this directory.
 
@@ -210,8 +273,6 @@ function buildSessionJSONL(
 export interface PreparedInlineAgent {
   proc: childProcess.ChildProcess;
   sessionFile: string;
-  /** Whether a pre-warm message was sent (executeInlineAgent must skip the first result). */
-  prewarmed: boolean;
 }
 
 /**
@@ -301,31 +362,18 @@ export async function prepareInlineAgent(
     fs.promises.unlink(sessionFile).catch(() => {});
   });
 
-  // Count tokens to decide if pre-warming the prompt cache is worthwhile.
-  // Add ~2500 for CLI's own system additions (deferred tools, MCP instructions, etc.).
-  const contentText = systemPrompt + files.map((f) => f.content).join("\n");
-  const estimatedTokens = countTokens(contentText) + 2500;
-  const shouldPrewarm = estimatedTokens > 4096;
+  // System prompt is sized to always exceed the prompt cache threshold (~4096 tokens
+  // including CLI overhead), so we unconditionally pre-warm.
+  const warmupMsg = JSON.stringify({
+    type: "user",
+    message: {
+      role: "user",
+      content: "Ok, hold on. I'll tell you what to do next.",
+    },
+  });
+  proc.stdin!.write(warmupMsg + "\n");
 
-  if (shouldPrewarm) {
-    log.appendLine(
-      `[cli-inline] Pre-caching enabled (${estimatedTokens} estimated tokens)`,
-    );
-    const warmupMsg = JSON.stringify({
-      type: "user",
-      message: {
-        role: "user",
-        content: "Ok, hold on. I'll tell you what to do next.",
-      },
-    });
-    proc.stdin!.write(warmupMsg + "\n");
-  } else {
-    log.appendLine(
-      `[cli-inline] Pre-caching skipped (${estimatedTokens} estimated tokens, below 4096 threshold)`,
-    );
-  }
-
-  return { proc, sessionFile, prewarmed: shouldPrewarm };
+  return { proc, sessionFile };
 }
 
 /**
@@ -365,22 +413,20 @@ export async function executeInlineAgent(
   // Set up readline first — must be before sending any messages
   const rl = readline.createInterface({ input: proc.stdout! });
 
-  // If pre-warmed, wait for the first result (pre-warm response) before sending real instruction
-  if (agent.prewarmed) {
-    await new Promise<void>((resolve) => {
-      const onLine = (line: string) => {
-        if (!line.trim()) return;
-        try {
-          const msg = JSON.parse(line);
-          if (msg.type === "result") {
-            rl.removeListener("line", onLine);
-            resolve();
-          }
-        } catch {}
-      };
-      rl.on("line", onLine);
-    });
-  }
+  // Wait for the pre-warm result before sending the real instruction
+  await new Promise<void>((resolve) => {
+    const onLine = (line: string) => {
+      if (!line.trim()) return;
+      try {
+        const msg = JSON.parse(line);
+        if (msg.type === "result") {
+          rl.removeListener("line", onLine);
+          resolve();
+        }
+      } catch {}
+    };
+    rl.on("line", onLine);
+  });
 
   // Send instruction as stream-json user message
   const inputMsg = JSON.stringify({
