@@ -4,12 +4,18 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: write
+
 jobs:
   release:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout current commit
         uses: actions/checkout@v4
+        with:
+          fetch-tags: true
+          fetch-depth: 0
 
       - name: Get version from package.json
         id: version
