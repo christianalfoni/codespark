@@ -55,13 +55,58 @@ jobs:
           git tag "v${{ steps.version.outputs.version }}"
           git push origin "v${{ steps.version.outputs.version }}"
 
+      - name: Generate changelog
+        if: steps.tag_check.outputs.exists == 'false'
+        id: changelog
+        run: |
+          PREV_TAG=$(git tag --sort=-v:refname | head -n 1)
+          if [ -z "$PREV_TAG" ]; then
+            COMMITS=$(git log --pretty=format:"%s|%h" HEAD)
+          else
+            COMMITS=$(git log --pretty=format:"%s|%h" "${PREV_TAG}..HEAD")
+          fi
+
+          FEATURES=""
+          FIXES=""
+          OTHER=""
+
+          while IFS='|' read -r msg hash; do
+            [ -z "$msg" ] && continue
+            # Skip CI and chore commits
+            case "$msg" in ci:*|ci\(*|chore:*|chore\(*) continue;; esac
+
+            case "$msg" in
+              feat:*|feat\(*)
+                clean="${msg#feat: }"
+                clean="${clean#feat(*): }"
+                FEATURES="${FEATURES}- ${clean} (\`${hash}\`)"$'\n'
+                ;;
+              fix:*|fix\(*)
+                clean="${msg#fix: }"
+                clean="${clean#fix(*): }"
+                FIXES="${FIXES}- ${clean} (\`${hash}\`)"$'\n'
+                ;;
+              *)
+                OTHER="${OTHER}- ${msg} (\`${hash}\`)"$'\n'
+                ;;
+            esac
+          done <<< "$COMMITS"
+
+          BODY=""
+          [ -n "$FEATURES" ] && BODY="${BODY}### Features"$'\n'"${FEATURES}"$'\n'
+          [ -n "$FIXES" ] && BODY="${BODY}### Fixes"$'\n'"${FIXES}"$'\n'
+          [ -n "$OTHER" ] && BODY="${BODY}### Other"$'\n'"${OTHER}"$'\n'
+
+          # Write to file to avoid escaping issues
+          echo "$BODY" > release_notes.md
+
       - name: Create GitHub Release
         if: steps.tag_check.outputs.exists == 'false'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.version.outputs.version }}
           name: v${{ steps.version.outputs.version }}
-          generate_release_notes: true
+          body_path: release_notes.md
           files: "*.vsix"
 
       - name: Publish to VS Code Marketplace
