@@ -209,8 +209,13 @@ body {
 }
 
 @keyframes toolPulse {
-  0%, 100% { opacity: 0.4; }
-  50% { opacity: 1; }
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 
 /* ── Thinking indicator ───────────────────────────────────── */
@@ -225,8 +230,13 @@ body {
 }
 
 @keyframes fadeInOut {
-  0%, 100% { opacity: 0.5; }
-  50% { opacity: 1; }
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 
 /* ── Markdown content styling ─────────────────────────────── */
@@ -284,7 +294,8 @@ body {
 }
 
 .message blockquote {
-  border-left: 3px solid var(--vscode-textBlockQuote-border, var(--vscode-panel-border));
+  border-left: 3px solid
+    var(--vscode-textBlockQuote-border, var(--vscode-panel-border));
   padding: 4px 12px;
   margin: 8px 0;
   opacity: 0.8;
@@ -298,9 +309,15 @@ body {
   font-weight: 600;
 }
 
-.message h1 { font-size: 1.3em; }
-.message h2 { font-size: 1.15em; }
-.message h3 { font-size: 1.05em; }
+.message h1 {
+  font-size: 1.3em;
+}
+.message h2 {
+  font-size: 1.15em;
+}
+.message h3 {
+  font-size: 1.05em;
+}
 
 .message hr {
   border: none;
@@ -364,6 +381,12 @@ body {
   z-index: 2;
 }
 
+.code-content {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
 .message pre:hover .code-actions {
   opacity: 1;
 }
@@ -379,7 +402,9 @@ body {
   background: var(--vscode-editor-background);
   color: var(--vscode-descriptionForeground);
   cursor: pointer;
-  transition: color 0.15s, background 0.15s;
+  transition:
+    color 0.15s,
+    background 0.15s;
 }
 
 .code-action-btn:hover {
@@ -486,14 +511,19 @@ body {
 
 /* ── Streaming cursor ─────────────────────────────────────── */
 
-.streaming .message-assistant:last-of-type > .assistant-content > *:last-child::after {
+.streaming
+  .message-assistant:last-of-type
+  > .assistant-content
+  > *:last-child::after {
   content: " ▍";
   animation: blink 0.8s step-end infinite;
   opacity: 0.7;
 }
 
 @keyframes blink {
-  50% { opacity: 0; }
+  50% {
+    opacity: 0;
+  }
 }
 
 /* ── Input area (floating over content) ───────────────────── */
@@ -533,16 +563,20 @@ body {
 .input-wrapper {
   display: flex;
   flex-direction: column;
-  border: 1px solid color-mix(in srgb, var(--vscode-panelTitle-activeBorder) 40%, transparent);
+  border: 1px solid
+    color-mix(in srgb, var(--vscode-panelTitle-activeBorder) 40%, transparent);
   border-radius: 8px;
   background: var(--vscode-editor-background);
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .input-wrapper:focus-within {
   border-color: var(--vscode-panelTitle-activeBorder);
-  box-shadow: 0 1px 6px color-mix(in srgb, var(--vscode-panelTitle-activeBorder) 30%, transparent);
+  box-shadow: 0 1px 6px
+    color-mix(in srgb, var(--vscode-panelTitle-activeBorder) 30%, transparent);
 }
 
 .input-wrapper textarea {
@@ -583,7 +617,6 @@ body {
   direction: rtl;
   text-align: left;
 }
-
 
 .input-toolbar {
   display: flex;
@@ -665,10 +698,15 @@ body {
   min-width: 400px;
   padding: 4px 0;
   border-radius: 10px;
-  background: color-mix(in srgb, var(--vscode-editor-background) 82%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--vscode-editor-background) 82%,
+    transparent
+  );
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground) 12%, transparent);
+  border: 1px solid
+    color-mix(in srgb, var(--vscode-editor-foreground) 12%, transparent);
   box-shadow:
     0 8px 24px rgba(0, 0, 0, 0.35),
     0 2px 8px rgba(0, 0, 0, 0.2);
@@ -697,7 +735,11 @@ body {
 }
 
 .session-menu-item:hover {
-  background: color-mix(in srgb, var(--vscode-editor-foreground) 10%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--vscode-editor-foreground) 10%,
+    transparent
+  );
 }
 
 .session-menu-item-active {
@@ -715,7 +757,10 @@ body {
 .error-text {
   color: var(--vscode-errorForeground);
   padding: 8px 12px;
-  background: var(--vscode-inputValidation-errorBackground, rgba(255, 0, 0, 0.1));
+  background: var(
+    --vscode-inputValidation-errorBackground,
+    rgba(255, 0, 0, 0.1)
+  );
   border-radius: 6px;
   font-size: 12px;
   margin-top: 4px;

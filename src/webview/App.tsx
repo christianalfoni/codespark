@@ -1,7 +1,12 @@
 import { useRef, useEffect, useState } from "preact/hooks";
 import { Logo } from "./Logo";
 import { type Entry } from "./state";
-import { renderMarkdown, CLIPBOARD_ICON, CHECK_ICON } from "./markdown";
+import {
+  renderMarkdown,
+  CLIPBOARD_ICON,
+  CHECK_ICON,
+  PATH_RE,
+} from "./markdown";
 import { AssistantMessage } from "./AssistantMessage";
 import { SessionMenu } from "./SessionMenu";
 import { useAppState } from "./useAppState";
@@ -119,6 +124,24 @@ export function App({ vscode }: AppProps) {
     const target = e.target as HTMLElement;
     const btn = target.closest("button");
     const codePath = target.closest(".code-path") as HTMLElement | null;
+
+    const anchor = target.closest("a") as HTMLAnchorElement | null;
+    if (anchor) {
+      e.preventDefault();
+      const href = anchor.getAttribute("href") ?? "";
+      // Check if it looks like a file path (not a URL)
+      if (href && !href.startsWith("http://") && !href.startsWith("https://")) {
+        const match = href.match(PATH_RE);
+        if (match) {
+          postMessage({
+            type: "open-file",
+            path: match[1],
+            line: match[2] ? parseInt(match[2], 10) : undefined,
+          });
+        }
+      }
+      return;
+    }
 
     if (codePath) {
       handleFilePathClick(codePath, vscode.postMessage.bind(vscode));
@@ -241,7 +264,10 @@ export function App({ vscode }: AppProps) {
 const MAX_LINES = 3;
 const MAX_CHARS = 200;
 
-function truncateContent(text: string): { truncated: string; isTruncated: boolean } {
+function truncateContent(text: string): {
+  truncated: string;
+  isTruncated: boolean;
+} {
   const lines = text.split("\n");
   if (lines.length <= MAX_LINES && text.length <= MAX_CHARS) {
     return { truncated: text, isTruncated: false };
@@ -266,10 +292,14 @@ function UserMessage({ content }: { content: string }) {
     >
       <div dangerouslySetInnerHTML={{ __html: renderMarkdown(display) }} />
       {isTruncated && (
-        <span class="message-user__toggle" dangerouslySetInnerHTML={{ __html: expanded
-          ? '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 5.5l-4.5 4 .7.8L8 6.9l3.8 3.4.7-.8z"/></svg>'
-          : '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 10.5l4.5-4-.7-.8L8 9.1 4.2 5.7l-.7.8z"/></svg>'
-        }} />
+        <span
+          class="message-user__toggle"
+          dangerouslySetInnerHTML={{
+            __html: expanded
+              ? '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 5.5l-4.5 4 .7.8L8 6.9l3.8 3.4.7-.8z"/></svg>'
+              : '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 10.5l4.5-4-.7-.8L8 9.1 4.2 5.7l-.7.8z"/></svg>',
+          }}
+        />
       )}
     </div>
   );

@@ -6,9 +6,17 @@ const CHECK_ICON = `<svg width="14" height="14" viewBox="0 0 16 16" fill="curren
 const PLAY_ICON = `<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M4 2l10 6-10 6V2z"/></svg>`;
 
 // Path pattern: looks like a file path with extension, optionally with :line
-const PATH_RE = /^((?:\.{0,2}\/)?(?:[\w@.-]+\/)*[\w@.-]+\.\w+)(?::(\d+))?$/;
+export const PATH_RE =
+  /^((?:\.{0,2}\/)?(?:[\w@.-]+\/)*[\w@.-]+\.\w+)(?::(\d+)(?:-\d+)?)?$/;
 
-const RUNNABLE_LANGS = new Set(["bash", "sh", "shell", "zsh", "terminal", "console"]);
+const RUNNABLE_LANGS = new Set([
+  "bash",
+  "sh",
+  "shell",
+  "zsh",
+  "terminal",
+  "console",
+]);
 
 function highlight(code: string, lang: string | null | undefined): string {
   if (lang && hljs.getLanguage(lang)) {
@@ -37,7 +45,7 @@ const renderer: RendererObject = {
       ? `<button class="code-action-btn code-run-btn" title="Run in terminal" data-command="${escapeAttr(text)}">${PLAY_ICON}</button>`
       : "";
 
-    return `<pre><div class="code-actions">${runBtn}${copyBtn}</div><code class="hljs">${highlighted}</code></pre>`;
+    return `<pre><div class="code-actions">${runBtn}${copyBtn}</div><code class="hljs code-content">${highlighted}</code></pre>`;
   },
 
   html({ text }: { text: string }) {
