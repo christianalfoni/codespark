@@ -33,7 +33,9 @@ function processLinks(
       }
 
       // Rewrite link to workspace-relative path
-      const wsRelative = workspaceRoot ? path.relative(workspaceRoot, resolved) : linkPath;
+      const wsRelative = workspaceRoot
+        ? path.relative(workspaceRoot, resolved)
+        : linkPath;
 
       if (stat.isDirectory()) {
         const tree = buildDirTree(resolved);
@@ -72,7 +74,9 @@ function buildDirTree(absDir: string, indent: string = "  "): string[] {
   for (const entry of sorted) {
     if (entry.isDirectory()) {
       results.push(`${indent}${entry.name}/`);
-      results.push(...buildDirTree(path.join(absDir, entry.name), indent + "  "));
+      results.push(
+        ...buildDirTree(path.join(absDir, entry.name), indent + "  "),
+      );
     } else {
       results.push(`${indent}${entry.name}`);
     }
@@ -94,7 +98,9 @@ export interface ResolvedInstructions {
  * - local: the closest CLAUDE.md traversing up from the file's directory
  *          (excluded if it's the same as root)
  */
-export function findInstructionsForFile(fileUri: vscode.Uri): ResolvedInstructions {
+export function findInstructionsForFile(
+  fileUri: vscode.Uri,
+): ResolvedInstructions {
   const workspaceFolder = vscode.workspace.getWorkspaceFolder(fileUri);
   if (!workspaceFolder) {
     return { root: undefined, local: [], referencedFiles: [] };
@@ -111,7 +117,10 @@ export function findInstructionsForFile(fileUri: vscode.Uri): ResolvedInstructio
     if (fs.existsSync(candidate)) {
       try {
         const raw = fs.readFileSync(candidate, "utf-8");
-        const { content, referencedFiles } = processLinks(raw, path.dirname(candidate));
+        const { content, referencedFiles } = processLinks(
+          raw,
+          path.dirname(candidate),
+        );
         root = { uri: vscode.Uri.file(candidate), content };
         rootCandidate = candidate;
         allReferencedFiles.push(...referencedFiles);
@@ -133,7 +142,10 @@ export function findInstructionsForFile(fileUri: vscode.Uri): ResolvedInstructio
         if (candidate !== rootCandidate) {
           try {
             const raw = fs.readFileSync(candidate, "utf-8");
-            const { content, referencedFiles } = processLinks(raw, path.dirname(candidate));
+            const { content, referencedFiles } = processLinks(
+              raw,
+              path.dirname(candidate),
+            );
             local.push({ uri: vscode.Uri.file(candidate), content });
             allReferencedFiles.push(...referencedFiles);
           } catch {

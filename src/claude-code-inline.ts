@@ -8,7 +8,7 @@ import * as vscode from "vscode";
 import { countTokens } from "@anthropic-ai/tokenizer";
 import { ResolvedContext, LLMResult } from "./types";
 import { getResearchSummary } from "./research-agent";
-import { IpcServer } from "./ipc-server";
+import { EditedRange, IpcServer } from "./ipc-server";
 
 // ---------------------------------------------------------------------------
 // System prompt
@@ -258,22 +258,31 @@ export async function prepareInlineAgent(
   const sessionContent = buildSessionJSONL(sessionId, workspaceFolder, files);
   await fs.promises.mkdir(sessionDir, { recursive: true });
   await fs.promises.writeFile(sessionFile, sessionContent);
-  log.appendLine(`[cli-inline:timing] Session prep: ${Date.now() - t0}ms (${files.length} file(s))`);
+  log.appendLine(
+    `[cli-inline:timing] Session prep: ${Date.now() - t0}ms (${files.length} file(s))`,
+  );
 
   const args = [
     "--print",
-    "--input-format", "stream-json",
-    "--output-format", "stream-json",
+    "--input-format",
+    "stream-json",
+    "--output-format",
+    "stream-json",
     "--verbose",
-    "--model", "claude-haiku-4-5-20251001",
+    "--model",
+    "claude-haiku-4-5-20251001",
     "--dangerously-skip-permissions",
     "--disable-slash-commands",
     "--strict-mcp-config",
-    "--mcp-config", mcpConfigPath,
+    "--mcp-config",
+    mcpConfigPath,
     "--include-partial-messages",
-    "--tools", "Read",
-    "--system-prompt", systemPrompt,
-    "--resume", sessionId,
+    "--tools",
+    "Read",
+    "--system-prompt",
+    systemPrompt,
+    "--resume",
+    sessionId,
   ];
 
   const env = { ...process.env, MAX_THINKING_TOKENS: "0" };
@@ -299,14 +308,21 @@ export async function prepareInlineAgent(
   const shouldPrewarm = estimatedTokens > 4096;
 
   if (shouldPrewarm) {
-    log.appendLine(`[cli-inline] Pre-caching enabled (${estimatedTokens} estimated tokens)`);
+    log.appendLine(
+      `[cli-inline] Pre-caching enabled (${estimatedTokens} estimated tokens)`,
+    );
     const warmupMsg = JSON.stringify({
       type: "user",
-      message: { role: "user", content: "Ok, hold on. I'll tell you what to do next." },
+      message: {
+        role: "user",
+        content: "Ok, hold on. I'll tell you what to do next.",
+      },
     });
     proc.stdin!.write(warmupMsg + "\n");
   } else {
-    log.appendLine(`[cli-inline] Pre-caching skipped (${estimatedTokens} estimated tokens, below 4096 threshold)`);
+    log.appendLine(
+      `[cli-inline] Pre-caching skipped (${estimatedTokens} estimated tokens, below 4096 threshold)`,
+    );
   }
 
   return { proc, sessionFile, prewarmed: shouldPrewarm };
@@ -399,7 +415,9 @@ export async function executeInlineAgent(
   function markEditsApplied() {
     if (!hasEdits) {
       hasEdits = true;
-      log.appendLine(`[cli-inline:timing] Edits confirmed: ${Date.now() - tSend}ms`);
+      log.appendLine(
+        `[cli-inline:timing] Edits confirmed: ${Date.now() - tSend}ms`,
+      );
       resolveOnEdit?.();
     }
   }
@@ -409,24 +427,49 @@ export async function executeInlineAgent(
   const preEditVisibleRange = vscode.window.activeTextEditor?.visibleRanges[0];
 
   // Listen for edits applied via IPC
-  const ipcEditSub = ipcServer.onEdit((_filePath, _count, editedRanges, focusRange) => {
+  const ipcEditSub = ipcServer.onEdit((_filePath, _count, editedRanges) => {
     markEditsApplied();
     editedLines.push(...editedRanges);
-    if (focusRange) {
-      const editor = vscode.window.activeTextEditor;
-      if (editor) {
-        const range = new vscode.Range(
-          focusRange.startLine,
-          focusRange.startChar,
-          focusRange.endLine,
-          focusRange.endChar,
-        );
-        editor.revealRange(
-          range,
-          vscode.TextEditorRevealType.InCenterIfOutsideViewport,
-        );
-        editor.selection = new vscode.Selection(range.start, range.start);
+
+    const editor = vscode.window.activeTextEditor;
+
+    if (!editor) {
+      return;
+    }
+
+    const cursorLine = editor.selection.active.line;
+
+    // Check if any edited range touches the cursor line
+    const editAtCursor = editedRanges.some(
+      (r) => cursorLine >= r.startLine && cursorLine <= r.endLine,
+    );
+
+    if (editAtCursor) {
+      return;
+    }
+
+    // Edit is away from cursor — find the largest range and smooth scroll to it
+    let largest: EditedRange | undefined;
+    for (const range of editedRanges) {
+      const size = range.endLine - range.startLine + 1;
+      if (!largest || size > largest.endLine - largest.startLine + 1) {
+        largest = range;
       }
+    }
+
+    log.append(
+      `[edit]: Found largest ${Boolean(largest)}, ${JSON.stringify(editedRanges)}`,
+    );
+
+    if (largest) {
+      const range = new vscode.Range(largest.startLine, 0, largest.endLine, 0);
+
+      vscode.commands.executeCommand("revealLine", {
+        lineNumber: largest.startLine,
+        at: "center",
+      });
+
+      editor.selection = new vscode.Selection(range.start, range.start);
     }
   });
 
@@ -462,7 +505,9 @@ export async function executeInlineAgent(
 
               if (!firstToolSeen) {
                 firstToolSeen = true;
-                log.appendLine(`[cli-inline:timing] First tool call: ${ms}ms (${toolName})`);
+                log.appendLine(
+                  `[cli-inline:timing] First tool call: ${ms}ms (${toolName})`,
+                );
                 if (!isEditOrWrite && onAgentMode) {
                   onAgentMode();
                 }
@@ -536,10 +581,22 @@ export async function executeInlineAgent(
     hasEdits,
     editedLines,
     preEditSelection: preEditSelection
-      ? { anchor: { line: preEditSelection.anchor.line, character: preEditSelection.anchor.character }, active: { line: preEditSelection.active.line, character: preEditSelection.active.character } }
+      ? {
+          anchor: {
+            line: preEditSelection.anchor.line,
+            character: preEditSelection.anchor.character,
+          },
+          active: {
+            line: preEditSelection.active.line,
+            character: preEditSelection.active.character,
+          },
+        }
       : undefined,
     preEditVisibleRange: preEditVisibleRange
-      ? { startLine: preEditVisibleRange.start.line, endLine: preEditVisibleRange.end.line }
+      ? {
+          startLine: preEditVisibleRange.start.line,
+          endLine: preEditVisibleRange.end.line,
+        }
       : undefined,
     latencyMs,
     inputTokens,

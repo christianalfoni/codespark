@@ -9,12 +9,6 @@ export type EditListener = (
   filePath: string,
   editCount: number,
   editedRanges: EditedRange[],
-  focusRange?: {
-    startLine: number;
-    startChar: number;
-    endLine: number;
-    endChar: number;
-  },
 ) => void;
 
 export interface IpcServer {
@@ -43,12 +37,6 @@ interface IpcResponse {
   message?: string;
   error?: string;
   editedRanges?: EditedRange[];
-  focusRange?: {
-    startLine: number;
-    startChar: number;
-    endLine: number;
-    endChar: number;
-  };
 }
 
 function computeTextEdits(
@@ -94,10 +82,7 @@ function computeTextEdits(
  * - editedRanges: all added/modified line ranges in the new text
  * - focusRange: the largest added/modified range (best place to scroll to)
  */
-function computeDiffRanges(
-  before: string,
-  after: string,
-): { editedRanges: EditedRange[]; focusRange: IpcResponse["focusRange"] } {
+function computeDiffRanges(before: string, after: string): EditedRange[] {
   const changes = diffLines(before, after);
   const editedRanges: EditedRange[] = [];
   let line = 0;
@@ -114,20 +99,7 @@ function computeDiffRanges(
     }
   }
 
-  // Pick the largest range as focus
-  let largest: EditedRange | undefined;
-  for (const range of editedRanges) {
-    const size = range.endLine - range.startLine + 1;
-    if (!largest || size > largest.endLine - largest.startLine + 1) {
-      largest = range;
-    }
-  }
-
-  const focusRange = largest
-    ? { startLine: largest.startLine, startChar: 0, endLine: largest.endLine, endChar: 0 }
-    : undefined;
-
-  return { editedRanges, focusRange };
+  return editedRanges;
 }
 
 function handleConnectionData(
@@ -154,14 +126,15 @@ function handleConnectionData(
       continue;
     }
 
-    const handleResult = (filePath: string, editCount: number) => (res: IpcResponse) => {
-      conn.write(JSON.stringify(res) + "\n");
-      if (res.success) {
-        for (const listener of editListeners) {
-          listener(filePath, editCount, res.editedRanges ?? [], res.focusRange);
+    const handleResult =
+      (filePath: string, editCount: number) => (res: IpcResponse) => {
+        conn.write(JSON.stringify(res) + "\n");
+        if (res.success) {
+          for (const listener of editListeners) {
+            listener(filePath, editCount, res.editedRanges ?? []);
+          }
         }
-      }
-    };
+      };
 
     const handleError = (id: string) => (err: unknown) => {
       const res: IpcResponse = {
@@ -174,7 +147,8 @@ function handleConnectionData(
 
     if (req.type === "edit_file") {
       const editReq = req as unknown as EditRequest;
-      handleEditRequest(editReq, log)
+      log.append("[ipc-server]: HANDLE EDIT REQUEST");
+      handleEditRequest(editReq)
         .then(handleResult(editReq.file_path, editReq.edits.length))
         .catch(handleError(editReq.id));
     } else if (req.type === "write_file") {
@@ -183,7 +157,11 @@ function handleConnectionData(
         .then(handleResult(writeReq.file_path, 1))
         .catch(handleError(writeReq.id));
     } else if (req.type === "move_file") {
-      const moveReq = req as unknown as { id: string; source: string; destination: string };
+      const moveReq = req as unknown as {
+        id: string;
+        source: string;
+        destination: string;
+      };
       handleMoveRequest(moveReq, log)
         .then((res) => conn.write(JSON.stringify(res) + "\n"))
         .catch(handleError(moveReq.id));
@@ -206,10 +184,7 @@ function handleConnectionData(
   return buffer;
 }
 
-async function handleEditRequest(
-  req: EditRequest,
-  log: vscode.OutputChannel,
-): Promise<IpcResponse> {
+async function handleEditRequest(req: EditRequest): Promise<IpcResponse> {
   const uri = vscode.Uri.file(req.file_path);
 
   let doc: vscode.TextDocument;
@@ -251,14 +226,13 @@ async function handleEditRequest(
   }
 
   const after = doc.getText();
-  const { editedRanges, focusRange } = computeDiffRanges(before, after);
+  const editedRanges = computeDiffRanges(before, after);
 
   return {
     id: req.id,
     success: true,
     message: `Applied ${textEdits.length} edit(s)`,
     editedRanges,
-    focusRange,
   };
 }
 
@@ -272,7 +246,8 @@ async function handleWriteRequest(
 
   let doc: vscode.TextDocument | undefined;
   try {
-    doc = vscode.workspace.textDocuments.find((d) => d.uri.fsPath === uri.fsPath) ??
+    doc =
+      vscode.workspace.textDocuments.find((d) => d.uri.fsPath === uri.fsPath) ??
       (await vscode.workspace.openTextDocument(uri));
   } catch {
     // File doesn't exist — create it
@@ -300,7 +275,7 @@ async function handleWriteRequest(
     };
   }
 
-  const { editedRanges, focusRange } = computeDiffRanges(before, req.content);
+  const editedRanges = computeDiffRanges(before, req.content);
   const lineCount = req.content.split("\n").length;
 
   return {
@@ -308,7 +283,6 @@ async function handleWriteRequest(
     success: true,
     message: `Wrote ${lineCount} lines`,
     editedRanges,
-    focusRange,
   };
 }
 
