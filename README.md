@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./media/logo.png" alt="CodeSpark" width="640" />
+  <img src="./media/logo.png" alt="CodeSpark" width="240" />
 </p>
 
 <p align="center"><em>Claude Code at the tip of your cursor</em></p>
