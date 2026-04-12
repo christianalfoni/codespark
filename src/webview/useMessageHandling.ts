@@ -146,19 +146,6 @@ export function useMessageHandling(
             : null,
         };
       }
-      case "edit-log-count": {
-        return { ...prev, editLogCount: msg.count };
-      }
-      case "review-suggestions": {
-        return { ...prev, reviewSuggestions: msg.suggestions };
-      }
-      case "review-mode": {
-        return {
-          ...prev,
-          isReviewMode: msg.active,
-          reviewSuggestions: msg.active ? prev.reviewSuggestions : [],
-        };
-      }
       case "done": {
         return { ...prev, entries, isStreaming: false, activeTool: null };
       }

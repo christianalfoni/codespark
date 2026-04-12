@@ -8,7 +8,6 @@ import {
 } from "./markdown";
 import { AssistantMessage } from "./AssistantMessage";
 import { SessionMenu } from "./SessionMenu";
-import { SuggestionPanel } from "./SuggestionPanel";
 import { useAppState } from "./useAppState";
 import { useMessageHandling } from "./useMessageHandling";
 import { useMessageListScroll } from "./useMessageListScroll";
@@ -17,7 +16,6 @@ import {
   SEND_ICON,
   STOP_ICON,
   NEW_SESSION_ICON,
-  REVIEW_ICON,
   copyCodeWithFeedback,
   handleCommandClick,
 } from "./utils";
@@ -64,10 +62,6 @@ export function App({ vscode }: AppProps) {
     });
     userScrolledUp.current = false;
     vscode.postMessage({ type: "send", text });
-  }
-
-  function reviewEdits() {
-    vscode.postMessage({ type: "review-edits" });
   }
 
   function newSession() {
@@ -206,12 +200,6 @@ export function App({ vscode }: AppProps) {
       <div class="input-area">
         <div class="input-area-inner">
           <div class="input-wrapper">
-            {state.isReviewMode && state.reviewSuggestions.length > 0 && (
-              <SuggestionPanel
-                suggestions={state.reviewSuggestions}
-                vscode={vscode}
-              />
-            )}
             <textarea
               ref={textareaRef}
               placeholder="Do some research to learn and get suggestions..."
@@ -234,17 +222,6 @@ export function App({ vscode }: AppProps) {
                   disabled={state.isStreaming}
                   onSwitch={switchToSession}
                 />
-              )}
-              {state.editLogCount > 0 && (
-                <button
-                  class="review-btn"
-                  title="Review inline edits"
-                  disabled={state.isStreaming || state.isReviewMode}
-                  onClick={reviewEdits}
-                >
-                  <span dangerouslySetInnerHTML={{ __html: REVIEW_ICON }} />
-                  <span class="review-badge">{state.editLogCount}</span>
-                </button>
               )}
               <div style={{ flex: 1 }} />
               {state.fileContext && (

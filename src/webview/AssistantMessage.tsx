@@ -3,10 +3,6 @@ import type { AssistantEntry, ToolEntry } from "./state";
 import { renderMarkdown } from "./markdown";
 import { prepareForRender } from "./prepareForRender";
 
-const TOOL_DISPLAY_NAMES: Record<string, string> = {
-  mcp__codespark__update_suggestions: "Suggesting edits",
-};
-
 function InlineTools({ tools }: { tools: ToolEntry[] }) {
   if (tools.length === 0) return null;
   return (
@@ -15,7 +11,7 @@ function InlineTools({ tools }: { tools: ToolEntry[] }) {
         <span key={i} class="inline-tool">
           <span class={`tool-dot tool-dot-${t.status}`} />
           <span class="tool-label">
-            {TOOL_DISPLAY_NAMES[t.name] ?? t.name}
+            {t.name}
             {t.description && (
               <span class="tool-description">{t.description}</span>
             )}

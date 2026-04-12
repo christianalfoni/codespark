@@ -30,15 +30,6 @@ export type Entry = UserEntry | AssistantEntry;
 
 export type ContextState = "none" | "pending" | "ready";
 
-export interface ReviewSuggestion {
-  id: string;
-  description: string;
-  filePath: string;
-  isNewFile: boolean;
-  proposedContent: string;
-  originalContent: string;
-}
-
 export interface ChatState {
   entries: Entry[];
   isStreaming: boolean;
@@ -47,9 +38,6 @@ export interface ChatState {
   sessions: SessionInfo[];
   activeSessionId: string | null;
   fileContext: { filePath: string; cursorLine: number; selection?: string } | null;
-  editLogCount: number;
-  isReviewMode: boolean;
-  reviewSuggestions: ReviewSuggestion[];
 }
 
 export function createInitialState(saved: any): ChatState {
@@ -61,9 +49,6 @@ export function createInitialState(saved: any): ChatState {
     sessions: [],
     activeSessionId: null,
     fileContext: null,
-    editLogCount: 0,
-    isReviewMode: false,
-    reviewSuggestions: [],
   };
 
   if (saved?.entries) {

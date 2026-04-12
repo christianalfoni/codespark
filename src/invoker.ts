@@ -8,7 +8,6 @@ import { promptForInstruction } from "./promptInput";
 import { recordQuery } from "./stats";
 import { evaluateFocusArea } from "./editor";
 import { IpcServer } from "./ipc-server";
-import { appendEditLog, computeCompactDiff } from "./edit-log";
 
 /* ── File-level decoration helpers ────────────────────────────── */
 
@@ -137,7 +136,6 @@ export function createInvokeCommand(
   updateActiveInstructions: () => void,
   mcpConfigPath: string,
   ipcServer: IpcServer,
-  onEditLogged?: () => void,
 ) {
   return async () => {
     const editor = vscode.window.activeTextEditor;
@@ -295,19 +293,6 @@ export function createInvokeCommand(
 
       decorationProvider.deactivate();
       statusBarItem.text = `$(sparkle) CodeSpark · edited`;
-
-      // Log the edit for CLAUDE.md review
-      if (result.hasEdits && !ctx.isInstructionFile) {
-        const afterContent = editor.document.getText();
-        const diff = computeCompactDiff(ctx.fileContent, afterContent);
-        appendEditLog({
-          timestamp: Date.now(),
-          filePath: ctx.filePath,
-          instruction: ctx.instruction,
-          diff,
-        });
-        onEditLogged?.();
-      }
 
       // Keep non-edited lines dimmed; fade in only the changed lines
       if (result.editedLines.length > 0 && editor) {

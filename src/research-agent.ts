@@ -4,7 +4,6 @@ import {
   createResearchQuery,
   iterateResearchEvents,
   type ResearchQueryHandle,
-  type ResearchQueryOptions,
 } from "./claude-code-research";
 
 // ---------------------------------------------------------------------------
@@ -174,9 +173,8 @@ export function startResearchQuery(
   log: vscode.OutputChannel,
   sessionId: string,
   resumeSdkSessionId?: string,
-  options?: ResearchQueryOptions,
 ): ResearchQueryHandle {
-  const handle = createResearchQuery(prompt, cwd, log, resumeSdkSessionId, options);
+  const handle = createResearchQuery(prompt, cwd, log, resumeSdkSessionId);
   _liveQueries.set(sessionId, handle);
   return handle;
 }

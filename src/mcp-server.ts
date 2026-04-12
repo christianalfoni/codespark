@@ -211,53 +211,6 @@ If the destination's parent directories don't exist, they will be created.`,
 
   // @ts-ignore
   server.tool(
-    "update_suggestions",
-    `Update the list of suggested CLAUDE.md changes shown to the user. Each suggestion
-describes a change to a CLAUDE.md file — either modifying an existing one or creating
-a new one. Call this tool whenever you want to set or update the suggestions list.
-The entire list is replaced each time (not appended).`,
-    {
-      suggestions: z
-        .array(
-          z.object({
-            description: z
-              .string()
-              .describe("Short description of what this change does"),
-            filePath: z
-              .string()
-              .describe(
-                "Relative path to the CLAUDE.md file (e.g. 'CLAUDE.md' or 'src/CLAUDE.md')",
-              ),
-            proposedContent: z
-              .string()
-              .describe("The full proposed content for the CLAUDE.md file"),
-          }),
-        )
-        .describe("The complete list of suggested CLAUDE.md changes"),
-    },
-    async ({ suggestions }) => {
-      try {
-        const res = await sendIpcRequest("update_suggestions", { suggestions });
-        if (res.success) {
-          return { content: [{ type: "text" as const, text: res.message }] };
-        } else {
-          return {
-            content: [{ type: "text" as const, text: `Error: ${res.error}` }],
-            isError: true,
-          };
-        }
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        return {
-          content: [{ type: "text" as const, text: `IPC error: ${msg}` }],
-          isError: true,
-        };
-      }
-    },
-  );
-
-  // @ts-ignore
-  server.tool(
     "delete_file",
     `Delete a file. The path must be absolute.`,
     {

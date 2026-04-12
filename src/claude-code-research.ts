@@ -76,25 +76,15 @@ Your final response for each question will automatically be shared as context wi
 // Spawn claude CLI
 // ---------------------------------------------------------------------------
 
-export interface ResearchQueryOptions {
-  tools?: string;
-  mcpConfigPath?: string;
-  systemPrompt?: string;
-}
-
 export function createResearchQuery(
   prompt: string,
   cwd: string,
   log: vscode.OutputChannel,
   resumeSessionId?: string,
-  options?: ResearchQueryOptions,
 ): ResearchQueryHandle {
   log.appendLine(
     `[claude-code-research] Creating query (resume: ${resumeSessionId ?? "none"}) — ${prompt.slice(0, 100)}`,
   );
-
-  const tools = options?.tools ?? "Read,Glob,Grep,WebSearch,WebFetch";
-  const systemPrompt = options?.systemPrompt ?? buildResearchSystemPrompt(cwd);
 
   const args = [
     "--print",
@@ -106,20 +96,16 @@ export function createResearchQuery(
     "--disable-slash-commands",
     "--strict-mcp-config",
     "--tools",
-    tools,
+    "Read,Glob,Grep,WebSearch,WebFetch",
     "--system-prompt",
-    systemPrompt,
+    buildResearchSystemPrompt(cwd),
   ];
-
-  if (options?.mcpConfigPath) {
-    args.push("--mcp-config", options.mcpConfigPath);
-  }
 
   if (resumeSessionId) {
     args.push("--resume", resumeSessionId);
   }
 
-  args.push("--", prompt);
+  args.push(prompt);
 
   const proc = childProcess.spawn("claude", args, {
     cwd,

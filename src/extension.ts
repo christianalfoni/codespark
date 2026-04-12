@@ -12,7 +12,6 @@ import {
 } from "./research-agent";
 import { ResearchViewProvider } from "./research-view";
 import { startIpcServer } from "./ipc-server";
-import { initEditLog } from "./edit-log";
 
 export function activate(context: vscode.ExtensionContext) {
   const log = vscode.window.createOutputChannel("CodeSpark");
@@ -20,9 +19,6 @@ export function activate(context: vscode.ExtensionContext) {
 
   initStats(context.workspaceState);
   initResearchSummary(context.workspaceState);
-  initEditLog(context.workspaceState, () => {
-    researchView.updateEditLogCount();
-  });
 
   // Start IPC server and MCP server (long-lived HTTP transport)
   const ipcServer = startIpcServer(log);
@@ -103,14 +99,6 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Research agent webview panel (created before invoke command so it can be passed)
   const researchView = new ResearchViewProvider(context.extensionUri, log);
-  researchView.setMcpConfigPath(mcpConfigPath);
-
-  // Wire up IPC suggestions listener so the MCP tool can push suggestions to the webview
-  context.subscriptions.push(
-    ipcServer.onSuggestions((suggestions) => {
-      researchView.handleSuggestionsFromIpc(suggestions);
-    }),
-  );
 
   context.subscriptions.push(
     vscode.commands.registerCommand(
@@ -122,7 +110,6 @@ export function activate(context: vscode.ExtensionContext) {
         activeInstructions.update,
         mcpConfigPath,
         ipcServer,
-        () => researchView.updateEditLogCount(),
       ),
     ),
   );
