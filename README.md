@@ -4,24 +4,16 @@
 
 <p align="center"><em>Claude Code at the tip of your cursor</em></p>
 
-> Claude Code in the terminal is powerful — but the agent is in the driver's seat. CodeSpark flips that dynamic. It brings Claude Code into your editor where **you** are in control: you navigate, you decide what to change, you build understanding. The agent handles the mechanics.
+> AI coding agents are great for personal projects where you can YOLO your way through at a high level of abstraction. But in teams and established codebases, handing control to an agent means giving up decision-making, ownership, and learning. CodeSpark is a different kind of experience — it runs the Claude Code CLI under the hood, same models and tools, but designed to keep **you** in the driver's seat. You navigate, you decide, you learn. The agent handles the mechanics.
 
-CodeSpark is a first-class Claude Code experience inside VS Code. It runs the Claude Code CLI under the hood, giving you the same models, tools, and `CLAUDE.md` context — but scoped to what you're looking at. Two agents, one workflow: a fast **inline agent** for editing code at your cursor, and a **research agent** for deep codebase exploration and web search.
-
-When you hand everything to an agent, you don't just lose control — you lose context. The agent builds its understanding of the codebase, but you don't build yours. Every file you navigate to, every change you reason about, every decision you make strengthens your own mental model. That's not overhead — it's how you stay effective. CodeSpark keeps you in those low-level, practical interactions where learning happens, while removing the mechanical friction that slows you down.
+Two agents, one workflow: a fast **inline agent** for editing code at your cursor, and a **research agent** for deep codebase exploration and web search.
 
 ![CodeSpark in action](./media/screenshot.png)
 
-## Prerequisites
-
-- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed and authenticated
-- No separate API key required — CodeSpark uses your existing Claude Code setup
-
 ## Getting started
 
-1. Install the [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) and authenticate (`claude` in your terminal)
+1. Install the [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) and authenticate (`claude` in your terminal and restart VSCode)
 2. Install the CodeSpark extension: [Install in VS Code](vscode:extension/codespark.codespark-agent)
-3. **Restart VS Code** after installing Claude Code so the extension can find the `claude` binary in your PATH
 
 ## How it works
 

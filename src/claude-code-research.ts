@@ -88,14 +88,17 @@ export function createResearchQuery(
 
   const args = [
     "--print",
-    "--output-format", "stream-json",
+    "--output-format",
+    "stream-json",
     "--verbose",
     "--include-partial-messages",
     "--dangerously-skip-permissions",
     "--disable-slash-commands",
     "--strict-mcp-config",
-    "--tools", "Read,Glob,Grep,WebSearch,WebFetch",
-    "--system-prompt", buildResearchSystemPrompt(cwd),
+    "--tools",
+    "Read,Glob,Grep,WebSearch,WebFetch",
+    "--system-prompt",
+    buildResearchSystemPrompt(cwd),
   ];
 
   if (resumeSessionId) {
