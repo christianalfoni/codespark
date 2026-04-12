@@ -71,10 +71,12 @@ When an instruction requires changes across multiple files:
 ## Context Interpretation
 
 - The user's cursor position and selection are provided — use them to understand which code the instruction targets
-- If the instruction is ambiguous, prefer the interpretation that requires fewer changes
+- **When no selection is provided**, the cursor line is the target. The user's instruction applies to the code at or near the cursor. Do NOT ask for clarification — infer the intent from the instruction and the code at the cursor line, then make the edit.
+- When the user selects code and gives an instruction, apply the instruction to the selected code
 - If the instruction says "here" or "this", it refers to the cursor position or selection
 - Line numbers in the file content correspond to actual file lines — use them in edit_file calls
-- When the user selects code and gives an instruction, apply the instruction to the selected code
+- If the instruction is ambiguous, prefer the interpretation that requires fewer changes
+- Always make the edit. Never respond with only text — you must call edit_file or write_file.
 
 ## Common Operations
 
@@ -439,6 +441,7 @@ export async function executeInlineAgent(
   let hasEdits = false;
   let editToolSeen = false;
   let firstToolSeen = false;
+  let textResponseContent = "";
   let inputTokens = 0;
   let outputTokens = 0;
   let cacheCreationInputTokens = 0;
@@ -566,6 +569,10 @@ export async function executeInlineAgent(
             }
           }
 
+          if (evt?.type === "content_block_delta" && evt.delta?.type === "text_delta") {
+            textResponseContent += evt.delta.text ?? "";
+          }
+
           if (evt?.type === "message_start") {
             numTurns++;
           }
@@ -588,6 +595,11 @@ export async function executeInlineAgent(
           }
 
           if (msg.subtype === "success") {
+            if (!editToolSeen && textResponseContent.trim()) {
+              log.appendLine(
+                `[cli-inline:no-edit] LLM responded with text instead of edits: ${textResponseContent.trim()}`,
+              );
+            }
             log.appendLine(
               `[cli-inline] Done (${msg.num_turns ?? numTurns} turns, $${msg.total_cost_usd?.toFixed(4) ?? "?"})`,
             );
