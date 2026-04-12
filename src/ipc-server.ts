@@ -11,9 +11,18 @@ export type EditListener = (
   editedRanges: EditedRange[],
 ) => void;
 
+export interface SuggestionData {
+  description: string;
+  filePath: string;
+  proposedContent: string;
+}
+
+export type SuggestionsListener = (suggestions: SuggestionData[]) => void;
+
 export interface IpcServer {
   socketPath: string;
   onEdit: (listener: EditListener) => { dispose: () => void };
+  onSuggestions: (listener: SuggestionsListener) => { dispose: () => void };
   dispose: () => void;
 }
 
@@ -107,6 +116,7 @@ function handleConnectionData(
   buffer: string,
   log: vscode.OutputChannel,
   editListeners: Set<EditListener>,
+  suggestionsListeners: Set<SuggestionsListener>,
   conn: net.Socket,
 ): string {
   buffer += chunk.toString();
@@ -170,6 +180,18 @@ function handleConnectionData(
       handleDeleteRequest(deleteReq, log)
         .then((res) => conn.write(JSON.stringify(res) + "\n"))
         .catch(handleError(deleteReq.id));
+    } else if (req.type === "update_suggestions") {
+      const suggestions = (req as any).suggestions ?? [];
+      for (const listener of suggestionsListeners) {
+        listener(suggestions);
+      }
+      conn.write(
+        JSON.stringify({
+          id: req.id,
+          success: true,
+          message: `Updated ${suggestions.length} suggestion(s)`,
+        }) + "\n",
+      );
     } else {
       conn.write(
         JSON.stringify({
@@ -342,6 +364,7 @@ async function handleDeleteRequest(
 export function startIpcServer(log: vscode.OutputChannel): IpcServer {
   const socketPath = `/tmp/codespark-${process.pid}.sock`;
   const editListeners = new Set<EditListener>();
+  const suggestionsListeners = new Set<SuggestionsListener>();
 
   // Clean up stale socket from prior crash
   try {
@@ -356,7 +379,7 @@ export function startIpcServer(log: vscode.OutputChannel): IpcServer {
     let buffer = "";
 
     conn.on("data", (chunk) => {
-      buffer = handleConnectionData(chunk, buffer, log, editListeners, conn);
+      buffer = handleConnectionData(chunk, buffer, log, editListeners, suggestionsListeners, conn);
     });
 
     conn.on("error", (err) => {
@@ -379,6 +402,14 @@ export function startIpcServer(log: vscode.OutputChannel): IpcServer {
       return {
         dispose: () => {
           editListeners.delete(listener);
+        },
+      };
+    },
+    onSuggestions(listener: SuggestionsListener) {
+      suggestionsListeners.add(listener);
+      return {
+        dispose: () => {
+          suggestionsListeners.delete(listener);
         },
       };
     },

@@ -41,6 +41,14 @@ The two agents are connected: ask a question in the research panel, and the next
 
 This is the same `CLAUDE.md` convention used by Claude Code in the terminal. Instructions you write for CodeSpark — patterns, conventions, constraints, preferred libraries — also improve Claude Code when you use it from the CLI. You're not maintaining two configurations; you're building one set of instructions that makes the agent better everywhere.
 
+### Edit review
+
+Every inline edit is silently logged. When you've accumulated a few, a review button with a counter badge appears in the research panel toolbar. Click it to enter **review mode**: the research agent analyzes your recent edits for recurring patterns and proposes `CLAUDE.md` changes.
+
+Suggestions appear as a list above the input area — each showing a file path (clickable to open a diff preview) and a description. You can discuss them in the chat ("combine those two", "make that more specific") and the agent updates the list as the conversation evolves.
+
+When you're satisfied, click **Approve all** to write the changes to disk, or **Dismiss** to discard them. Either way the edit log is cleared and a fresh session starts.
+
 ## Shortcuts
 
 | Mac           | Windows / Linux | What it does                                                                                                      |

@@ -1,4 +1,7 @@
 import * as vscode from "vscode";
+import * as fs from "fs";
+import * as path from "path";
+import * as os from "os";
 import {
   startResearchQuery,
   getLiveQuery,
@@ -17,6 +20,13 @@ import {
   saveAgentMessages,
   getSessionInfos,
 } from "./research-agent";
+import {
+  getEditLog,
+  getEditLogCount,
+  clearEditLog,
+  type EditLogEntry,
+} from "./edit-log";
+import type { SuggestionData } from "./ipc-server";
 
 function getNonce(): string {
   let text = "";
@@ -33,11 +43,25 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
 
   private _view?: vscode.WebviewView;
   private _pendingFileContext?: { filePath: string; cursorLine: number; selection?: string };
+  private _isReviewMode = false;
+  private _reviewSuggestions: Array<{
+    id: string;
+    description: string;
+    filePath: string;
+    isNewFile: boolean;
+    proposedContent: string;
+    originalContent: string;
+  }> = [];
+  private _mcpConfigPath?: string;
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
     private readonly _log: vscode.OutputChannel,
   ) {}
+
+  public setMcpConfigPath(configPath: string): void {
+    this._mcpConfigPath = configPath;
+  }
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
     this._view = webviewView;
@@ -86,6 +110,12 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
         case "switch-session":
           this._handleSwitchSession(msg.id, msg.currentEntries);
           break;
+        case "review-edits":
+          this._handleReviewEdits();
+          break;
+        case "suggestion-action":
+          this._handleSuggestionAction(msg.action, msg.id);
+          break;
       }
     });
 
@@ -124,6 +154,8 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
         activeSessionId: getActiveSessionId(),
       });
     }
+    // Send current edit log count
+    this._post({ type: "edit-log-count", count: getEditLogCount() });
   }
 
   private _sendSessionsUpdate(): void {
@@ -433,6 +465,209 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
       this._post({ type: "error", text: msg });
       this._post({ type: "done" });
     }
+  }
+
+  // ── Review mode ────────────────────────────────────────────
+
+  public updateEditLogCount(): void {
+    this._post({ type: "edit-log-count", count: getEditLogCount() });
+  }
+
+  public handleSuggestionsFromIpc(suggestions: SuggestionData[]): void {
+    const workspaceFolder =
+      vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!workspaceFolder) return;
+
+    this._reviewSuggestions = suggestions.map((s, i) => {
+      const absPath = path.resolve(workspaceFolder, s.filePath);
+      let originalContent = "";
+      let isNewFile = true;
+      try {
+        originalContent = fs.readFileSync(absPath, "utf-8");
+        isNewFile = false;
+      } catch {
+        // file doesn't exist — new file
+      }
+      return {
+        id: `suggestion-${Date.now()}-${i}`,
+        description: s.description,
+        filePath: s.filePath,
+        isNewFile,
+        proposedContent: s.proposedContent,
+        originalContent,
+      };
+    });
+
+    this._post({
+      type: "review-suggestions",
+      suggestions: this._reviewSuggestions,
+    });
+  }
+
+  private async _handleReviewEdits(): Promise<void> {
+    const workspaceFolder =
+      vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!workspaceFolder) {
+      this._post({ type: "error", text: "No workspace folder open." });
+      this._post({ type: "done" });
+      return;
+    }
+
+    const editLog = getEditLog();
+    if (editLog.length === 0) {
+      this._post({ type: "error", text: "No edits to review." });
+      this._post({ type: "done" });
+      return;
+    }
+
+    // Enter review mode
+    this._isReviewMode = true;
+    this._post({ type: "review-mode", active: true });
+
+    // Write edit log to a temp file so the agent can read it via tools
+    const editLogContent = editLog
+      .map(
+        (e, i) =>
+          `## Edit ${i + 1}: ${e.filePath}\n\n**Instruction:** ${e.instruction}\n\n**Changes:**\n\`\`\`diff\n${e.diff}\n\`\`\``,
+      )
+      .join("\n\n---\n\n");
+
+    const tmpDir = path.join(os.tmpdir(), "codespark-review");
+    fs.mkdirSync(tmpDir, { recursive: true });
+    const editLogFile = path.join(tmpDir, `edit-log-${Date.now()}.md`);
+    fs.writeFileSync(editLogFile, editLogContent, "utf-8");
+
+    const prompt = `Review the user's recent inline edits for patterns that should be codified into CLAUDE.md instruction files.
+
+1. Read the edit log at \`${editLogFile}\`
+2. Use Glob to find any existing \`**/CLAUDE.md\` files, then Read them to understand what's already documented
+3. Look for recurring patterns, conventions, or corrections across the edits
+4. Identify rules that would help the inline agent make better edits in the future
+5. Use the \`update_suggestions\` tool to propose CLAUDE.md changes
+6. Focus on patterns, not one-off fixes
+7. Consider whether a rule belongs in the root CLAUDE.md or a subdirectory-specific one
+8. If existing CLAUDE.md files already cover a pattern, skip it or suggest refinements
+9. Each suggestion should include the FULL proposed content for the file (not just the addition)
+
+After calling update_suggestions, respond only with "Suggestions updated" — do not summarize the suggestions, they are already visible to the user.`;
+
+    // Show as a user message in the webview
+    this._post({ type: "inject-user", text: "Review my recent inline edits for CLAUDE.md suggestions" });
+
+    // Ensure we have a session
+    let sessionId = getActiveSessionId();
+    if (!sessionId) {
+      const session = createSession();
+      sessionId = session.id;
+      this._sendSessionsUpdate();
+    }
+
+    const handle = startResearchQuery(
+      prompt,
+      workspaceFolder,
+      this._log,
+      sessionId,
+      undefined,
+      {
+        tools: "Read,Glob,Grep,mcp__codespark__update_suggestions",
+        mcpConfigPath: this._mcpConfigPath,
+      },
+    );
+
+    try {
+      for await (const evt of iterateResearchEvents(handle, this._log)) {
+        if (evt.type === "done") {
+          if (evt.resultText.trim()) {
+            appendResearchContext(
+              sessionId,
+              "Review inline edits for CLAUDE.md suggestions",
+              evt.resultText.trim(),
+              [],
+              this._log,
+            );
+            this._post({ type: "context-updated" });
+            this._sendSessionsUpdate();
+          }
+          if (evt.sdkSessionId) {
+            saveAgentMessages(sessionId, [{ sdkSessionId: evt.sdkSessionId }]);
+          }
+          this._post({ type: "done" });
+        } else {
+          this._post(evt);
+        }
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this._log.appendLine(`[research:review-error] ${msg}`);
+      this._post({ type: "error", text: msg });
+      this._post({ type: "done" });
+    }
+  }
+
+  private async _handleSuggestionAction(
+    action: string,
+    id?: string,
+  ): Promise<void> {
+    const workspaceFolder =
+      vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+
+    if (action === "diff" && id) {
+      const suggestion = this._reviewSuggestions.find((s) => s.id === id);
+      if (!suggestion || !workspaceFolder) return;
+
+      // Create temp file with proposed content
+      const tmpDir = path.join(os.tmpdir(), "codespark-review");
+      fs.mkdirSync(tmpDir, { recursive: true });
+      const tmpFile = path.join(tmpDir, `proposed-${path.basename(suggestion.filePath)}`);
+      fs.writeFileSync(tmpFile, suggestion.proposedContent, "utf-8");
+
+      const proposedUri = vscode.Uri.file(tmpFile);
+
+      if (suggestion.isNewFile) {
+        // Show proposed content in a regular editor
+        const doc = await vscode.workspace.openTextDocument(proposedUri);
+        await vscode.window.showTextDocument(doc, { preview: true });
+      } else {
+        const originalUri = vscode.Uri.file(
+          path.resolve(workspaceFolder, suggestion.filePath),
+        );
+        await vscode.commands.executeCommand(
+          "vscode.diff",
+          originalUri,
+          proposedUri,
+          `${suggestion.filePath} (proposed changes)`,
+        );
+      }
+      return;
+    }
+
+    if (action === "approve-all" && workspaceFolder) {
+      for (const suggestion of this._reviewSuggestions) {
+        const absPath = path.resolve(workspaceFolder, suggestion.filePath);
+        const dir = path.dirname(absPath);
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(absPath, suggestion.proposedContent, "utf-8");
+        this._log.appendLine(`[review] Applied suggestion to ${suggestion.filePath}`);
+      }
+    }
+
+    // Both approve-all and dismiss exit review mode and clear the log
+    this._isReviewMode = false;
+    this._reviewSuggestions = [];
+    clearEditLog();
+    this._cancelCurrent();
+    this._post({ type: "review-mode", active: false });
+    this._post({ type: "edit-log-count", count: 0 });
+
+    // Start a fresh session
+    createSession();
+    this._post({
+      type: "restore",
+      entries: [],
+      sessions: getSessionInfos(),
+      activeSessionId: getActiveSessionId(),
+      hasContext: false,
+    });
   }
 
   /** Called from outside to save webview entries into the active session */

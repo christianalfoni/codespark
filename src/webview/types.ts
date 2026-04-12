@@ -23,6 +23,14 @@ export interface RunCommandMessage {
   type: "run-command";
   command: string;
 }
+export interface ReviewEditsMessage {
+  type: "review-edits";
+}
+export interface SuggestionActionMessage {
+  type: "suggestion-action";
+  action: "approve-all" | "dismiss" | "diff";
+  id?: string;
+}
 export interface NewSessionMessage {
   type: "new-session";
   currentEntries: import("./state").Entry[];
@@ -41,7 +49,9 @@ export type WebviewToExtension =
   | OpenFileMessage
   | RunCommandMessage
   | NewSessionMessage
-  | SwitchSessionMessage;
+  | SwitchSessionMessage
+  | ReviewEditsMessage
+  | SuggestionActionMessage;
 
 export interface SessionInfo {
   id: string;
@@ -112,6 +122,18 @@ export interface SetFileContextMessage {
   cursorLine: number;
   selection: string | null;
 }
+export interface EditLogCountMessage {
+  type: "edit-log-count";
+  count: number;
+}
+export interface ReviewSuggestionsMessage {
+  type: "review-suggestions";
+  suggestions: import("./state").ReviewSuggestion[];
+}
+export interface ReviewModeMessage {
+  type: "review-mode";
+  active: boolean;
+}
 
 export type ExtensionToWebview =
   | InitMessage
@@ -126,7 +148,10 @@ export type ExtensionToWebview =
   | SessionsUpdatedMessage
   | RestoreMessage
   | InjectUserMessage
-  | SetFileContextMessage;
+  | SetFileContextMessage
+  | EditLogCountMessage
+  | ReviewSuggestionsMessage
+  | ReviewModeMessage;
 
 export interface ChatMessage {
   role: "user" | "assistant";
