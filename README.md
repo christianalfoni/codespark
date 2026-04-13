@@ -2,9 +2,9 @@
   <img src="./media/logo.png" alt="CodeSpark" width="240" />
 </p>
 
-<p align="center"><em>Claude Code at the tip of your cursor</em></p>
+<p align="center"><em>Claude Code CLI at the tip of your cursor</em></p>
 
-> Claude Code CLI is great for personal projects where you can YOLO your way through at a high level of abstraction. But in teams and established codebases, handing Claude control at the project root means giving up your own decision-making, ownership, and learning. CodeSpark is a different kind of Claude Code experience — it is still Claude Code CLI under the hood, but designed to keep **you** in the driver's seat. You navigate, you decide, you learn.
+> Claude Code CLI is great when you can YOLO your way through a project. But in teams and established codebases, decision-making, ownership, and deep understanding matter more. CodeSpark is a different kind of experience — still Claude Code CLI under the hood, but designed to keep you in the driver's seat.
 
 ![CodeSpark in action](./media/screenshot.png)
 
