@@ -4,6 +4,7 @@ import { renderMarkdown } from "./markdown";
 import { prepareForRender } from "./prepareForRender";
 
 const TOOL_DISPLAY_NAMES: Record<string, string> = {
+  "read_reference": "Read Reference",
   "mcp__codespark__git_status": "Git Status",
   "mcp__codespark__git_log": "Git Log",
   "mcp__codespark__git_diff": "Git Diff",
@@ -14,19 +15,48 @@ const TOOL_DISPLAY_NAMES: Record<string, string> = {
   "mcp__codespark__delete_file": "Delete File",
 };
 
+interface ToolGroup {
+  name: string;
+  count: number;
+  status: ToolEntry["status"];
+  description?: string;
+}
+
+function groupTools(tools: ToolEntry[]): ToolGroup[] {
+  const groups: ToolGroup[] = [];
+  for (const t of tools) {
+    const existing = groups.find((g) => g.name === t.name);
+    if (existing) {
+      existing.count++;
+      // Aggregate status: pending > error > success
+      if (t.status === "pending") existing.status = "pending";
+      else if (t.status === "error" && existing.status !== "pending") existing.status = "error";
+      // Drop description when grouped
+      existing.description = undefined;
+    } else {
+      groups.push({ name: t.name, count: 1, status: t.status, description: t.description });
+    }
+  }
+  return groups;
+}
+
 function InlineTools({ tools }: { tools: ToolEntry[] }) {
   if (tools.length === 0) return null;
+  const groups = groupTools(tools);
   return (
     <span class="inline-tools">
-      {tools.map((t, i) => (
+      {groups.map((g, i) => (
         <span key={i} class="inline-tool">
-          <span class={`tool-dot tool-dot-${t.status}`} />
+          <span class={`tool-dot tool-dot-${g.status}`} />
           <span class="tool-label">
-            {TOOL_DISPLAY_NAMES[t.name] ?? t.name}
-            {t.description && (
-              <span class="tool-description">{t.description}</span>
+            {TOOL_DISPLAY_NAMES[g.name] ?? g.name}
+            {g.description && (
+              <span class="tool-description">{g.description}</span>
             )}
           </span>
+          {g.count > 1 && (
+            <span class="tool-count">({g.count})</span>
+          )}
         </span>
       ))}
     </span>

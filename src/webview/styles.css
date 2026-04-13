@@ -189,6 +189,12 @@ body {
   background: var(--vscode-charts-red, #f14c4c);
 }
 
+.tool-count {
+  font-weight: 400;
+  opacity: 0.6;
+  margin-left: -2px;
+}
+
 .tool-description {
   display: block;
   font-weight: 400;

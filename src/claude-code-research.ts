@@ -105,6 +105,8 @@ export function createResearchQuery(
     ...(mcpConfigPath ? ["--mcp-config", mcpConfigPath] : []),
     "--tools",
     "Read,Glob,Grep,WebSearch,WebFetch",
+    "--disallowedTools",
+    "mcp__codespark__edit_file,mcp__codespark__write_file,mcp__codespark__move_file,mcp__codespark__delete_file",
     "--system-prompt",
     buildResearchSystemPrompt(cwd),
   ];

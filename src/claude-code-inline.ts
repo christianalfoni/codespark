@@ -449,9 +449,13 @@ export async function executeInlineAgent(
   let numTurns = 0;
   const editedLines: Array<{ startLine: number; endLine: number }> = [];
 
-  let resolveOnEdit: (() => void) | undefined;
-  const editDonePromise = new Promise<void>((resolve) => {
-    resolveOnEdit = resolve;
+  // The system prompt instructs the model to edit the current file LAST,
+  // so an IPC edit for this file means all edits are done.
+  const currentFileAbs = path.resolve(workspaceFolder, ctx.filePath);
+
+  let resolveOnCurrentFileEdit: (() => void) | undefined;
+  const currentFileEditPromise = new Promise<void>((resolve) => {
+    resolveOnCurrentFileEdit = resolve;
   });
 
   let resolveOnDone: (() => void) | undefined;
@@ -461,24 +465,27 @@ export async function executeInlineAgent(
     rejectOnDone = reject;
   });
 
-  function markEditsApplied() {
-    if (!hasEdits) {
-      hasEdits = true;
-      log.appendLine(
-        `[cli-inline:timing] Edits confirmed: ${Date.now() - tSend}ms`,
-      );
-      resolveOnEdit?.();
-    }
-  }
-
   // Save the pre-edit cursor position so it can be restored on undo
   const preEditSelection = vscode.window.activeTextEditor?.selection;
   const preEditVisibleRange = vscode.window.activeTextEditor?.visibleRanges[0];
 
   // Listen for edits applied via IPC
-  const ipcEditSub = ipcServer.onEdit((_filePath, _count, editedRanges) => {
-    markEditsApplied();
+  const ipcEditSub = ipcServer.onEdit((filePath, _count, editedRanges) => {
+    if (!hasEdits) {
+      hasEdits = true;
+      log.appendLine(
+        `[cli-inline:timing] First edit applied: ${Date.now() - tSend}ms`,
+      );
+    }
     editedLines.push(...editedRanges);
+
+    // Current file edited = model is done (it edits the focused file last)
+    if (filePath === currentFileAbs) {
+      log.appendLine(
+        `[cli-inline:timing] Current file edit applied: ${Date.now() - tSend}ms`,
+      );
+      resolveOnCurrentFileEdit?.();
+    }
 
     const editor = vscode.window.activeTextEditor;
 
@@ -563,10 +570,8 @@ export async function executeInlineAgent(
               }
             }
 
-            // Text block starting after edits = model is summarizing, all edits are on disk
-            if (evt.content_block?.type === "text" && editToolSeen) {
-              markEditsApplied();
-            }
+            // (text blocks after edits no longer trigger early exit —
+            // we wait for the full process to complete)
           }
 
           if (evt?.type === "content_block_delta" && evt.delta?.type === "text_delta") {
@@ -590,10 +595,6 @@ export async function executeInlineAgent(
         }
 
         if (msg.type === "result") {
-          if (editToolSeen) {
-            markEditsApplied();
-          }
-
           if (msg.subtype === "success") {
             if (!editToolSeen && textResponseContent.trim()) {
               log.appendLine(
@@ -628,8 +629,10 @@ export async function executeInlineAgent(
     rejectOnDone?.(err);
   });
 
-  // Wait for edits or process completion
-  await Promise.race([editDonePromise, donePromise]);
+  // Current file is edited last (per system prompt), so we can return as soon
+  // as it lands. Fall back to waiting for full completion if no current-file
+  // edit arrives (e.g. model only edited other files or responded with text).
+  await Promise.race([currentFileEditPromise, donePromise]);
   ipcEditSub.dispose();
 
   const latencyMs = Date.now() - tSend;
