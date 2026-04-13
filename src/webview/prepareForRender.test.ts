@@ -48,6 +48,52 @@ describe("prepareForRender", () => {
         "```\ncode\n```\n**bold**",
       );
     });
+
+    it("upgrades nested fences with same backtick count", () => {
+      expect(
+        prepareForRender(
+          "```markdown\n# Hello\n```bash\necho hi\n```\n```",
+        ),
+      ).toBe("````markdown\n# Hello\n```bash\necho hi\n```\n````");
+    });
+
+    it("does not upgrade already-proper nesting (4 outer, 3 inner)", () => {
+      expect(
+        prepareForRender(
+          "````markdown\n```bash\necho hi\n```\n````",
+        ),
+      ).toBe("````markdown\n```bash\necho hi\n```\n````");
+    });
+
+    it("upgrades nested fences with multiple inner blocks", () => {
+      expect(
+        prepareForRender(
+          "```markdown\n```bash\necho hi\n```\n```python\nprint('x')\n```\n```",
+        ),
+      ).toBe(
+        "````markdown\n```bash\necho hi\n```\n```python\nprint('x')\n```\n````",
+      );
+    });
+
+    it("upgrades deeply nested fences", () => {
+      expect(
+        prepareForRender(
+          "```md\n```html\n```css\n.a{}\n```\n```\n```",
+        ),
+      ).toBe("`````md\n````html\n```css\n.a{}\n```\n````\n`````");
+    });
+
+    it("closes and upgrades nested fences during streaming", () => {
+      expect(
+        prepareForRender("```markdown\n# Hello\n```bash\necho hi"),
+      ).toBe("````markdown\n# Hello\n```bash\necho hi\n```\n````");
+    });
+
+    it("does not upgrade two separate code blocks", () => {
+      expect(
+        prepareForRender("```js\ncode\n```\n\n```py\nmore\n```"),
+      ).toBe("```js\ncode\n```\n\n```py\nmore\n```");
+    });
   });
 
   describe("incomplete links", () => {

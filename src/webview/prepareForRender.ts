@@ -5,25 +5,31 @@
 export function prepareForRender(buffer: string): string {
   if (!buffer) return buffer;
 
-  // 1. Handle fenced code blocks first
-  const fenceState = getFenceState(buffer);
+  // 1. Close any unclosed fence (streaming)
+  let result = buffer;
+  const fenceState = getFenceState(result);
 
   if (fenceState) {
-    // Inside an open code block — only close the fence, skip inline repairs
-    return buffer + "\n" + fenceState.closer;
+    result = result + "\n" + fenceState.closer;
   }
 
-  let result = buffer;
+  // 2. Upgrade nested fences that use the same backtick count
+  result = upgradeNestedFences(result);
 
-  // 2. Strip incomplete links/images at the end
+  // 3. If we were inside an open code block, skip inline repairs
+  if (fenceState) {
+    return result;
+  }
+
+  // 4. Strip incomplete links/images at the end
   result = stripIncompleteLinks(result);
 
-  // 3. Auto-close inline constructs
+  // 5. Auto-close inline constructs
   result = closeInlineCode(result);
   result = closeBoldItalic(result);
   result = closeStrikethrough(result);
 
-  // 4. Repair incomplete table rows
+  // 6. Repair incomplete table rows
   result = repairTableRow(result);
 
   return result;
@@ -33,24 +39,112 @@ export function prepareForRender(buffer: string): string {
 // Fenced code blocks
 // ---------------------------------------------------------------------------
 
-const FENCE_RE = /^(`{3,}|~{3,})/gm;
+const FENCE_LINE_RE = /^(`{3,}|~{3,})(.*)/gm;
 
+/**
+ * Nesting-aware fence state detector.
+ *
+ * Per CommonMark, a fence line with an info string (e.g. ```bash) is always
+ * an opener — never a closer. A bare fence (``` with nothing after) closes
+ * the innermost matching block. We use a stack to track nesting depth so
+ * that inner fences don't prematurely close an outer block.
+ */
 function getFenceState(
   buffer: string,
 ): { closer: string } | null {
-  let open: string | null = null;
+  const stack: Array<{ char: string; count: number }> = [];
 
-  for (const match of buffer.matchAll(FENCE_RE)) {
-    const fence = match[1];
-    if (!open) {
-      open = fence;
-    } else if (fence[0] === open[0] && fence.length >= open.length) {
-      open = null;
+  for (const match of buffer.matchAll(FENCE_LINE_RE)) {
+    const fenceChars = match[1];
+    const rest = match[2].trim();
+    const char = fenceChars[0];
+    const count = fenceChars.length;
+    const hasInfo = rest.length > 0;
+
+    if (stack.length === 0 || hasInfo) {
+      // Any fence opens when the stack is empty;
+      // a fence with an info string is always an opener (even when nested)
+      stack.push({ char, count });
+    } else {
+      // Bare fence — close the innermost matching block
+      const top = stack[stack.length - 1];
+      if (top.char === char && count >= top.count) {
+        stack.pop();
+      }
     }
   }
 
-  if (!open) return null;
-  return { closer: open[0].repeat(open.length) };
+  if (stack.length === 0) return null;
+  // Close all open fences from innermost to outermost
+  const closers = [];
+  for (let i = stack.length - 1; i >= 0; i--) {
+    closers.push(stack[i].char.repeat(stack[i].count));
+  }
+  return { closer: closers.join("\n") };
+}
+
+/**
+ * Detects nested fenced code blocks that share the same backtick/tilde count
+ * and upgrades the outer fences so the inner ones render as content.
+ *
+ * Example: an AI response containing a markdown file with inner code blocks
+ * all using ``` will be rewritten so the outermost pair uses ```` (or more).
+ */
+function upgradeNestedFences(text: string): string {
+  const lines = text.split("\n");
+  const FENCE_RE = /^(`{3,}|~{3,})(.*)/;
+
+  interface StackEntry {
+    lineIndex: number;
+    char: string;
+    count: number;
+    innerMaxCount: number;
+  }
+
+  const stack: StackEntry[] = [];
+  const upgrades = new Map<number, number>();
+
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(FENCE_RE);
+    if (!m) continue;
+
+    const char = m[1][0];
+    const count = m[1].length;
+    const hasInfo = m[2].trim().length > 0;
+
+    if (stack.length === 0 || hasInfo) {
+      stack.push({ lineIndex: i, char, count, innerMaxCount: 0 });
+    } else {
+      // Bare fence — close innermost matching
+      const top = stack[stack.length - 1];
+      if (top.char === char && count >= top.count) {
+        stack.pop();
+
+        if (top.innerMaxCount >= top.count) {
+          const newCount = top.innerMaxCount + 1;
+          upgrades.set(top.lineIndex, newCount);
+          upgrades.set(i, newCount);
+        }
+
+        // Propagate effective count to parent
+        if (stack.length > 0) {
+          const parent = stack[stack.length - 1];
+          const effective = upgrades.get(top.lineIndex) || top.count;
+          parent.innerMaxCount = Math.max(parent.innerMaxCount, effective);
+        }
+      }
+    }
+  }
+
+  if (upgrades.size === 0) return text;
+
+  for (const [lineIndex, newCount] of upgrades) {
+    const m = lines[lineIndex].match(FENCE_RE)!;
+    const oldLen = m[1].length;
+    lines[lineIndex] = m[1][0].repeat(newCount) + lines[lineIndex].slice(oldLen);
+  }
+
+  return lines.join("\n");
 }
 
 // ---------------------------------------------------------------------------
