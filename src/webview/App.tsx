@@ -6,6 +6,7 @@ import {
   CLIPBOARD_ICON,
   CHECK_ICON,
 } from "./markdown";
+import { prepareForRender } from "./prepareForRender";
 import { AssistantMessage } from "./AssistantMessage";
 import { SessionMenu } from "./SessionMenu";
 import { useAppState } from "./useAppState";
@@ -335,7 +336,7 @@ function UserMessage({
       onClick={isTruncated ? () => setExpanded((e) => !e) : undefined}
       style={isTruncated ? { cursor: "pointer" } : undefined}
     >
-      <div dangerouslySetInnerHTML={{ __html: renderMarkdown(display) }} />
+      <div dangerouslySetInnerHTML={{ __html: renderMarkdown(prepareForRender(display)) }} />
       {isTruncated && (
         <span
           class="message-user__toggle"

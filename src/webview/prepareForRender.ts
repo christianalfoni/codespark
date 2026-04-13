@@ -5,25 +5,31 @@
 export function prepareForRender(buffer: string): string {
   if (!buffer) return buffer;
 
-  // 1. Handle fenced code blocks first
-  const fenceState = getFenceState(buffer);
+  // 1. Close any unclosed fence (streaming)
+  let result = buffer;
+  const fenceState = getFenceState(result);
 
   if (fenceState) {
-    // Inside an open code block — only close the fence, skip inline repairs
-    return buffer + "\n" + fenceState.closer;
+    result = result + "\n" + fenceState.closer;
   }
 
-  let result = buffer;
+  // 2. Upgrade nested fences that use the same backtick count
+  result = upgradeNestedFences(result);
 
-  // 2. Strip incomplete links/images at the end
+  // 3. If we were inside an open code block, skip inline repairs
+  if (fenceState) {
+    return result;
+  }
+
+  // 4. Strip incomplete links/images at the end
   result = stripIncompleteLinks(result);
 
-  // 3. Auto-close inline constructs
+  // 5. Auto-close inline constructs
   result = closeInlineCode(result);
   result = closeBoldItalic(result);
   result = closeStrikethrough(result);
 
-  // 4. Repair incomplete table rows
+  // 6. Repair incomplete table rows
   result = repairTableRow(result);
 
   return result;
@@ -33,24 +39,180 @@ export function prepareForRender(buffer: string): string {
 // Fenced code blocks
 // ---------------------------------------------------------------------------
 
-const FENCE_RE = /^(`{3,}|~{3,})/gm;
+interface FenceInfo {
+  lineIndex: number;
+  char: string;
+  count: number;
+  hasInfo: boolean;
+}
 
+const FENCE_LINE_RE = /^(`{3,}|~{3,})(.*)/;
+
+function parseFenceLines(lines: string[]): FenceInfo[] {
+  const fences: FenceInfo[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(FENCE_LINE_RE);
+    if (!m) continue;
+    fences.push({
+      lineIndex: i,
+      char: m[1][0],
+      count: m[1].length,
+      hasInfo: m[2].trim().length > 0,
+    });
+  }
+  return fences;
+}
+
+/**
+ * Check if there's another bare fence of the same char/count after `afterIdx`
+ * but before the next fence with an info string (or end of list).
+ */
+function hasMoreBareFences(
+  fences: FenceInfo[],
+  afterIdx: number,
+  char: string,
+  minCount: number,
+): boolean {
+  for (let i = afterIdx; i < fences.length; i++) {
+    if (fences[i].hasInfo) return false;
+    if (fences[i].char === char && fences[i].count >= minCount) return true;
+  }
+  return false;
+}
+
+/**
+ * Determines whether a bare fence should close the top of stack or be treated
+ * as an inner opener. The rule: when the outermost block was opened with a
+ * language (e.g. ```markdown) and there are more bare fences ahead before the
+ * next info-fence, bare fences pair up as inner blocks — only the last
+ * unpaired bare fence closes the outer block.
+ */
+function shouldTreatAsInnerOpener(
+  stack: Array<{ char: string; count: number; hasInfo: boolean }>,
+  fences: FenceInfo[],
+  fenceIdx: number,
+  f: FenceInfo,
+): boolean {
+  if (stack.length !== 1) return false;
+  const top = stack[0];
+  if (!top.hasInfo) return false;
+  if (f.char !== top.char || f.count < top.count) return false;
+  return hasMoreBareFences(fences, fenceIdx + 1, f.char, top.count);
+}
+
+/**
+ * Nesting-aware fence state detector.
+ *
+ * Uses a stack to track nesting. Fences with info strings are always openers.
+ * Bare fences close the innermost block, UNLESS the outermost block has a
+ * language and there are more bare fences ahead — in that case they pair up
+ * as inner blocks.
+ */
 function getFenceState(
   buffer: string,
 ): { closer: string } | null {
-  let open: string | null = null;
+  const lines = buffer.split("\n");
+  const fences = parseFenceLines(lines);
+  const stack: Array<{ char: string; count: number; hasInfo: boolean }> = [];
 
-  for (const match of buffer.matchAll(FENCE_RE)) {
-    const fence = match[1];
-    if (!open) {
-      open = fence;
-    } else if (fence[0] === open[0] && fence.length >= open.length) {
-      open = null;
+  for (let fi = 0; fi < fences.length; fi++) {
+    const f = fences[fi];
+
+    if (stack.length === 0 || f.hasInfo) {
+      stack.push({ char: f.char, count: f.count, hasInfo: f.hasInfo });
+    } else {
+      const top = stack[stack.length - 1];
+      if (top.char === f.char && f.count >= top.count) {
+        if (shouldTreatAsInnerOpener(stack, fences, fi, f)) {
+          stack.push({ char: f.char, count: f.count, hasInfo: false });
+        } else {
+          stack.pop();
+        }
+      }
     }
   }
 
-  if (!open) return null;
-  return { closer: open[0].repeat(open.length) };
+  if (stack.length === 0) return null;
+  const closers = [];
+  for (let i = stack.length - 1; i >= 0; i--) {
+    closers.push(stack[i].char.repeat(stack[i].count));
+  }
+  return { closer: closers.join("\n") };
+}
+
+/**
+ * Detects nested fenced code blocks that share the same backtick/tilde count
+ * and upgrades the outer fences so the inner ones render as content.
+ *
+ * Handles both language-specified inner fences (```bash inside ```markdown)
+ * and bare inner fences (``` inside ```markdown). For bare inner fences,
+ * they pair up — the last unpaired bare fence closes the outer block.
+ */
+function upgradeNestedFences(text: string): string {
+  const lines = text.split("\n");
+  const fences = parseFenceLines(lines);
+
+  interface StackEntry {
+    lineIndex: number;
+    char: string;
+    count: number;
+    hasInfo: boolean;
+    innerMaxCount: number;
+  }
+
+  const stack: StackEntry[] = [];
+  const upgrades = new Map<number, number>();
+
+  for (let fi = 0; fi < fences.length; fi++) {
+    const f = fences[fi];
+
+    if (stack.length === 0 || f.hasInfo) {
+      stack.push({
+        lineIndex: f.lineIndex,
+        char: f.char,
+        count: f.count,
+        hasInfo: f.hasInfo,
+        innerMaxCount: 0,
+      });
+    } else {
+      const top = stack[stack.length - 1];
+      if (top.char === f.char && f.count >= top.count) {
+        if (shouldTreatAsInnerOpener(stack, fences, fi, f)) {
+          stack.push({
+            lineIndex: f.lineIndex,
+            char: f.char,
+            count: f.count,
+            hasInfo: false,
+            innerMaxCount: 0,
+          });
+        } else {
+          stack.pop();
+
+          if (top.innerMaxCount >= top.count) {
+            const newCount = top.innerMaxCount + 1;
+            upgrades.set(top.lineIndex, newCount);
+            upgrades.set(f.lineIndex, newCount);
+          }
+
+          if (stack.length > 0) {
+            const parent = stack[stack.length - 1];
+            const effective = upgrades.get(top.lineIndex) || top.count;
+            parent.innerMaxCount = Math.max(parent.innerMaxCount, effective);
+          }
+        }
+      }
+    }
+  }
+
+  if (upgrades.size === 0) return text;
+
+  for (const [lineIndex, newCount] of upgrades) {
+    const m = lines[lineIndex].match(FENCE_LINE_RE)!;
+    const oldLen = m[1].length;
+    lines[lineIndex] = m[1][0].repeat(newCount) + lines[lineIndex].slice(oldLen);
+  }
+
+  return lines.join("\n");
 }
 
 // ---------------------------------------------------------------------------
