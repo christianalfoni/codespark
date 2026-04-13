@@ -19,7 +19,7 @@ import {
   getLastClaudeMdCheckSha,
   setLastClaudeMdCheckSha,
 } from "./research-agent";
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
 
 function getNonce(): string {
   let text = "";
@@ -119,14 +119,14 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
     const lastSha = getLastClaudeMdCheckSha();
     try {
       if (lastSha) {
-        const count = execSync(`git rev-list ${lastSha}..HEAD --count`, {
+        const count = execFileSync("git", ["rev-list", `${lastSha}..HEAD`, "--count"], {
           cwd: workspaceFolder,
           encoding: "utf-8",
         }).trim();
         return parseInt(count, 10) || 0;
       }
       // No previous check — count all commits
-      const count = execSync("git rev-list HEAD --count", {
+      const count = execFileSync("git", ["rev-list", "HEAD", "--count"], {
         cwd: workspaceFolder,
         encoding: "utf-8",
       }).trim();
@@ -140,7 +140,7 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
     const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     if (!workspaceFolder) return undefined;
     try {
-      return execSync("git rev-parse HEAD", {
+      return execFileSync("git", ["rev-parse", "HEAD"], {
         cwd: workspaceFolder,
         encoding: "utf-8",
       }).trim();

@@ -340,7 +340,10 @@ async function handleDeleteRequest(
 }
 
 export function startIpcServer(log: vscode.OutputChannel): IpcServer {
-  const socketPath = `/tmp/codespark-${process.pid}.sock`;
+  const socketPath =
+    process.platform === "win32"
+      ? `\\\\.\\pipe\\codespark-${process.pid}`
+      : `/tmp/codespark-${process.pid}.sock`;
   const editListeners = new Set<EditListener>();
 
   // Clean up stale socket from prior crash

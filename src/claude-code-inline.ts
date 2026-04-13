@@ -383,7 +383,7 @@ export async function prepareInlineAgent(
  */
 export function abortInlineAgent(agent: PreparedInlineAgent): void {
   agent.proc.stdin?.end();
-  agent.proc.kill("SIGTERM");
+  agent.proc.kill();
   fs.promises.unlink(agent.sessionFile).catch(() => {});
 }
 

@@ -41,7 +41,7 @@ export function activate(context: vscode.ExtensionContext) {
   });
   context.subscriptions.push({
     dispose: () => {
-      mcpProc.kill("SIGTERM");
+      mcpProc.kill();
     },
   });
 

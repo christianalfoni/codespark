@@ -196,7 +196,7 @@ export function getLiveQuery(sessionId: string): ResearchQueryHandle | undefined
 export function abortLiveQuery(sessionId: string): void {
   const handle = _liveQueries.get(sessionId);
   if (handle) {
-    handle.process.kill("SIGTERM");
+    handle.process.kill();
     _liveQueries.delete(sessionId);
   }
 }
