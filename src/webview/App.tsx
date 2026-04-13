@@ -14,6 +14,7 @@ import { useMessageHandling } from "./useMessageHandling";
 import { useMessageListScroll } from "./useMessageListScroll";
 import { useTextareaAutoResize } from "./useTextareaAutoResize";
 import { useStickyUserMessage } from "./useStickyUserMessage";
+import { useCodeActions } from "./useCodeActions";
 import {
   SEND_ICON,
   STOP_ICON,
@@ -43,6 +44,7 @@ export function App({ vscode }: AppProps) {
   const { userScrolledUp, onScroll } = useMessageListScroll(messageListRef);
   const { registerUserMessage } = useStickyUserMessage(messageListRef, pinnedQueryRef);
   const autoResize = useTextareaAutoResize(textareaRef);
+  useCodeActions(messageListRef, pinnedQueryRef);
 
   useEffect(() => {
     if (!state.isStreaming) {
