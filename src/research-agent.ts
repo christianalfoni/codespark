@@ -176,6 +176,12 @@ export function getSessionInfos(): { id: string; name: string; createdAt: number
 
 const _liveQueries = new Map<string, ResearchQueryHandle>();
 
+/**
+ * Start a new research query. If a live process already exists for this session,
+ * send the message to it via stdin instead of spawning a new process.
+ * Returns the handle and a boolean indicating whether this is a follow-up
+ * message on an existing process (true) or a fresh spawn (false).
+ */
 export function startResearchQuery(
   prompt: string,
   cwd: string,
@@ -183,10 +189,17 @@ export function startResearchQuery(
   sessionId: string,
   mcpConfigPath?: string,
   resumeSdkSessionId?: string,
-): ResearchQueryHandle {
+): { handle: ResearchQueryHandle; isFollowUp: boolean } {
+  const existing = _liveQueries.get(sessionId);
+  if (existing && !existing.process.killed && existing.process.exitCode === null) {
+    log.appendLine(`[research-agent] Sending follow-up to existing process for session ${sessionId}`);
+    existing.sendMessage(prompt);
+    return { handle: existing, isFollowUp: true };
+  }
+
   const handle = createResearchQuery(prompt, cwd, log, mcpConfigPath, resumeSdkSessionId);
   _liveQueries.set(sessionId, handle);
-  return handle;
+  return { handle, isFollowUp: false };
 }
 
 export function getLiveQuery(sessionId: string): ResearchQueryHandle | undefined {

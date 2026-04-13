@@ -10,6 +10,8 @@ export interface ResearchQueryHandle {
   process: childProcess.ChildProcess;
   /** SDK session ID, available after the `result` message */
   sdkSessionId?: string;
+  /** Send a follow-up message to the running process via stdin */
+  sendMessage(text: string): void;
 }
 
 export type WebviewEvent =
@@ -99,6 +101,8 @@ export function createResearchQuery(
 
   const args = [
     "--print",
+    "--input-format",
+    "stream-json",
     "--output-format",
     "stream-json",
     "--verbose",
@@ -119,18 +123,25 @@ export function createResearchQuery(
     args.push("--resume", resumeSessionId);
   }
 
-  args.push(prompt);
-
   const proc = childProcess.spawn("claude", args, {
     cwd,
-    stdio: ["ignore", "pipe", "pipe"],
+    stdio: ["pipe", "pipe", "pipe"],
   });
 
   proc.stderr?.on("data", (chunk: Buffer) => {
     log.appendLine(`[claude-code-research:stderr] ${chunk.toString().trim()}`);
   });
 
-  return { process: proc };
+  function sendMessage(text: string) {
+    const msg = JSON.stringify({ type: "user", message: { role: "user", content: text } });
+    log.appendLine(`[claude-code-research] Sending message to stdin: ${msg.slice(0, 100)}`);
+    proc.stdin?.write(msg + "\n");
+  }
+
+  // Send initial prompt via stdin
+  sendMessage(prompt);
+
+  return { process: proc, sendMessage };
 }
 
 // ---------------------------------------------------------------------------
@@ -157,8 +168,6 @@ export async function* iterateResearchEvents(
 ): AsyncGenerator<WebviewEvent> {
   let toolIdCounter = 0;
   const pendingTools = new Map<number, { tool: string; toolId: number }>();
-  let resultText = "";
-  let sdkSessionId = "";
   let lastAssistantText = "";
 
   const rl = readline.createInterface({ input: handle.process.stdout! });
@@ -223,18 +232,31 @@ export async function* iterateResearchEvents(
       if (msg.type === "result") {
         yield* flushPendingTools(pendingTools);
 
-        sdkSessionId = msg.session_id ?? "";
+        const sdkSessionId = msg.session_id ?? "";
         handle.sdkSessionId = sdkSessionId;
         if (msg.subtype === "success") {
-          resultText = msg.result ?? lastAssistantText;
+          const resultText = msg.result ?? lastAssistantText;
           log.appendLine(
             `[claude-code-research] Query complete (${msg.num_turns} turns, $${msg.total_cost_usd?.toFixed(4)})`,
           );
+          yield {
+            type: "done",
+            resultText,
+            sdkSessionId,
+          };
         } else {
           const errors = msg.errors?.join("; ") ?? "Unknown error";
           log.appendLine(`[claude-code-research] Query error: ${errors}`);
           yield { type: "error", text: errors };
+          yield {
+            type: "done",
+            resultText: lastAssistantText,
+            sdkSessionId,
+          };
         }
+
+        // Reset for next turn
+        lastAssistantText = "";
       }
     }
   } catch (err: unknown) {
@@ -244,10 +266,4 @@ export async function* iterateResearchEvents(
   }
 
   yield* flushPendingTools(pendingTools);
-
-  yield {
-    type: "done",
-    resultText: resultText || lastAssistantText,
-    sdkSessionId,
-  };
 }

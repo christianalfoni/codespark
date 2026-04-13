@@ -88,7 +88,7 @@ export function useMessageHandling(
         if (assistant) {
           assistant.turns.push({ text: "", tools: [] });
         }
-        return { ...prev, entries, activeTool: null };
+        return { ...prev, entries, isStreaming: true, activeTool: null };
       }
       case "token": {
         if (assistant) {

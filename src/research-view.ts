@@ -36,6 +36,10 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
 
   private _view?: vscode.WebviewView;
   private _pendingFileContext?: { filePath: string; cursorLine: number; selection?: string };
+  /** Queue of prompts awaiting done events, in order */
+  private _promptQueue: { text: string; files: string[] }[] = [];
+  /** Whether an event loop is already running for the active session */
+  private _eventLoopRunning = false;
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
@@ -185,6 +189,8 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
     if (sessionId) {
       abortLiveQuery(sessionId);
     }
+    this._eventLoopRunning = false;
+    this._promptQueue = [];
   }
 
   private _handleNewSession(currentEntries: any[]): void {
@@ -318,7 +324,7 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
     terminal.sendText(command);
   }
 
-  private async _handlePrompt(text: string): Promise<void> {
+  private async _handlePrompt(text: string, files: string[] = []): Promise<void> {
     this._log.appendLine(`[research-view:prompt] ${text}`);
     const workspaceFolder =
       vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
@@ -336,11 +342,13 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
       this._sendSessionsUpdate();
     }
 
+    this._promptQueue.push({ text, files });
+
     // Check if session has a saved SDK session ID for resume
     const session = getActiveSession();
     const savedSdkSessionId = session?.agentMessages?.[0]?.sdkSessionId;
 
-    const handle = startResearchQuery(
+    const { handle, isFollowUp } = startResearchQuery(
       text,
       workspaceFolder,
       this._log,
@@ -349,11 +357,17 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
       savedSdkSessionId,
     );
 
+    // If this is a follow-up, the event loop is already running — just return
+    if (isFollowUp) return;
+
+    // Start the long-lived event loop for this process
+    this._eventLoopRunning = true;
     try {
       for await (const evt of iterateResearchEvents(handle, this._log)) {
         if (evt.type === "done") {
-          if (evt.resultText.trim()) {
-            appendResearchContext(sessionId, text, evt.resultText.trim(), [], this._log);
+          const prompt = this._promptQueue.shift();
+          if (evt.resultText.trim() && prompt) {
+            appendResearchContext(sessionId, prompt.text, evt.resultText.trim(), prompt.files, this._log);
             this._post({ type: "context-updated" });
             this._sendSessionsUpdate();
           }
@@ -361,6 +375,7 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
             saveAgentMessages(sessionId, [{ sdkSessionId: evt.sdkSessionId }]);
           }
           this._post({ type: "done" });
+          // Don't break — keep listening for follow-up turns
         } else {
           this._post(evt);
         }
@@ -371,6 +386,7 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
       this._post({ type: "error", text: msg });
       this._post({ type: "done" });
     }
+    this._eventLoopRunning = false;
   }
 
   /** Set file context to be attached to the next query from the webview */
@@ -461,64 +477,10 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
     cursorLine: number;
     contextSnippet: string;
   }): Promise<void> {
-    const workspaceFolder =
-      vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-    if (!workspaceFolder) {
-      this._post({ type: "error", text: "No workspace folder open." });
-      this._post({ type: "done" });
-      return;
-    }
-
-    let sessionId = getActiveSessionId();
-    if (!sessionId) {
-      const session = createSession();
-      sessionId = session.id;
-      this._sendSessionsUpdate();
-    }
-
     // Prepend file content to the prompt so the agent has context
     const contextPrompt = `Currently viewing \`${opts.filePath}\` (line ${opts.cursorLine}):\n\`\`\`\n${opts.fileContent}\n\`\`\`\n\n${opts.query}`;
 
-    const session = getActiveSession();
-    const savedSdkSessionId = session?.agentMessages?.[0]?.sdkSessionId;
-
-    const handle = startResearchQuery(
-      contextPrompt,
-      workspaceFolder,
-      this._log,
-      sessionId,
-      this._mcpConfigPath,
-      savedSdkSessionId,
-    );
-
-    try {
-      for await (const evt of iterateResearchEvents(handle, this._log)) {
-        if (evt.type === "done") {
-          if (evt.resultText.trim()) {
-            appendResearchContext(
-              sessionId,
-              opts.query,
-              evt.resultText.trim(),
-              [opts.filePath],
-              this._log,
-            );
-            this._post({ type: "context-updated" });
-            this._sendSessionsUpdate();
-          }
-          if (evt.sdkSessionId) {
-            saveAgentMessages(sessionId, [{ sdkSessionId: evt.sdkSessionId }]);
-          }
-          this._post({ type: "done" });
-        } else {
-          this._post(evt);
-        }
-      }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      this._log.appendLine(`[research:error] ${msg}`);
-      this._post({ type: "error", text: msg });
-      this._post({ type: "done" });
-    }
+    await this._handlePrompt(contextPrompt, [opts.filePath]);
   }
 
   /** Called from outside to save webview entries into the active session */

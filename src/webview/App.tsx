@@ -16,7 +16,6 @@ import { useTextareaAutoResize } from "./useTextareaAutoResize";
 import { useStickyUserMessage } from "./useStickyUserMessage";
 import { useCodeActions } from "./useCodeActions";
 import {
-  SEND_ICON,
   STOP_ICON,
   NEW_SESSION_ICON,
   copyCodeWithFeedback,
@@ -47,9 +46,7 @@ export function App({ vscode }: AppProps) {
   useCodeActions(messageListRef, pinnedQueryRef);
 
   useEffect(() => {
-    if (!state.isStreaming) {
-      textareaRef.current?.focus();
-    }
+    textareaRef.current?.focus();
   }, [state.isStreaming]);
 
   function send(text: string) {
@@ -113,7 +110,6 @@ export function App({ vscode }: AppProps) {
   function onKeyDown(e: KeyboardEvent) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      if (state.isStreaming) return;
       const text = textareaRef.current?.value.trim();
       if (!text) return;
       textareaRef.current!.value = "";
@@ -125,16 +121,8 @@ export function App({ vscode }: AppProps) {
     }
   }
 
-  function onClickSend() {
-    if (state.isStreaming) {
-      vscode.postMessage({ type: "cancel" });
-      return;
-    }
-    const text = textareaRef.current?.value.trim();
-    if (!text) return;
-    textareaRef.current!.value = "";
-    autoResize();
-    send(text);
+  function onClickStop() {
+    vscode.postMessage({ type: "cancel" });
   }
 
   function onMessageListClick(e: MouseEvent) {
@@ -235,7 +223,7 @@ export function App({ vscode }: AppProps) {
           <div class="input-wrapper">
             <textarea
               ref={textareaRef}
-              placeholder="Do some research to learn and get suggestions..."
+              placeholder={state.isStreaming ? "Send a follow-up message..." : "Do some research to learn and get suggestions..."}
               rows={1}
               onInput={autoResize}
               onKeyDown={onKeyDown}
@@ -278,14 +266,14 @@ export function App({ vscode }: AppProps) {
                 </div>
               )}
               <div style={{ flex: 1 }} />
-              <button
-                class="send-btn"
-                title={state.isStreaming ? "Stop (Escape)" : "Send (Enter)"}
-                onClick={onClickSend}
-                dangerouslySetInnerHTML={{
-                  __html: state.isStreaming ? STOP_ICON : SEND_ICON,
-                }}
-              />
+              {state.isStreaming && (
+                <button
+                  class="send-btn"
+                  title="Stop (Escape)"
+                  onClick={onClickStop}
+                  dangerouslySetInnerHTML={{ __html: STOP_ICON }}
+                />
+              )}
             </div>
           </div>
         </div>
