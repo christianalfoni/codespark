@@ -12,6 +12,7 @@ import { useAppState } from "./useAppState";
 import { useMessageHandling } from "./useMessageHandling";
 import { useMessageListScroll } from "./useMessageListScroll";
 import { useTextareaAutoResize } from "./useTextareaAutoResize";
+import { useStickyUserMessage } from "./useStickyUserMessage";
 import {
   SEND_ICON,
   STOP_ICON,
@@ -35,9 +36,11 @@ export function App({ vscode }: AppProps) {
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messageListRef = useRef<HTMLDivElement>(null);
+  const pinnedQueryRef = useRef<HTMLDivElement>(null);
 
   useMessageHandling(setState, textareaRef, vscode);
   const { userScrolledUp, onScroll } = useMessageListScroll(messageListRef);
+  const { registerUserMessage } = useStickyUserMessage(messageListRef, pinnedQueryRef);
   const autoResize = useTextareaAutoResize(textareaRef);
 
   useEffect(() => {
@@ -175,13 +178,19 @@ export function App({ vscode }: AppProps) {
 
   return (
     <>
-      <div
-        class="message-list"
-        ref={messageListRef}
-        onScroll={onScroll}
-        onClick={onMessageListClick}
-      >
-        {isEmpty ? (
+      <div class="message-list-wrapper">
+        <div
+          ref={pinnedQueryRef}
+          class="pinned-query message message-user"
+          style={{ display: "none" }}
+        />
+        <div
+          class="message-list"
+          ref={messageListRef}
+          onScroll={onScroll}
+          onClick={onMessageListClick}
+        >
+          {isEmpty ? (
           <div class="empty-state">
             <Logo />
             <div class="empty-state-text">
@@ -194,7 +203,14 @@ export function App({ vscode }: AppProps) {
             {state.entries.map((entry, i) => {
               const isLast = i === state.entries.length - 1;
               if (entry.role === "user") {
-                return <UserMessage key={i} content={entry.content} />;
+                return (
+                  <UserMessage
+                    key={i}
+                    index={i}
+                    content={entry.content}
+                    registerRef={registerUserMessage}
+                  />
+                );
               }
               return (
                 <AssistantMessage
@@ -208,6 +224,7 @@ export function App({ vscode }: AppProps) {
             <div class="message-list-spacer" />
           </>
         )}
+        </div>
       </div>
 
       <div class="input-area">
@@ -244,7 +261,7 @@ export function App({ vscode }: AppProps) {
               >
                 CLAUDE.md
                 {state.commitsSinceLastCheck >= 10 && (
-                  <span class="claude-md-badge">{state.commitsSinceLastCheck}</span>
+                  <span class="claude-md-dot" />
                 )}
               </button>
               <div style={{ flex: 1 }} />
@@ -292,13 +309,28 @@ function truncateContent(text: string): {
   return { truncated: result.trimEnd() + "…", isTruncated: true };
 }
 
-function UserMessage({ content }: { content: string }) {
+function UserMessage({
+  content,
+  index,
+  registerRef,
+}: {
+  content: string;
+  index: number;
+  registerRef: (index: number, el: HTMLElement | null) => void;
+}) {
   const [expanded, setExpanded] = useState(false);
   const { truncated, isTruncated } = truncateContent(content);
   const display = expanded ? content : truncated;
+  const elRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    registerRef(index, elRef.current);
+    return () => registerRef(index, null);
+  }, [index, registerRef]);
 
   return (
     <div
+      ref={elRef}
       class="message message-user"
       onClick={isTruncated ? () => setExpanded((e) => !e) : undefined}
       style={isTruncated ? { cursor: "pointer" } : undefined}

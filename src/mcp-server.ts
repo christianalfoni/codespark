@@ -242,9 +242,11 @@ If the destination's parent directories don't exist, they will be created.`,
   // Read-only git tools
   // -------------------------------------------------------------------------
 
+  const gitCwd = process.env.CODESPARK_WORKSPACE || process.cwd();
+
   function runGit(args: string[]): Promise<string> {
     return new Promise((resolve, reject) => {
-      childProcess.execFile("git", args, { maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
+      childProcess.execFile("git", args, { cwd: gitCwd, maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
         if (err) {
           reject(new Error(stderr.trim() || err.message));
         } else {

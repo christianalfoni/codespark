@@ -26,11 +26,13 @@ export function activate(context: vscode.ExtensionContext) {
 
   const mcpPort = 30000 + (process.pid % 10000);
   const mcpServerScript = path.join(context.extensionPath, "out", "mcp-server.js");
+  const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? "";
   const mcpProc = require("child_process").spawn("node", [mcpServerScript], {
     env: {
       ...process.env,
       CODESPARK_SOCKET: ipcServer.socketPath,
       CODESPARK_MCP_PORT: String(mcpPort),
+      CODESPARK_WORKSPACE: workspaceFolder,
     },
     stdio: ["pipe", "pipe", "pipe"],
   });

@@ -4,9 +4,7 @@
 
 <p align="center"><em>Claude Code at the tip of your cursor</em></p>
 
-> AI coding agents are great for personal projects where you can YOLO your way through at a high level of abstraction. But in teams and established codebases, handing control to an agent means giving up decision-making, ownership, and learning. CodeSpark is a different kind of experience — it runs the Claude Code CLI under the hood, but designed to keep **you** in the driver's seat. You navigate, you decide, you learn. The agent handles the mechanics.
-
-Two agents, one workflow: a fast **inline agent** for editing code at your cursor, and a **research agent** for deep codebase exploration and web search.
+> Claude Code CLI is great for personal projects where you can YOLO your way through at a high level of abstraction. But in teams and established codebases, handing Claude control at the project root means giving up your own decision-making, ownership, and learning. CodeSpark is a different kind of Claude Code experience — it is still Claude Code CLI under the hood, but designed to keep **you** in the driver's seat. You navigate, you decide, you learn.
 
 ![CodeSpark in action](./media/screenshot.png)
 
