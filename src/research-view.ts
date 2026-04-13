@@ -40,6 +40,7 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
   constructor(
     private readonly _extensionUri: vscode.Uri,
     private readonly _log: vscode.OutputChannel,
+    private readonly _mcpConfigPath?: string,
   ) {}
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
@@ -344,6 +345,7 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
       workspaceFolder,
       this._log,
       sessionId,
+      this._mcpConfigPath,
       savedSdkSessionId,
     );
 
@@ -485,6 +487,7 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
       workspaceFolder,
       this._log,
       sessionId,
+      this._mcpConfigPath,
       savedSdkSessionId,
     );
 

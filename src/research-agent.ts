@@ -181,9 +181,10 @@ export function startResearchQuery(
   cwd: string,
   log: vscode.OutputChannel,
   sessionId: string,
+  mcpConfigPath?: string,
   resumeSdkSessionId?: string,
 ): ResearchQueryHandle {
-  const handle = createResearchQuery(prompt, cwd, log, resumeSdkSessionId);
+  const handle = createResearchQuery(prompt, cwd, log, mcpConfigPath, resumeSdkSessionId);
   _liveQueries.set(sessionId, handle);
   return handle;
 }

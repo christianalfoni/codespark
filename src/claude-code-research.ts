@@ -55,6 +55,12 @@ You have powerful built-in tools:
 - **WebSearch**: Search the web for documentation, APIs, tutorials, etc.
 - **WebFetch**: Fetch and read web pages
 
+You also have git tools via MCP:
+- **git_status**: Show current branch, staged, modified, and untracked files
+- **git_log**: View commit history (optionally filter by file or ref)
+- **git_diff**: Show diffs (unstaged, staged, or against a ref)
+- **git_blame**: Annotate a file with authorship and change dates
+
 **Call multiple tools in parallel whenever possible.** For example, if the user asks something that involves both understanding their code AND looking up documentation, call both web search and file reading tools in the same response — they will run concurrently.
 
 ## Formatting
@@ -80,6 +86,7 @@ export function createResearchQuery(
   prompt: string,
   cwd: string,
   log: vscode.OutputChannel,
+  mcpConfigPath?: string,
   resumeSessionId?: string,
 ): ResearchQueryHandle {
   log.appendLine(
@@ -95,6 +102,7 @@ export function createResearchQuery(
     "--dangerously-skip-permissions",
     "--disable-slash-commands",
     "--strict-mcp-config",
+    ...(mcpConfigPath ? ["--mcp-config", mcpConfigPath] : []),
     "--tools",
     "Read,Glob,Grep,WebSearch,WebFetch",
     "--system-prompt",

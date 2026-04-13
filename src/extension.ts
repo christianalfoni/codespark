@@ -98,7 +98,7 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(watcher);
 
   // Research agent webview panel (created before invoke command so it can be passed)
-  const researchView = new ResearchViewProvider(context.extensionUri, log);
+  const researchView = new ResearchViewProvider(context.extensionUri, log, mcpConfigPath);
 
   context.subscriptions.push(
     vscode.commands.registerCommand(

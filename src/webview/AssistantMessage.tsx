@@ -3,6 +3,17 @@ import type { AssistantEntry, ToolEntry } from "./state";
 import { renderMarkdown } from "./markdown";
 import { prepareForRender } from "./prepareForRender";
 
+const TOOL_DISPLAY_NAMES: Record<string, string> = {
+  "mcp__codespark__git_status": "Git Status",
+  "mcp__codespark__git_log": "Git Log",
+  "mcp__codespark__git_diff": "Git Diff",
+  "mcp__codespark__git_blame": "Git Blame",
+  "mcp__codespark__edit_file": "Edit File",
+  "mcp__codespark__write_file": "Write File",
+  "mcp__codespark__move_file": "Move File",
+  "mcp__codespark__delete_file": "Delete File",
+};
+
 function InlineTools({ tools }: { tools: ToolEntry[] }) {
   if (tools.length === 0) return null;
   return (
@@ -11,7 +22,7 @@ function InlineTools({ tools }: { tools: ToolEntry[] }) {
         <span key={i} class="inline-tool">
           <span class={`tool-dot tool-dot-${t.status}`} />
           <span class="tool-label">
-            {t.name}
+            {TOOL_DISPLAY_NAMES[t.name] ?? t.name}
             {t.description && (
               <span class="tool-description">{t.description}</span>
             )}

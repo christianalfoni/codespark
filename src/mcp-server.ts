@@ -13,6 +13,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { z } from "zod";
 import * as net from "net";
 import * as http from "http";
+import * as childProcess from "child_process";
 
 // ---------------------------------------------------------------------------
 // IPC client — connects to the extension's Unix socket
@@ -233,6 +234,104 @@ If the destination's parent directories don't exist, they will be created.`,
           content: [{ type: "text" as const, text: `IPC error: ${msg}` }],
           isError: true,
         };
+      }
+    },
+  );
+
+  // -------------------------------------------------------------------------
+  // Read-only git tools
+  // -------------------------------------------------------------------------
+
+  function runGit(args: string[]): Promise<string> {
+    return new Promise((resolve, reject) => {
+      childProcess.execFile("git", args, { maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
+        if (err) {
+          reject(new Error(stderr.trim() || err.message));
+        } else {
+          resolve(stdout);
+        }
+      });
+    });
+  }
+
+  // @ts-ignore
+  server.tool(
+    "git_status",
+    `Show the current branch, staged, modified, and untracked files.`,
+    {},
+    async () => {
+      try {
+        const output = await runGit(["status", "--short", "--branch"]);
+        return { content: [{ type: "text" as const, text: output }] };
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return { content: [{ type: "text" as const, text: `Error: ${msg}` }], isError: true };
+      }
+    },
+  );
+
+  // @ts-ignore
+  server.tool(
+    "git_log",
+    `View commit history. Optionally filter by file path or ref (branch/tag/hash).`,
+    {
+      max_count: z.number().optional().default(20).describe("Maximum number of commits to show"),
+      file: z.string().optional().describe("Filter commits that touch this file path"),
+      ref: z.string().optional().describe("Branch, tag, or commit hash to start from"),
+    },
+    async ({ max_count, file, ref }) => {
+      try {
+        const args = ["log", `--max-count=${max_count}`, "--oneline", "--decorate"];
+        if (ref) args.push(ref);
+        if (file) args.push("--", file);
+        const output = await runGit(args);
+        return { content: [{ type: "text" as const, text: output }] };
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return { content: [{ type: "text" as const, text: `Error: ${msg}` }], isError: true };
+      }
+    },
+  );
+
+  // @ts-ignore
+  server.tool(
+    "git_diff",
+    `Show diffs. With no arguments shows unstaged changes. Use staged=true for staged changes,
+or provide a ref (e.g. "main", "HEAD~3") to diff against.`,
+    {
+      staged: z.boolean().optional().default(false).describe("Show staged (cached) changes"),
+      ref: z.string().optional().describe("Diff against this ref (branch, tag, or commit)"),
+      file: z.string().optional().describe("Limit diff to this file path"),
+    },
+    async ({ staged, ref, file }) => {
+      try {
+        const args = ["diff"];
+        if (staged) args.push("--cached");
+        if (ref) args.push(ref);
+        if (file) args.push("--", file);
+        const output = await runGit(args);
+        return { content: [{ type: "text" as const, text: output || "(no diff)" }] };
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return { content: [{ type: "text" as const, text: `Error: ${msg}` }], isError: true };
+      }
+    },
+  );
+
+  // @ts-ignore
+  server.tool(
+    "git_blame",
+    `Annotate a file with authorship and last-change info for each line.`,
+    {
+      file: z.string().describe("File path to annotate"),
+    },
+    async ({ file }) => {
+      try {
+        const output = await runGit(["blame", "--date=short", file]);
+        return { content: [{ type: "text" as const, text: output }] };
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return { content: [{ type: "text" as const, text: `Error: ${msg}` }], isError: true };
       }
     },
   );
