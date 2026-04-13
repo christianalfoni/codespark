@@ -38,6 +38,7 @@ export interface ChatState {
   sessions: SessionInfo[];
   activeSessionId: string | null;
   fileContext: { filePath: string; cursorLine: number; selection?: string } | null;
+  commitsSinceLastCheck: number;
 }
 
 export function createInitialState(saved: any): ChatState {
@@ -49,6 +50,7 @@ export function createInitialState(saved: any): ChatState {
     sessions: [],
     activeSessionId: null,
     fileContext: null,
+    commitsSinceLastCheck: 0,
   };
 
   if (saved?.entries) {

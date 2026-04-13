@@ -82,6 +82,19 @@ export function App({ vscode }: AppProps) {
     }, 0);
   }
 
+  function startClaudeMdReview() {
+    const currentEntries = state.entries;
+    setState((prev) => ({
+      ...prev,
+      entries: [],
+      isStreaming: true,
+      activeTool: null,
+      fileContext: null,
+      commitsSinceLastCheck: 0,
+    }));
+    vscode.postMessage({ type: "claude-md-review", currentEntries });
+  }
+
   function switchToSession(id: string) {
     if (id === state.activeSessionId) return;
     vscode.postMessage({
@@ -223,6 +236,17 @@ export function App({ vscode }: AppProps) {
                   onSwitch={switchToSession}
                 />
               )}
+              <button
+                class="claude-md-btn"
+                title="Review codebase patterns and update CLAUDE.md"
+                disabled={state.isStreaming}
+                onClick={startClaudeMdReview}
+              >
+                CLAUDE.md
+                {state.commitsSinceLastCheck >= 10 && (
+                  <span class="claude-md-badge">{state.commitsSinceLastCheck}</span>
+                )}
+              </button>
               <div style={{ flex: 1 }} />
               {state.fileContext && (
                 <div class="file-context-badge">

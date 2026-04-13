@@ -16,7 +16,10 @@ import {
   updateSessionEntries,
   saveAgentMessages,
   getSessionInfos,
+  getLastClaudeMdCheckSha,
+  setLastClaudeMdCheckSha,
 } from "./research-agent";
+import { execSync } from "child_process";
 
 function getNonce(): string {
   let text = "";
@@ -86,6 +89,9 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
         case "switch-session":
           this._handleSwitchSession(msg.id, msg.currentEntries);
           break;
+        case "claude-md-review":
+          this._handleClaudeMdReview(msg.currentEntries);
+          break;
       }
     });
 
@@ -105,16 +111,54 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
     this._view?.webview.postMessage(msg);
   }
 
+  private _getCommitsSinceLastCheck(): number {
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!workspaceFolder) return 0;
+
+    const lastSha = getLastClaudeMdCheckSha();
+    try {
+      if (lastSha) {
+        const count = execSync(`git rev-list ${lastSha}..HEAD --count`, {
+          cwd: workspaceFolder,
+          encoding: "utf-8",
+        }).trim();
+        return parseInt(count, 10) || 0;
+      }
+      // No previous check — count all commits
+      const count = execSync("git rev-list HEAD --count", {
+        cwd: workspaceFolder,
+        encoding: "utf-8",
+      }).trim();
+      return parseInt(count, 10) || 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  private _getCurrentCommitSha(): string | undefined {
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!workspaceFolder) return undefined;
+    try {
+      return execSync("git rev-parse HEAD", {
+        cwd: workspaceFolder,
+        encoding: "utf-8",
+      }).trim();
+    } catch {
+      return undefined;
+    }
+  }
+
   private _sendInit(): void {
+    const commitsSinceLastCheck = this._getCommitsSinceLastCheck();
     const session = getActiveSession();
     if (session && session.entries.length > 0) {
-      // Restore previous session
       this._post({
         type: "restore",
         entries: session.entries,
         sessions: getSessionInfos(),
         activeSessionId: getActiveSessionId(),
         hasContext: !!session.summary,
+        commitsSinceLastCheck,
       });
     } else {
       this._post({
@@ -122,6 +166,7 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
         hasContext: !!getResearchSummary(),
         sessions: getSessionInfos(),
         activeSessionId: getActiveSessionId(),
+        commitsSinceLastCheck,
       });
     }
   }
@@ -160,8 +205,46 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
         sessions: getSessionInfos(),
         activeSessionId: id,
         hasContext: !!session.summary,
+        commitsSinceLastCheck: this._getCommitsSinceLastCheck(),
       });
     }
+  }
+
+  private _handleClaudeMdReview(currentEntries: any[]): void {
+    this._saveCurrentSession(currentEntries);
+    this._cancelCurrent();
+    this._pendingFileContext = undefined;
+
+    // Capture the previous check SHA before updating it
+    const previousSha = getLastClaudeMdCheckSha();
+
+    // Record current HEAD so we know when we last checked
+    const currentSha = this._getCurrentCommitSha();
+    if (currentSha) {
+      setLastClaudeMdCheckSha(currentSha);
+    }
+
+    // Create a named session
+    createSession("CLAUDE.md Review");
+    this._sendSessionsUpdate();
+
+    // Build the preset prompt
+    const rangeHint = previousSha
+      ? ` Focus on changes since commit ${previousSha.slice(0, 8)}.`
+      : "";
+
+    const prompt =
+      `Based on any current and recent historic changes to my codebase, do you find any newly emerged patterns, styles, or violations to my existing patterns and styles?${rangeHint}\n\n` +
+      `Review the existing CLAUDE.md files in the project and suggest specific additions or updates based on what you find. ` +
+      `Also recommend creating new CLAUDE.md files in folders that could benefit from domain-specific instructions relevant to that folder's purpose.\n\n` +
+      `Format all suggestions as markdown code blocks that can be copied directly into the target CLAUDE.md file. ` +
+      `For each suggestion, specify the file path it applies to (e.g. \`src/components/CLAUDE.md\`) followed by the markdown block.`;
+
+    // Inject user message + start streaming in the webview
+    this._post({ type: "inject-user", text: prompt });
+
+    // Fire the prompt
+    this._handlePrompt(prompt);
   }
 
   private _saveCurrentSession(entries: any[]): void {

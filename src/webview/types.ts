@@ -32,6 +32,10 @@ export interface SwitchSessionMessage {
   id: string;
   currentEntries: import("./state").Entry[];
 }
+export interface ClaudeMdReviewMessage {
+  type: "claude-md-review";
+  currentEntries: import("./state").Entry[];
+}
 
 export type WebviewToExtension =
   | SendMessage
@@ -41,7 +45,8 @@ export type WebviewToExtension =
   | OpenFileMessage
   | RunCommandMessage
   | NewSessionMessage
-  | SwitchSessionMessage;
+  | SwitchSessionMessage
+  | ClaudeMdReviewMessage;
 
 export interface SessionInfo {
   id: string;
@@ -54,6 +59,7 @@ export interface InitMessage {
   hasContext: boolean;
   sessions: SessionInfo[];
   activeSessionId: string | null;
+  commitsSinceLastCheck: number;
 }
 export interface TurnStartMessage {
   type: "turn-start";
@@ -99,6 +105,7 @@ export interface RestoreMessage {
   sessions: SessionInfo[];
   activeSessionId: string | null;
   hasContext: boolean;
+  commitsSinceLastCheck: number;
 }
 
 export interface InjectUserMessage {

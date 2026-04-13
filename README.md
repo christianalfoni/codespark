@@ -41,6 +41,8 @@ The two agents are connected: ask a question in the research panel, and the next
 
 This is the same `CLAUDE.md` convention used by Claude Code in the terminal. Instructions you write for CodeSpark — patterns, conventions, constraints, preferred libraries — also improve Claude Code when you use it from the CLI. You're not maintaining two configurations; you're building one set of instructions that makes the agent better everywhere.
 
+**CLAUDE.md Review** — The research panel has a `CLAUDE.md` button in the input toolbar. Clicking it starts a new research session that analyzes recent codebase changes for newly emerged patterns, style conventions, or violations of existing rules. It suggests updates to existing `CLAUDE.md` files and recommends creating new ones in folders that would benefit from domain-specific instructions. All suggestions are formatted as copyable markdown blocks. The extension tracks commits since the last review and shows a badge on the button when 10 or more commits have landed without a check.
+
 ## Shortcuts
 
 | Mac           | Windows / Linux | What it does                                                                                                      |

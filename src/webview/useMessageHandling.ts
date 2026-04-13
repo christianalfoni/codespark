@@ -46,6 +46,7 @@ export function useMessageHandling(
             : prev.contextState,
           sessions: msg.sessions,
           activeSessionId: msg.activeSessionId,
+          commitsSinceLastCheck: msg.commitsSinceLastCheck,
         };
       }
       case "restore": {
@@ -59,6 +60,7 @@ export function useMessageHandling(
             : ("none" as ContextState),
           sessions: msg.sessions,
           activeSessionId: msg.activeSessionId,
+          commitsSinceLastCheck: msg.commitsSinceLastCheck,
         };
       }
       case "sessions-updated": {
