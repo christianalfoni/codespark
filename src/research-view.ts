@@ -245,7 +245,7 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
       `Review the existing CLAUDE.md files in the project and suggest specific additions or updates based on what you find. ` +
       `Also recommend creating new CLAUDE.md files in folders that could benefit from domain-specific instructions relevant to that folder's purpose.\n\n` +
       `Format all suggestions as markdown code blocks that can be copied directly into the target CLAUDE.md file. ` +
-      `For each suggestion, specify the file path it applies to (e.g. \`src/components/CLAUDE.md\`) followed by the markdown block.`;
+      `For each suggestion, specify the target file path as a clickable vscode://file link (e.g. [src/components/CLAUDE.md](vscode://file/path/to/workspace/src/components/CLAUDE.md)) followed by the markdown block.`;
 
     // Inject user message + start streaming in the webview
     this._post({ type: "inject-user", text: prompt });
