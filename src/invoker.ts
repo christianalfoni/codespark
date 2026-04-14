@@ -325,6 +325,9 @@ export function createInvokeCommand(
     }
 
     log.appendLine(`[context] Cursor at line ${cursorLineNum + 1}`);
+    log.appendLine(
+      `[context] Focus area: lines ${focusArea.focusStartLine + 1}-${focusArea.focusEndLine + 1}`,
+    );
     if (instructions.root) {
       log.appendLine(
         `[context] Root CLAUDE.md: ${vscode.workspace.asRelativePath(instructions.root.uri)}`,

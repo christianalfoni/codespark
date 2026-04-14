@@ -411,7 +411,7 @@ export async function executeInlineAgent(
   // File content is already in the session via fake Read results.
   // User message only needs the instruction + cursor context.
   const selectionPrefix = ctx.selection
-    ? `\`\`\`\n${ctx.selection}\n\`\`\`\n\n`
+    ? `The user is referencing this code in the current file:\n\`\`\`\n${ctx.selection}\n\`\`\`\n\n`
     : "";
   const userInstruction = `I am currently looking at this area of the file ${ctx.filePath} (around line ${ctx.cursorLine}):\n\`\`\`\n${ctx.contextSnippet}\n\`\`\`\n\n${selectionPrefix}${ctx.instruction}`;
 
