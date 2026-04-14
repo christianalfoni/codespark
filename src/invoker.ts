@@ -153,20 +153,41 @@ export function createInvokeCommand(
     const cursorLine = editor.document.lineAt(cursorLineNum);
     const cursorOnEmptyLine = cursorLine.isEmptyOrWhitespace;
 
-    // Fire off focus area evaluation without blocking — result needed after prompt
-    const focusAreaPromise = evaluateFocusArea(editor);
+    const focusArea = await evaluateFocusArea(editor);
+    const isWholeFile =
+      focusArea.focusStartLine === 0 &&
+      focusArea.focusEndLine === editor.document.lineCount - 1;
 
-    const pendingRange = new vscode.Range(
-      new vscode.Position(0, 0),
-      editor.document.lineAt(editor.document.lineCount - 1).range.end,
-    );
+    // Dim everything outside the focus area while the prompt is open.
+    // If cursor is on line 1 (whole file context), don't dim anything.
+    let invokeDim: vscode.TextEditorDecorationType | undefined;
+    if (!isWholeFile) {
+      invokeDim = vscode.window.createTextEditorDecorationType({
+        isWholeLine: true,
+        opacity: "0.5",
+      });
 
-    // Dim the file while the prompt is open
-    const invokeDim = vscode.window.createTextEditorDecorationType({
-      isWholeLine: true,
-      opacity: "0.5",
-    });
-    editor.setDecorations(invokeDim, [pendingRange]);
+      // Determine which lines stay bright
+      let brightStart: number;
+      let brightEnd: number;
+      if (focusArea.enclosingBlock && cursorLineNum === focusArea.enclosingBlock.start) {
+        // On start line of a block → keep the whole block bright
+        brightStart = focusArea.focusStartLine;
+        brightEnd = focusArea.focusEndLine;
+      } else {
+        // Inside a block or no block → keep just the cursor line bright
+        brightStart = cursorLineNum;
+        brightEnd = cursorLineNum;
+      }
+
+      const dimRanges: vscode.Range[] = [];
+      for (let l = 0; l < editor.document.lineCount; l++) {
+        if (l < brightStart || l > brightEnd) {
+          dimRanges.push(new vscode.Range(l, 0, l, 0));
+        }
+      }
+      editor.setDecorations(invokeDim, dimRanges);
+    }
 
     const filePath = vscode.workspace.asRelativePath(editor.document.uri);
     const basename = path.basename(editor.document.uri.fsPath);
@@ -216,7 +237,7 @@ export function createInvokeCommand(
 
     if (!promptResult) {
       agentPromise.then((agent) => abortInlineAgent(agent)).catch(() => {});
-      invokeDim.dispose();
+      invokeDim?.dispose();
       decorationProvider.deactivate();
       return;
     }
@@ -236,7 +257,7 @@ export function createInvokeCommand(
     }
 
     // Start scanning immediately after prompt submission
-    invokeDim.dispose();
+    invokeDim?.dispose();
     const isEmpty = editor.document.getText().trim().length === 0;
     let pulse: { dispose: () => void } = isEmpty
       ? startEmptyFilePlaceholder(editor)
@@ -244,10 +265,7 @@ export function createInvokeCommand(
 
     statusBarItem.text = "$(loading~spin) CodeSpark · thinking...";
 
-    const [focusArea, agent] = await Promise.all([
-      focusAreaPromise,
-      agentPromise,
-    ]);
+    const agent = await agentPromise;
 
     const contextSnippet =
       focusArea.focusStartLine === 0 &&
