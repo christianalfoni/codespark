@@ -2,7 +2,7 @@
   "name": "codespark-agent",
   "displayName": "CodeSpark",
   "description": "A coding agent at the tip of your cursor",
-  "version": "0.15.5",
+  "version": "0.15.6",
   "publisher": "codespark",
   "license": "MIT",
   "icon": "media/icon.png",
