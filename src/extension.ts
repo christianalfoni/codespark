@@ -27,22 +27,32 @@ export function activate(context: vscode.ExtensionContext) {
   const mcpPort = 30000 + (process.pid % 10000);
   const mcpServerScript = path.join(context.extensionPath, "out", "mcp-server.js");
   const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? "";
-  const mcpProc = require("child_process").spawn("node", [mcpServerScript], {
-    env: {
-      ...process.env,
-      CODESPARK_SOCKET: ipcServer.socketPath,
-      CODESPARK_MCP_PORT: String(mcpPort),
-      CODESPARK_WORKSPACE: workspaceFolder,
-    },
-    stdio: ["pipe", "pipe", "pipe"],
-  });
-  mcpProc.stderr?.on("data", (chunk: Buffer) => {
-    log.appendLine(`[mcp-server] ${chunk.toString().trim()}`);
-  });
-  context.subscriptions.push({
-    dispose: () => {
-      mcpProc.kill();
-    },
+
+  // Wait for IPC socket to be ready before spawning MCP server
+  ipcServer.ready.then(() => {
+    const mcpProc = require("child_process").spawn("node", [mcpServerScript], {
+      env: {
+        ...process.env,
+        CODESPARK_SOCKET: ipcServer.socketPath,
+        CODESPARK_MCP_PORT: String(mcpPort),
+        CODESPARK_WORKSPACE: workspaceFolder,
+      },
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    mcpProc.stderr?.on("data", (chunk: Buffer) => {
+      log.appendLine(`[mcp-server] ${chunk.toString().trim()}`);
+    });
+    mcpProc.on("error", (err: Error) => {
+      log.appendLine(`[mcp-server] Failed to spawn: ${err.message}`);
+    });
+    mcpProc.on("exit", (code: number | null, signal: string | null) => {
+      log.appendLine(`[mcp-server] Exited (code=${code}, signal=${signal})`);
+    });
+    context.subscriptions.push({
+      dispose: () => {
+        mcpProc.kill();
+      },
+    });
   });
 
   const mcpConfig = {

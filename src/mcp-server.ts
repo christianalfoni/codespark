@@ -358,8 +358,21 @@ function parseBody(req: http.IncomingMessage): Promise<any> {
   });
 }
 
+async function connectIpcWithRetry(maxRetries = 5, delayMs = 200): Promise<void> {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      await connectIpc();
+      return;
+    } catch (err) {
+      if (attempt === maxRetries) throw err;
+      process.stderr.write(`IPC connect attempt ${attempt}/${maxRetries} failed, retrying in ${delayMs}ms...\n`);
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+}
+
 async function main() {
-  await connectIpc();
+  await connectIpcWithRetry();
 
   const httpServer = http.createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", `http://${req.headers.host}`);

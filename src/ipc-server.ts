@@ -13,6 +13,7 @@ export type EditListener = (
 
 export interface IpcServer {
   socketPath: string;
+  ready: Promise<void>;
   onEdit: (listener: EditListener) => { dispose: () => void };
   dispose: () => void;
 }
@@ -353,6 +354,9 @@ export function startIpcServer(log: vscode.OutputChannel): IpcServer {
     // ignore — file didn't exist
   }
 
+  let readyResolve: () => void;
+  const ready = new Promise<void>((resolve) => { readyResolve = resolve; });
+
   const server = net.createServer((conn) => {
     log.appendLine("[ipc] Client connected");
 
@@ -369,6 +373,7 @@ export function startIpcServer(log: vscode.OutputChannel): IpcServer {
 
   server.listen(socketPath, () => {
     log.appendLine(`[ipc] Server listening on ${socketPath}`);
+    readyResolve();
   });
 
   server.on("error", (err) => {
@@ -377,6 +382,7 @@ export function startIpcServer(log: vscode.OutputChannel): IpcServer {
 
   return {
     socketPath,
+    ready,
     onEdit(listener: EditListener) {
       editListeners.add(listener);
       return {
