@@ -2,7 +2,11 @@ import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
 import { InstructionFileDecorationProvider } from "./instructionDecorations";
-import { prepareInlineAgent, executeInlineAgent, abortInlineAgent } from "./claude-code-inline";
+import {
+  prepareInlineAgent,
+  executeInlineAgent,
+  abortInlineAgent,
+} from "./claude-code-inline";
 import { ResolvedContext, LLMResult } from "./types";
 import { createInlinePromptDecorations } from "./promptInput";
 import { recordQuery } from "./stats";
@@ -16,9 +20,9 @@ import { ResearchViewProvider } from "./research-view";
  * Placeholder for empty files: shows a "Generating..." decoration on line 1
  * with a blinking cursor-style animation via opacity toggling.
  */
-function startEmptyFilePlaceholder(
-  editor: vscode.TextEditor,
-): { dispose: () => void } {
+function startEmptyFilePlaceholder(editor: vscode.TextEditor): {
+  dispose: () => void;
+} {
   const placeholderType = vscode.window.createTextEditorDecorationType({
     isWholeLine: true,
     after: {
@@ -28,9 +32,7 @@ function startEmptyFilePlaceholder(
     },
   });
 
-  editor.setDecorations(placeholderType, [
-    new vscode.Range(0, 0, 0, 0),
-  ]);
+  editor.setDecorations(placeholderType, [new vscode.Range(0, 0, 0, 0)]);
 
   return {
     dispose() {
@@ -43,9 +45,7 @@ function startEmptyFilePlaceholder(
  * Scanning effect: a bright band sweeps down through visible lines only.
  * Lines near the scan position are more opaque, the rest stay dim.
  */
-function startFileScan(
-  editor: vscode.TextEditor,
-): { dispose: () => void } {
+function startFileScan(editor: vscode.TextEditor): { dispose: () => void } {
   // Pre-create opacity levels — fewer types = better performance.
   // Level 0 = dimmest (base), last = brightest (scan center).
   const BASE_OPACITY = 0.3;
@@ -73,7 +73,10 @@ function startFileScan(
     if (ranges.length === 0) {
       return { start: 0, end: editor.document.lineCount };
     }
-    return { start: ranges[0].start.line, end: ranges[ranges.length - 1].end.line };
+    return {
+      start: ranges[0].start.line,
+      end: ranges[ranges.length - 1].end.line,
+    };
   }
 
   let { start: visStart, end: visEnd } = getVisibleRange();
@@ -83,10 +86,7 @@ function startFileScan(
     // Re-read visible range each frame so scrolling is handled
     ({ start: visStart, end: visEnd } = getVisibleRange());
 
-    const buckets: vscode.Range[][] = Array.from(
-      { length: LEVELS },
-      () => [],
-    );
+    const buckets: vscode.Range[][] = Array.from({ length: LEVELS }, () => []);
 
     for (let line = visStart; line <= visEnd; line++) {
       const dist = Math.abs(line - scanPos);
@@ -176,7 +176,10 @@ export function createInvokeCommand(
         // Selection → keep the entire selection bright
         brightStart = editor.selection.start.line;
         brightEnd = editor.selection.end.line;
-      } else if (focusArea.enclosingBlock && cursorLineNum === focusArea.enclosingBlock.start) {
+      } else if (
+        focusArea.enclosingBlock &&
+        cursorLineNum === focusArea.enclosingBlock.start
+      ) {
         // On start line of a block → keep the whole block bright
         brightStart = focusArea.focusStartLine;
         brightEnd = focusArea.focusEndLine;
@@ -197,8 +200,7 @@ export function createInvokeCommand(
 
     const filePath = vscode.workspace.asRelativePath(editor.document.uri);
     const basename = path.basename(editor.document.uri.fsPath);
-    const isInstructionFile =
-      basename === "CLAUDE.md";
+    const isInstructionFile = basename === "CLAUDE.md";
 
     let instructionContent: string | undefined;
     if (!isInstructionFile) {
@@ -217,23 +219,29 @@ export function createInvokeCommand(
 
     const referenceFiles = isInstructionFile
       ? []
-      : (await Promise.all(
-          instructions.referencedFiles.map(async (absPath) => {
-            try {
-              const content = await fs.promises.readFile(absPath, "utf-8");
-              const relPath = vscode.workspace.asRelativePath(absPath);
-              return { path: relPath, content };
-            } catch {
-              return null;
-            }
-          }),
-        )).filter(
-          (r): r is { path: string; content: string } => r !== null,
-        );
+      : (
+          await Promise.all(
+            instructions.referencedFiles.map(async (absPath) => {
+              try {
+                const content = await fs.promises.readFile(absPath, "utf-8");
+                const relPath = vscode.workspace.asRelativePath(absPath);
+                return { path: relPath, content };
+              } catch {
+                return null;
+              }
+            }),
+          )
+        ).filter((r): r is { path: string; content: string } => r !== null);
 
     // Pre-spawn the CLI while the user types (session has file content + prefill)
     const agentPromise = prepareInlineAgent(
-      { fileContent, filePath, referenceFiles, instructionContent, isInstructionFile },
+      {
+        fileContent,
+        filePath,
+        referenceFiles,
+        instructionContent,
+        isInstructionFile,
+      },
       log,
       mcpConfigPath,
     );
@@ -250,17 +258,16 @@ export function createInvokeCommand(
     // user selected something starting on an empty line, we still want the
     // prompt to appear above it, not on it.
     const currentLineEmpty =
-      !hadSelection &&
-      editor.document.lineAt(insertLine).isEmptyOrWhitespace;
+      !hadSelection && editor.document.lineAt(insertLine).isEmptyOrWhitespace;
 
     // Insert a blank above the target when we don't already have one to host
-    // the ghost. Skip undo stops so the edit doesn't leak into undo history.
+    // Insert a blank line to host the ghost-text prompt. Uses a proper undo
+    // stop so we can cleanly reverse it with `undo` when the prompt closes.
     let insertedBlank = false;
     if (!currentLineEmpty) {
       try {
-        insertedBlank = await editor.edit(
-          (b) => b.insert(new vscode.Position(insertLine, 0), "\n"),
-          { undoStopBefore: false, undoStopAfter: false },
+        insertedBlank = await editor.edit((b) =>
+          b.insert(new vscode.Position(insertLine, 0), "\n"),
         );
       } catch {
         insertedBlank = false;
@@ -288,17 +295,6 @@ export function createInvokeCommand(
 
     inlineDeco.dispose();
 
-    if (insertedBlank) {
-      try {
-        await editor.edit(
-          (b) => b.delete(new vscode.Range(insertLine, 0, insertLine + 1, 0)),
-          { undoStopBefore: false, undoStopAfter: false },
-        );
-      } catch {
-        /* ignore */
-      }
-    }
-
     // Always hand focus back to the editor once the prompt closes — on both
     // submit and cancel. On submit, the agent runs next but the user should
     // be watching the editor, not the hidden webview input.
@@ -307,12 +303,18 @@ export function createInvokeCommand(
         viewColumn: editor.viewColumn,
         preserveFocus: false,
       });
-      editor.selection = originalSelection;
-      if (originalVisibleRange) {
-        editor.revealRange(originalVisibleRange);
-      }
     } catch {
       /* ignore */
+    }
+
+    // Undo the inserted blank line now that the editor has focus again.
+    if (insertedBlank) {
+      await vscode.commands.executeCommand("undo");
+    }
+
+    editor.selection = originalSelection;
+    if (originalVisibleRange) {
+      editor.revealRange(originalVisibleRange);
     }
 
     if (!instruction) {
@@ -433,13 +435,24 @@ export function createInvokeCommand(
           ) {
             cleanup();
             if (result.preEditSelection) {
-              const anchor = new vscode.Position(result.preEditSelection.anchor.line, result.preEditSelection.anchor.character);
-              const active = new vscode.Position(result.preEditSelection.active.line, result.preEditSelection.active.character);
+              const anchor = new vscode.Position(
+                result.preEditSelection.anchor.line,
+                result.preEditSelection.anchor.character,
+              );
+              const active = new vscode.Position(
+                result.preEditSelection.active.line,
+                result.preEditSelection.active.character,
+              );
               editor.selection = new vscode.Selection(anchor, active);
             }
             if (result.preEditVisibleRange) {
               editor.revealRange(
-                new vscode.Range(result.preEditVisibleRange.startLine, 0, result.preEditVisibleRange.endLine, 0),
+                new vscode.Range(
+                  result.preEditVisibleRange.startLine,
+                  0,
+                  result.preEditVisibleRange.endLine,
+                  0,
+                ),
                 vscode.TextEditorRevealType.InCenter,
               );
             }
