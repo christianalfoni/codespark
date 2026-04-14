@@ -18,6 +18,7 @@ import { useCodeActions } from "./useCodeActions";
 import {
   STOP_ICON,
   NEW_SESSION_ICON,
+  FILE_ICON,
   copyCodeWithFeedback,
   handleCommandClick,
 } from "./utils";
@@ -45,8 +46,13 @@ export function App({ vscode }: AppProps) {
   const autoResize = useTextareaAutoResize(textareaRef);
   useCodeActions(messageListRef, pinnedQueryRef);
 
+  const wasStreaming = useRef(false);
   useEffect(() => {
-    textareaRef.current?.focus();
+    // Only focus when streaming ends, not on initial render
+    if (wasStreaming.current && !state.isStreaming) {
+      textareaRef.current?.focus();
+    }
+    wasStreaming.current = state.isStreaming;
   }, [state.isStreaming]);
 
   function send(text: string) {
@@ -221,6 +227,16 @@ export function App({ vscode }: AppProps) {
       <div class="input-area">
         <div class="input-area-inner">
           <div class="input-wrapper">
+            {state.fileContext && (
+              <div class="file-context-badge">
+                <span class="file-context-icon" dangerouslySetInnerHTML={{ __html: FILE_ICON }} />
+                <span class="file-context-path">
+                  {state.fileContext.selection
+                    ? `${state.fileContext.filePath} (selection)`
+                    : `${state.fileContext.filePath}:${state.fileContext.cursorLine}`}
+                </span>
+              </div>
+            )}
             <textarea
               ref={textareaRef}
               placeholder={state.isStreaming ? "Send a follow-up message..." : "Do some research to learn and get suggestions..."}
@@ -255,16 +271,6 @@ export function App({ vscode }: AppProps) {
                   <span class="claude-md-dot" />
                 )}
               </button>
-              <div style={{ flex: 1 }} />
-              {state.fileContext && (
-                <div class="file-context-badge">
-                  <span class="file-context-path">
-                    {state.fileContext.selection
-                      ? `${state.fileContext.filePath} (selection)`
-                      : `${state.fileContext.filePath}:${state.fileContext.cursorLine}`}
-                  </span>
-                </div>
-              )}
               <div style={{ flex: 1 }} />
               {state.isStreaming && (
                 <button

@@ -102,7 +102,7 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
 
     webviewView.onDidChangeVisibility(() => {
       if (webviewView.visible) {
-        this._post({ type: "focus" });
+        this._sendInit();
       }
     });
 
