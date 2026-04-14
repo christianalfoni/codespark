@@ -10,7 +10,7 @@
 
 ## Getting started
 
-1. Install the [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) and authenticate (`claude` in your terminal and restart VSCode)
+1. Install and authenticate the [Claude Code CLI](https://code.claude.com/docs/en/quickstart)
 2. Install the CodeSpark extension: [Install in VS Code](https://marketplace.visualstudio.com/items?itemName=codespark.codespark-agent)
 
 ## How it works

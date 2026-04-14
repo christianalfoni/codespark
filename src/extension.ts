@@ -1,3 +1,4 @@
+import * as childProcess from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -13,9 +14,39 @@ import {
 import { ResearchViewProvider } from "./research-view";
 import { startIpcServer } from "./ipc-server";
 
+function isClaudeCliAvailable(): boolean {
+  try {
+    childProcess.execFileSync("claude", ["--version"], {
+      stdio: "ignore",
+      timeout: 5000,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function activate(context: vscode.ExtensionContext) {
   const log = vscode.window.createOutputChannel("CodeSpark");
   context.subscriptions.push(log);
+
+  if (!isClaudeCliAvailable()) {
+    const installAction = "Install Claude Code";
+    vscode.window
+      .showWarningMessage(
+        "CodeSpark requires the Claude Code CLI. Please install it to use this extension.",
+        installAction,
+      )
+      .then((action) => {
+        if (action === installAction) {
+          vscode.env.openExternal(
+            vscode.Uri.parse("https://code.claude.com/docs/en/quickstart"),
+          );
+        }
+      });
+    log.appendLine("[activate] Claude Code CLI not found on PATH — extension disabled");
+    return;
+  }
 
   initStats(context.workspaceState);
   initResearchSummary(context.workspaceState);
