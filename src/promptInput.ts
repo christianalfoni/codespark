@@ -16,7 +16,7 @@ export function createInlinePromptDecorations(
 ): InlinePromptDecorations {
   const ghostType = vscode.window.createTextEditorDecorationType({
     isWholeLine: true,
-    backgroundColor: "var(--vscode-input-placeholderForeground)",
+    backgroundColor: "var(--vscode-input-background)",
   });
 
   function render(value: string, caret?: number) {
