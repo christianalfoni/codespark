@@ -128,14 +128,36 @@ export function createResearchQuery(
     stdio: ["pipe", "pipe", "pipe"],
   });
 
+  proc.on("error", (err) => {
+    log.appendLine(`[claude-code-research] Process error: ${err.message}`);
+  });
+
+  proc.on("exit", (code, signal) => {
+    log.appendLine(
+      `[claude-code-research] Process exited (code=${code}, signal=${signal}, pid=${proc.pid})`,
+    );
+  });
+
   proc.stderr?.on("data", (chunk: Buffer) => {
     log.appendLine(`[claude-code-research:stderr] ${chunk.toString().trim()}`);
   });
 
+  proc.stdout?.on("data", () => {
+    if (!stdoutSeen) {
+      stdoutSeen = true;
+      log.appendLine(`[claude-code-research] First stdout data received`);
+    }
+  });
+
+  let stdoutSeen = false;
+
   function sendMessage(text: string) {
     const msg = JSON.stringify({ type: "user", message: { role: "user", content: text } });
     log.appendLine(`[claude-code-research] Sending message to stdin: ${msg.slice(0, 100)}`);
-    proc.stdin?.write(msg + "\n");
+    const ok = proc.stdin?.write(msg + "\n");
+    log.appendLine(
+      `[claude-code-research] stdin.write ok=${ok}, pid=${proc.pid}`,
+    );
   }
 
   // Send initial prompt via stdin

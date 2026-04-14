@@ -17,7 +17,9 @@
 
 ### Inline agent (`Cmd+I` / `Ctrl+I`)
 
-Powered by Claude Code running Haiku, optimized for speed. It works from your cursor, editing the file you're looking at. Most edits are fast, single-turn, file-scoped changes. When the task demands it, the agent reads and writes additional files and goes as wide as it needs — but it always stays within the code, never running commands or reaching outside the project.
+Powered by Claude Code CLI running Haiku, optimized for speed. It works from your cursor, editing the file you're looking at. Most edits are fast, single-turn, file-scoped changes. When the task demands it, the agent reads and writes additional files and goes as wide as it needs — but it always stays within the code, never running commands or reaching outside the project.
+
+**Deterministic context retrieval:**
 
 - The current file content and cursor position
 - The closest `CLAUDE.md` in the directory hierarchy (from the file's directory up to the workspace root)
@@ -27,7 +29,7 @@ Powered by Claude Code running Haiku, optimized for speed. It works from your cu
 
 ### Research agent (`Cmd+Shift+I` / `Ctrl+Shift+I`)
 
-Powered by Claude Code, this is a dedicated research tool. It can read files, grep through your codebase, search the web, and fetch documentation — but it cannot edit anything. When the research panel is already open, invoking it again attaches the current file and cursor position as context.
+Powered by Claude Code CLI running default models, optimized to build your own personal context. It can read files, grep through your codebase, search the web, and fetch documentation — but it cannot edit anything. When the research panel is already open, invoking it again attaches the current file and cursor position as context.
 
 The output is integrated with VS Code: file paths like `src/foo.ts:42` become clickable links that open the file at that line, and fenced code blocks with `bash` render with a run button that executes the command in your terminal.
 
@@ -35,9 +37,9 @@ The two agents are connected: ask a question in the research panel, and the next
 
 ### CLAUDE.md
 
-`CLAUDE.md` files are how you control agent behavior. Place one at the workspace root for project-wide instructions, and add more in subdirectories for domain-specific guidance. When you invoke the inline agent, it picks up the root `CLAUDE.md` plus the closest one in the directory hierarchy above the file you're editing. Instructions you write for CodeSpark — patterns, conventions, constraints, preferred libraries — also improve Claude Code when you use it from the CLI.
+`CLAUDE.md` files are how you control agent behavior. Place one at the workspace root for project-wide instructions, and add more in subdirectories for domain-specific guidance. When you invoke the inline agent, it picks up the root `CLAUDE.md` plus the closest one in the directory hierarchy above the file you're editing. Instructions you write for CodeSpark — patterns, conventions, constraints, preferred libraries — also improve Claude Code CLI when you use it from the terminal.
 
-This is the same `CLAUDE.md` convention used by Claude Code in the terminal. Instructions you write for CodeSpark — patterns, conventions, constraints, preferred libraries — also improve Claude Code when you use it from the CLI. You're not maintaining two configurations; you're building one set of instructions that makes the agent better everywhere.
+This is the same `CLAUDE.md` convention used by Claude Code in the terminal. Instructions you write for CodeSpark — patterns, conventions, constraints, preferred libraries — also improve Claude Code CLI when you use it from the terminal. You're not maintaining two configurations; you're building one set of instructions that makes the agent better everywhere.
 
 **CLAUDE.md Review** — The research panel has a `CLAUDE.md` button in the input toolbar. Clicking it starts a new research session that analyzes recent codebase changes for newly emerged patterns, style conventions, or violations of existing rules. It suggests updates to existing `CLAUDE.md` files and recommends creating new ones in folders that would benefit from domain-specific instructions. All suggestions are formatted as copyable markdown blocks. The extension tracks commits since the last review and shows a badge on the button when 10 or more commits have landed without a check.
 

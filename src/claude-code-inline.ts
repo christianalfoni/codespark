@@ -356,11 +356,18 @@ export async function prepareInlineAgent(
     stdio: ["pipe", "pipe", "pipe"],
   });
 
+  proc.on("error", (err) => {
+    log.appendLine(`[cli-inline] Process error: ${err.message}`);
+  });
+
   proc.stderr?.on("data", (chunk: Buffer) => {
     log.appendLine(`[cli-inline:stderr] ${chunk.toString().trim()}`);
   });
 
-  proc.on("exit", () => {
+  proc.on("exit", (code, signal) => {
+    log.appendLine(
+      `[cli-inline] Process exited (code=${code}, signal=${signal}, pid=${proc.pid})`,
+    );
     fs.promises.unlink(sessionFile).catch(() => {});
   });
 
