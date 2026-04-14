@@ -90,7 +90,7 @@ export function activate(context: vscode.ExtensionContext) {
     mcpServers: {
       codespark: {
         type: "http",
-        url: `http://localhost:${mcpPort}/mcp`,
+        url: `http://127.0.0.1:${mcpPort}/mcp`,
       },
     },
   };

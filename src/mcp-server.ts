@@ -408,8 +408,8 @@ async function main() {
   });
 
   const port = parseInt(MCP_PORT!, 10);
-  httpServer.listen(port, "localhost", () => {
-    process.stderr.write(`MCP server listening on http://localhost:${port}/mcp\n`);
+  httpServer.listen(port, "127.0.0.1", () => {
+    process.stderr.write(`MCP server listening on http://127.0.0.1:${port}/mcp\n`);
   });
 }
 
