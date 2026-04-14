@@ -4,10 +4,11 @@ import * as fs from "fs";
 import { InstructionFileDecorationProvider } from "./instructionDecorations";
 import { prepareInlineAgent, executeInlineAgent, abortInlineAgent } from "./claude-code-inline";
 import { ResolvedContext, LLMResult } from "./types";
-import { promptForInstruction } from "./promptInput";
+import { createInlinePromptDecorations } from "./promptInput";
 import { recordQuery } from "./stats";
 import { evaluateFocusArea } from "./editor";
 import { IpcServer } from "./ipc-server";
+import { ResearchViewProvider } from "./research-view";
 
 /* ── File-level decoration helpers ────────────────────────────── */
 
@@ -136,6 +137,7 @@ export function createInvokeCommand(
   updateActiveInstructions: () => void,
   mcpConfigPath: string,
   ipcServer: IpcServer,
+  researchView: ResearchViewProvider,
 ) {
   return async () => {
     const editor = vscode.window.activeTextEditor;
@@ -170,7 +172,11 @@ export function createInvokeCommand(
       // Determine which lines stay bright
       let brightStart: number;
       let brightEnd: number;
-      if (focusArea.enclosingBlock && cursorLineNum === focusArea.enclosingBlock.start) {
+      if (!editor.selection.isEmpty) {
+        // Selection → keep the entire selection bright
+        brightStart = editor.selection.start.line;
+        brightEnd = editor.selection.end.line;
+      } else if (focusArea.enclosingBlock && cursorLineNum === focusArea.enclosingBlock.start) {
         // On start line of a block → keep the whole block bright
         brightStart = focusArea.focusStartLine;
         brightEnd = focusArea.focusEndLine;
@@ -232,17 +238,89 @@ export function createInvokeCommand(
       mcpConfigPath,
     );
 
-    const prompt = promptForInstruction();
-    const promptResult = await prompt.result;
+    // Remember where the user was so we can restore on cancel.
+    const originalSelection = new vscode.Selection(
+      editor.selection.anchor,
+      editor.selection.active,
+    );
+    const originalVisibleRange = editor.visibleRanges[0];
+    const hadSelection = !editor.selection.isEmpty;
+    const insertLine = editor.selection.start.line;
+    // Only treat the line as "reusable" when there's no selection — if the
+    // user selected something starting on an empty line, we still want the
+    // prompt to appear above it, not on it.
+    const currentLineEmpty =
+      !hadSelection &&
+      editor.document.lineAt(insertLine).isEmptyOrWhitespace;
 
-    if (!promptResult) {
+    // Insert a blank above the target when we don't already have one to host
+    // the ghost. Skip undo stops so the edit doesn't leak into undo history.
+    let insertedBlank = false;
+    if (!currentLineEmpty) {
+      try {
+        insertedBlank = await editor.edit(
+          (b) => b.insert(new vscode.Position(insertLine, 0), "\n"),
+          { undoStopBefore: false, undoStopAfter: false },
+        );
+      } catch {
+        insertedBlank = false;
+      }
+    }
+
+    // Collapse the selection onto the prompt line. The selected lines stay
+    // bright via invokeDim; the selection highlight itself is dropped so the
+    // only active visual is the prompt line.
+    if (currentLineEmpty || insertedBlank) {
+      const pos = new vscode.Position(insertLine, 0);
+      editor.selection = new vscode.Selection(pos, pos);
+    }
+
+    const ghostLine =
+      currentLineEmpty || insertedBlank
+        ? insertLine
+        : Math.max(0, cursorLineNum - 1);
+
+    const inlineDeco = createInlinePromptDecorations(editor, ghostLine);
+
+    const instruction = await researchView.startInlinePrompt((value, caret) => {
+      inlineDeco.update(value, caret);
+    });
+
+    inlineDeco.dispose();
+
+    if (insertedBlank) {
+      try {
+        await editor.edit(
+          (b) => b.delete(new vscode.Range(insertLine, 0, insertLine + 1, 0)),
+          { undoStopBefore: false, undoStopAfter: false },
+        );
+      } catch {
+        /* ignore */
+      }
+    }
+
+    // Always hand focus back to the editor once the prompt closes — on both
+    // submit and cancel. On submit, the agent runs next but the user should
+    // be watching the editor, not the hidden webview input.
+    try {
+      await vscode.window.showTextDocument(editor.document, {
+        viewColumn: editor.viewColumn,
+        preserveFocus: false,
+      });
+      editor.selection = originalSelection;
+      if (originalVisibleRange) {
+        editor.revealRange(originalVisibleRange);
+      }
+    } catch {
+      /* ignore */
+    }
+
+    if (!instruction) {
       agentPromise.then((agent) => abortInlineAgent(agent)).catch(() => {});
       invokeDim?.dispose();
       decorationProvider.deactivate();
       return;
     }
-
-    const instruction = promptResult.instruction;
 
     log.appendLine(`[context] Cursor at line ${cursorLineNum + 1}`);
     if (instructions.root) {

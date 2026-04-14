@@ -448,6 +448,10 @@ export async function executeInlineAgent(
   let hasEdits = false;
   let editToolSeen = false;
   let firstToolSeen = false;
+  let ttftLogged = false;
+  // Pending edit/write tool calls, popped in order as IPC edits arrive so we
+  // can log per-call timing (LLM streaming the tool call + MCP roundtrip).
+  const pendingEditTools: { name: string; start: number }[] = [];
   let textResponseContent = "";
   let inputTokens = 0;
   let outputTokens = 0;
@@ -478,19 +482,19 @@ export async function executeInlineAgent(
 
   // Listen for edits applied via IPC
   const ipcEditSub = ipcServer.onEdit((filePath, _count, editedRanges) => {
-    if (!hasEdits) {
-      hasEdits = true;
+    hasEdits = true;
+
+    const pending = pendingEditTools.shift();
+    if (pending) {
       log.appendLine(
-        `[cli-inline:timing] First edit applied: ${Date.now() - tSend}ms`,
+        `[cli-inline:tool] ${pending.name}: ${Date.now() - pending.start}ms`,
       );
     }
+
     editedLines.push(...editedRanges);
 
     // Current file edited = model is done (it edits the focused file last)
     if (filePath === currentFileAbs) {
-      log.appendLine(
-        `[cli-inline:timing] Current file edit applied: ${Date.now() - tSend}ms`,
-      );
       resolveOnCurrentFileEdit?.();
     }
 
@@ -554,6 +558,15 @@ export async function executeInlineAgent(
         if (msg.type === "stream_event") {
           const evt = msg.event;
 
+          if (evt?.type === "message_start") {
+            numTurns++;
+          }
+
+          if (evt?.type === "content_block_delta" && !ttftLogged) {
+            ttftLogged = true;
+            log.appendLine(`[cli-inline:timing] Time To First Token: ${ms}ms`);
+          }
+
           if (evt?.type === "content_block_start") {
             if (evt.content_block?.type === "tool_use") {
               const toolName = evt.content_block.name ?? "unknown";
@@ -564,13 +577,11 @@ export async function executeInlineAgent(
 
               if (isEditOrWrite) {
                 editToolSeen = true;
+                pendingEditTools.push({ name: toolName, start: Date.now() });
               }
 
               if (!firstToolSeen) {
                 firstToolSeen = true;
-                log.appendLine(
-                  `[cli-inline:timing] First tool call: ${ms}ms (${toolName})`,
-                );
                 if (!isEditOrWrite && onAgentMode) {
                   onAgentMode();
                 }
@@ -583,10 +594,6 @@ export async function executeInlineAgent(
 
           if (evt?.type === "content_block_delta" && evt.delta?.type === "text_delta") {
             textResponseContent += evt.delta.text ?? "";
-          }
-
-          if (evt?.type === "message_start") {
-            numTurns++;
           }
         }
 

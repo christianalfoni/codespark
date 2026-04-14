@@ -148,7 +148,6 @@ function handleConnectionData(
 
     if (req.type === "edit_file") {
       const editReq = req as unknown as EditRequest;
-      log.append("[ipc-server]: HANDLE EDIT REQUEST");
       handleEditRequest(editReq)
         .then(handleResult(editReq.file_path, editReq.edits.length))
         .catch(handleError(editReq.id));

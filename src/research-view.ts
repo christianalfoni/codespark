@@ -40,6 +40,14 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
   private _promptQueue: { text: string; files: string[] }[] = [];
   /** Whether an event loop is already running for the active session */
   private _eventLoopRunning = false;
+  private _readyResolve?: () => void;
+  private _readyPromise: Promise<void> = new Promise((resolve) => {
+    this._readyResolve = resolve;
+  });
+  private _inlinePrompt?: {
+    onValue: (value: string, caret: number) => void;
+    resolve: (value: string | undefined) => void;
+  };
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
@@ -61,9 +69,16 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
     webviewView.webview.html = this._getHtml(webviewView.webview);
 
     webviewView.webview.onDidReceiveMessage((msg) => {
-      this._log.appendLine(
-        `[research-view] msg: ${JSON.stringify(msg).slice(0, 200)}`,
-      );
+      // Skip logging keystroke-level and prompt-value messages to keep user
+      // input out of the log.
+      if (
+        msg.type !== "inline-prompt-value" &&
+        msg.type !== "inline-prompt-submit"
+      ) {
+        this._log.appendLine(
+          `[research-view] msg: ${JSON.stringify(msg).slice(0, 200)}`,
+        );
+      }
 
       switch (msg.type) {
         case "send":
@@ -80,8 +95,29 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
           this._cancelCurrent();
           break;
         case "ready":
+          this._readyResolve?.();
           this._sendInit();
           break;
+        case "inline-prompt-value": {
+          const value = typeof msg.value === "string" ? msg.value : "";
+          const caret =
+            typeof msg.caret === "number" ? msg.caret : value.length;
+          this._inlinePrompt?.onValue(value, caret);
+          break;
+        }
+        case "inline-prompt-submit": {
+          const p = this._inlinePrompt;
+          this._inlinePrompt = undefined;
+          const value = typeof msg.value === "string" ? msg.value.trim() : "";
+          p?.resolve(value.length > 0 ? value : undefined);
+          break;
+        }
+        case "inline-prompt-cancel": {
+          const p = this._inlinePrompt;
+          this._inlinePrompt = undefined;
+          p?.resolve(undefined);
+          break;
+        }
         case "open-file":
           this._openFile(msg.path, msg.line);
           break;
@@ -404,6 +440,31 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
 
   public focusInput(): void {
     this._post({ type: "focus" });
+  }
+
+  /**
+   * Reveal the Research panel, focus the hidden capture input, and resolve
+   * with the submitted prompt (or undefined if cancelled). `onValue` fires on
+   * every keystroke so the caller can mirror the value elsewhere (e.g. ghost
+   * text decoration on the editor).
+   */
+  public async startInlinePrompt(
+    onValue: (value: string, caret: number) => void,
+  ): Promise<string | undefined> {
+    // If another inline prompt is somehow still active, cancel it.
+    if (this._inlinePrompt) {
+      const prev = this._inlinePrompt;
+      this._inlinePrompt = undefined;
+      prev.resolve(undefined);
+    }
+
+    await vscode.commands.executeCommand("codeSpark.research.focus");
+    await this._readyPromise;
+
+    return new Promise<string | undefined>((resolve) => {
+      this._inlinePrompt = { onValue, resolve };
+      this._post({ type: "inline-prompt-start" });
+    });
   }
 
   /** Send a prompt programmatically (e.g. from CMD+I with > prefix) */
