@@ -61,7 +61,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Wait for IPC socket to be ready before spawning MCP server
   ipcServer.ready.then(() => {
-    const mcpProc = require("child_process").spawn("node", [mcpServerScript], {
+    const mcpProc = require("child_process").spawn(process.execPath, [mcpServerScript], {
       env: {
         ...process.env,
         CODESPARK_SOCKET: ipcServer.socketPath,
