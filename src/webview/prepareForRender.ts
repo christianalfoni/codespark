@@ -44,6 +44,7 @@ interface FenceInfo {
   char: string;
   count: number;
   hasInfo: boolean;
+  info: string;
 }
 
 const FENCE_LINE_RE = /^(`{3,}|~{3,})(.*)/;
@@ -58,6 +59,7 @@ function parseFenceLines(lines: string[]): FenceInfo[] {
       char: m[1][0],
       count: m[1].length,
       hasInfo: m[2].trim().length > 0,
+      info: m[2].trim().split(/\s/)[0],
     });
   }
   return fences;
@@ -87,8 +89,10 @@ function hasMoreBareFences(
  * next info-fence, bare fences pair up as inner blocks — only the last
  * unpaired bare fence closes the outer block.
  */
+const MARKDOWN_LANGS = new Set(["markdown", "md"]);
+
 function shouldTreatAsInnerOpener(
-  stack: Array<{ char: string; count: number; hasInfo: boolean }>,
+  stack: Array<{ char: string; count: number; hasInfo: boolean; info?: string }>,
   fences: FenceInfo[],
   fenceIdx: number,
   f: FenceInfo,
@@ -97,6 +101,10 @@ function shouldTreatAsInnerOpener(
   const top = stack[0];
   if (!top.hasInfo) return false;
   if (f.char !== top.char || f.count < top.count) return false;
+  // Only treat bare fences as inner openers when the outer block is a
+  // markdown container language — other languages (python, bash, etc.)
+  // don't legitimately contain nested code fences.
+  if (!top.info || !MARKDOWN_LANGS.has(top.info.toLowerCase())) return false;
   return hasMoreBareFences(fences, fenceIdx + 1, f.char, top.count);
 }
 
@@ -113,13 +121,13 @@ function getFenceState(
 ): { closer: string } | null {
   const lines = buffer.split("\n");
   const fences = parseFenceLines(lines);
-  const stack: Array<{ char: string; count: number; hasInfo: boolean }> = [];
+  const stack: Array<{ char: string; count: number; hasInfo: boolean; info?: string }> = [];
 
   for (let fi = 0; fi < fences.length; fi++) {
     const f = fences[fi];
 
     if (stack.length === 0 || f.hasInfo) {
-      stack.push({ char: f.char, count: f.count, hasInfo: f.hasInfo });
+      stack.push({ char: f.char, count: f.count, hasInfo: f.hasInfo, info: f.info });
     } else {
       const top = stack[stack.length - 1];
       if (top.char === f.char && f.count >= top.count) {
@@ -157,6 +165,7 @@ function upgradeNestedFences(text: string): string {
     char: string;
     count: number;
     hasInfo: boolean;
+    info?: string;
     innerMaxCount: number;
   }
 
@@ -172,6 +181,7 @@ function upgradeNestedFences(text: string): string {
         char: f.char,
         count: f.count,
         hasInfo: f.hasInfo,
+        info: f.info,
         innerMaxCount: 0,
       });
     } else {

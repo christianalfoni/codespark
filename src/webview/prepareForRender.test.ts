@@ -110,6 +110,18 @@ describe("prepareForRender", () => {
         prepareForRender("```js\ncode\n```\n\n```py\nmore\n```"),
       ).toBe("```js\ncode\n```\n\n```py\nmore\n```");
     });
+
+    it("does not upgrade lang block followed by bare block", () => {
+      const input =
+        "text\n\n```python\n# current\ncode\n```\n\n```\n# correct\nmore code\n```\n\n---";
+      expect(prepareForRender(input)).toBe(input);
+    });
+
+    it("does not upgrade lang block followed by bare block without blank line", () => {
+      const input =
+        "text\n\n```python\n# current\ncode\n```\n```\n# correct\nmore code\n```\n\n---";
+      expect(prepareForRender(input)).toBe(input);
+    });
   });
 
   describe("incomplete links", () => {
