@@ -138,7 +138,7 @@ function formatFileContentWithLineNumbers(content: string): string {
 // ---------------------------------------------------------------------------
 
 function encodeCwdPath(cwd: string): string {
-  return cwd.replace(/\//g, "-");
+  return cwd.replace(/[/\\]/g, "-").replace(/:/g, "");
 }
 
 interface SessionFile {
