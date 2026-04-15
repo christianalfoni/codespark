@@ -49,6 +49,12 @@ jobs:
         if: steps.tag_check.outputs.exists == 'false'
         run: npx @vscode/vsce package
 
+      - name: Publish to VS Code Marketplace
+        if: steps.tag_check.outputs.exists == 'false'
+        run: npx @vscode/vsce publish
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+
       - name: Create git tag
         if: steps.tag_check.outputs.exists == 'false'
         run: |
@@ -108,9 +114,3 @@ jobs:
           name: v${{ steps.version.outputs.version }}
           body_path: release_notes.md
           files: "*.vsix"
-
-      - name: Publish to VS Code Marketplace
-        if: steps.tag_check.outputs.exists == 'false'
-        run: npx @vscode/vsce publish
-        env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
