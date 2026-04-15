@@ -150,11 +150,14 @@ Example: to update an import AND change code, pass both edits in one call:
   // @ts-ignore
   server.tool(
     "write_file",
-    `Write or create a file with the given content. If the file exists, its content
-is fully replaced. If it does not exist, it is created (including parent directories).
+    `Writes a file to the local filesystem.
 
-Use this for creating new files or when you need to replace the entire content of a file.
-For partial edits to existing files, prefer edit_file instead.`,
+Usage:
+- This tool will overwrite the existing file if there is one at the provided path.
+- If this is an existing file, you MUST use the Read tool first to read the file's contents. This tool will fail if you did not read the file first.
+- Prefer the Edit tool for modifying existing files — it only sends the diff. Only use this tool to create new files or for complete rewrites.
+- NEVER create documentation files (*.md) or README files unless explicitly requested by the User.
+- Only use emojis if the user explicitly requests it. Avoid writing emojis to files unless asked.`,
     {
       file_path: z.string().describe("Absolute path to the file to write"),
       content: z.string().describe("The full content to write to the file"),

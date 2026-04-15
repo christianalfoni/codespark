@@ -2,6 +2,7 @@ import * as net from "net";
 import * as fs from "fs";
 import * as vscode from "vscode";
 import { diffLines } from "diff";
+import { hasRead } from "./readTracker";
 
 export type EditedRange = { startLine: number; endLine: number };
 
@@ -254,6 +255,16 @@ async function handleWriteRequest(
   log: vscode.OutputChannel,
 ): Promise<IpcResponse> {
   const uri = vscode.Uri.file(req.file_path);
+
+  // Mirror the native Write tool's contract: overwriting an existing file
+  // requires a prior Read in this session.
+  if (fs.existsSync(req.file_path) && !hasRead(req.file_path)) {
+    return {
+      id: req.id,
+      success: false,
+      error: `File exists but has not been read in this session. Use the Read tool to read ${req.file_path} before calling write_file, or use edit_file for partial edits.`,
+    };
+  }
 
   const wsEdit = new vscode.WorkspaceEdit();
 

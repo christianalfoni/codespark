@@ -9,6 +9,7 @@ import * as vscode from "vscode";
 import { ResolvedContext, LLMResult } from "./types";
 import { EditedRange, IpcServer } from "./ipc-server";
 import { buildSystemPrompt } from "./prompts";
+import { clearReads, markRead } from "./readTracker";
 
 // ---------------------------------------------------------------------------
 // Exported types
@@ -47,6 +48,11 @@ export async function prepareInlineAgent(
   const t0 = Date.now();
   const systemPrompt = buildSystemPrompt(ctx);
 
+  // Reset the read-tracker for this new inline session. Pre-loaded files
+  // below are counted as read since their content is injected into the
+  // session via fake Read tool results.
+  clearReads();
+
   // Build session with fake Read results + assistant prefill
   const sessionId = crypto.randomUUID();
   const encodedCwd = encodeCwdPath(workspaceFolder);
@@ -63,6 +69,7 @@ export async function prepareInlineAgent(
       content: ref.content,
     });
   }
+  for (const f of files) markRead(f.absPath);
 
   const sessionContent = buildSessionJSONL(sessionId, workspaceFolder, files);
   await fs.promises.mkdir(sessionDir, { recursive: true });
@@ -192,9 +199,10 @@ export async function executeInlineAgent(
   let editToolSeen = false;
   let firstToolSeen = false;
   let ttftLogged = false;
-  // Pending edit/write tool calls, popped in order as IPC edits arrive so we
-  // can log per-call timing (LLM streaming the tool call + MCP roundtrip).
-  const pendingEditTools: { name: string; start: number }[] = [];
+  // In-flight tool calls keyed by tool_use_id. Populated on content_block_start,
+  // drained on tool_result so we can log a single line per completed tool with
+  // its name, status, and duration.
+  const toolsInFlight = new Map<string, { name: string; start: number }>();
   let textResponseContent = "";
   let inputTokens = 0;
   let outputTokens = 0;
@@ -227,19 +235,16 @@ export async function executeInlineAgent(
   const ipcEditSub = ipcServer.onEdit((filePath, _count, editedRanges) => {
     hasEdits = true;
 
-    const pending = pendingEditTools.shift();
-    if (pending) {
-      log.appendLine(
-        `[cli-inline:tool] ${pending.name}: ${Date.now() - pending.start}ms`,
-      );
+    // Scope editedLines to the current file so the caller can trigger the
+    // post-edit diff/fade UI only when the focused file actually changed.
+    if (filePath !== currentFileAbs) {
+      return;
     }
 
     editedLines.push(...editedRanges);
 
     // Current file edited = model is done (it edits the focused file last)
-    if (filePath === currentFileAbs) {
-      resolveOnCurrentFileEdit?.();
-    }
+    resolveOnCurrentFileEdit?.();
 
     const editor = vscode.window.activeTextEditor;
 
@@ -313,6 +318,13 @@ export async function executeInlineAgent(
           if (evt?.type === "content_block_start") {
             if (evt.content_block?.type === "tool_use") {
               const toolName = evt.content_block.name ?? "unknown";
+              const toolUseId = evt.content_block.id;
+              if (typeof toolUseId === "string") {
+                toolsInFlight.set(toolUseId, {
+                  name: toolName,
+                  start: Date.now(),
+                });
+              }
 
               const isEditOrWrite =
                 toolName === "mcp__codespark__edit_file" ||
@@ -320,7 +332,6 @@ export async function executeInlineAgent(
 
               if (isEditOrWrite) {
                 editToolSeen = true;
-                pendingEditTools.push({ name: toolName, start: Date.now() });
               }
 
               if (!firstToolSeen) {
@@ -347,7 +358,7 @@ export async function executeInlineAgent(
           }
         }
 
-        // Token counting
+        // Token counting + read-tracking
         if (msg.type === "assistant") {
           const usage = msg.message?.usage;
           if (usage) {
@@ -355,6 +366,34 @@ export async function executeInlineAgent(
             outputTokens += usage.output_tokens || 0;
             cacheCreationInputTokens += usage.cache_creation_input_tokens || 0;
             cacheReadInputTokens += usage.cache_read_input_tokens || 0;
+          }
+
+          const content = msg.message?.content;
+          if (Array.isArray(content)) {
+            for (const block of content) {
+              if (block?.type === "tool_use" && block.name === "Read") {
+                const fp = block.input?.file_path;
+                if (typeof fp === "string") markRead(fp);
+              }
+            }
+          }
+        }
+
+        // Tool result logging: one line per completed tool with status + duration.
+        if (msg.type === "user") {
+          const content = msg.message?.content;
+          if (Array.isArray(content)) {
+            for (const block of content) {
+              if (block?.type !== "tool_result") continue;
+              const id = block.tool_use_id;
+              const pending = typeof id === "string" ? toolsInFlight.get(id) : undefined;
+              if (!pending) continue;
+              toolsInFlight.delete(id);
+              const status = block.is_error ? "error" : "ok";
+              log.appendLine(
+                `[cli-inline:tool] ${pending.name}: ${status} ${Date.now() - pending.start}ms`,
+              );
+            }
           }
         }
 
