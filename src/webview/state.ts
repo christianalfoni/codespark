@@ -39,6 +39,7 @@ export interface ChatState {
   activeSessionId: string | null;
   fileContext: { filePath: string; cursorLine: number; selection?: string } | null;
   commitsSinceLastCheck: number;
+  totalCostUsd: number;
 }
 
 export function createInitialState(saved: any): ChatState {
@@ -51,6 +52,7 @@ export function createInitialState(saved: any): ChatState {
     activeSessionId: null,
     fileContext: null,
     commitsSinceLastCheck: 0,
+    totalCostUsd: 0,
   };
 
   if (saved?.entries) {
@@ -91,4 +93,25 @@ export function getAllTools(entry: AssistantEntry): ToolEntry[] {
     }
   }
   return tools;
+}
+
+export function countTurns(entries: Entry[]): number {
+  let n = 0;
+  for (const entry of entries) {
+    if (entry.role === "assistant") n += entry.turns.length;
+  }
+  return n;
+}
+
+export function serializeConversation(entries: Entry[]): string {
+  const parts: string[] = [];
+  for (const entry of entries) {
+    if (entry.role === "user") {
+      parts.push(`[user]:\n\n${entry.content}`);
+    } else {
+      const text = getFullText(entry).trim();
+      if (text) parts.push(`[assistant]:\n\n${text}`);
+    }
+  }
+  return parts.join("\n\n");
 }

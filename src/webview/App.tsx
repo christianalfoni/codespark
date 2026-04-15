@@ -1,10 +1,11 @@
 import { useRef, useEffect, useState } from "preact/hooks";
 import { Logo } from "./Logo";
-import { type Entry } from "./state";
+import { type Entry, countTurns, serializeConversation } from "./state";
 import { renderMarkdown, CLIPBOARD_ICON, CHECK_ICON } from "./markdown";
 import { prepareForRender } from "./prepareForRender";
 import { AssistantMessage } from "./AssistantMessage";
 import { SessionMenu } from "./SessionMenu";
+import { StatsBar } from "./StatsBar";
 import { useAppState } from "./useAppState";
 import { useMessageHandling } from "./useMessageHandling";
 import { useMessageListScroll } from "./useMessageListScroll";
@@ -80,6 +81,7 @@ export function App({ vscode }: AppProps) {
       isStreaming: false,
       activeTool: null,
       fileContext: null,
+      totalCostUsd: 0,
     }));
     vscode.postMessage({ type: "new-session", currentEntries });
     setTimeout(() => {
@@ -99,6 +101,7 @@ export function App({ vscode }: AppProps) {
       activeTool: null,
       fileContext: null,
       commitsSinceLastCheck: 0,
+      totalCostUsd: 0,
     }));
     vscode.postMessage({ type: "claude-md-review", currentEntries });
   }
@@ -222,6 +225,13 @@ export function App({ vscode }: AppProps) {
                   />
                 );
               })}
+              {!state.isStreaming && (
+                <StatsBar
+                  numTurns={countTurns(state.entries)}
+                  totalCostUsd={state.totalCostUsd}
+                  conversationText={serializeConversation(state.entries)}
+                />
+              )}
               <div class="message-list-spacer" />
             </>
           )}

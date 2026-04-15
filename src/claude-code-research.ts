@@ -19,7 +19,13 @@ export type WebviewEvent =
   | { type: "token"; text: string }
   | { type: "tool-start"; tool: string; toolId: number; description?: string }
   | { type: "tool-end"; tool: string; toolId: number; isError: boolean }
-  | { type: "done"; resultText: string; sdkSessionId: string }
+  | {
+      type: "done";
+      resultText: string;
+      sdkSessionId: string;
+      numTurns?: number;
+      totalCostUsd?: number;
+    }
   | { type: "error"; text: string };
 
 // ---------------------------------------------------------------------------
@@ -265,6 +271,8 @@ export async function* iterateResearchEvents(
             type: "done",
             resultText,
             sdkSessionId,
+            numTurns: msg.num_turns,
+            totalCostUsd: msg.total_cost_usd,
           };
         } else {
           const errors = msg.errors?.join("; ") ?? "Unknown error";
@@ -274,6 +282,8 @@ export async function* iterateResearchEvents(
             type: "done",
             resultText: lastAssistantText,
             sdkSessionId,
+            numTurns: msg.num_turns,
+            totalCostUsd: msg.total_cost_usd,
           };
         }
 

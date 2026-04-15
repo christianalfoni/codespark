@@ -86,6 +86,8 @@ export interface ContextUpdatedMessage {
 }
 export interface DoneMessage {
   type: "done";
+  numTurns?: number;
+  totalCostUsd?: number;
 }
 export interface FocusMessage {
   type: "focus";

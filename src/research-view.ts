@@ -410,7 +410,11 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
           if (evt.sdkSessionId) {
             saveAgentMessages(sessionId, [{ sdkSessionId: evt.sdkSessionId }]);
           }
-          this._post({ type: "done" });
+          this._post({
+            type: "done",
+            numTurns: evt.numTurns,
+            totalCostUsd: evt.totalCostUsd,
+          });
           // Don't break — keep listening for follow-up turns
         } else {
           this._post(evt);

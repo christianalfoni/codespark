@@ -61,6 +61,7 @@ export function useMessageHandling(
           sessions: msg.sessions,
           activeSessionId: msg.activeSessionId,
           commitsSinceLastCheck: msg.commitsSinceLastCheck,
+          totalCostUsd: 0,
         };
       }
       case "sessions-updated": {
@@ -149,7 +150,16 @@ export function useMessageHandling(
         };
       }
       case "done": {
-        return { ...prev, entries, isStreaming: false, activeTool: null };
+        return {
+          ...prev,
+          entries,
+          isStreaming: false,
+          activeTool: null,
+          totalCostUsd:
+            typeof msg.totalCostUsd === "number"
+              ? msg.totalCostUsd
+              : prev.totalCostUsd,
+        };
       }
       case "error": {
         if (assistant) {
