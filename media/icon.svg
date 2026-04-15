@@ -1,11 +1,10 @@
 <svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
-  <!-- Left angle bracket < -->
-  <polygon points="46,24 40,24 18,60 40,96 46,96 24,60" fill="#7c3aed"/>
-  <!-- Right angle bracket > -->
-  <polygon points="82,24 88,24 110,60 88,96 82,96 104,60" fill="#7c3aed"/>
-  <!-- Lightning bolt centered at (64,60) -->
-  <!-- bolt path bbox: x 5-19 (w=14, cx=12), y 2-22 (h=20, cy=12) -->
-  <!-- scale 2.5: w=35, h=50, cx=30, cy=30 -->
-  <!-- translate so cx lands at 64 and cy lands at 60: x=64-30=34, y=60-30=30 -->
-  <path transform="translate(34,30) scale(2.5)" d="M14.5 2L5 13h6.5L9.5 22L19 11h-6.5L14.5 2Z" fill="#ddd6fe"/>
+  <g transform="translate(64 64) scale(0.75) translate(-340 -152)">
+    <!-- Left angle bracket < -->
+    <polygon points="298,125 260,152 298,179 298,170 271,152 298,134" fill="#7c3aed"/>
+    <!-- Right angle bracket > -->
+    <polygon points="382,125 420,152 382,179 382,170 409,152 382,134" fill="#7c3aed"/>
+    <!-- Lightning bolt -->
+    <path transform="translate(286,98) scale(4.5)" d="M14.5 2L5 13h6.5L9.5 22L19 11h-6.5L14.5 2Z" fill="#ddd6fe"/>
+  </g>
 </svg>
