@@ -371,34 +371,40 @@ export function createInvokeCommand(
 
     const activeEditor = editor;
     const currentFileAbs = activeEditor.document.uri.fsPath;
+
+    // The blank line must be removed before the agent edits the current file
+    // so MCP's content-matching sees a clean document. Status decoration and
+    // selection restore, however, should survive individual tool failures —
+    // only finalize those when the whole session ends.
+    let blankRemoved = false;
+    async function removeBlankLine() {
+      if (blankRemoved || !insertedBlank) return;
+      blankRemoved = true;
+      try {
+        await activeEditor.edit(
+          (b) => b.delete(new vscode.Range(insertLine, 0, insertLine + 1, 0)),
+          { undoStopBefore: false, undoStopAfter: false },
+        );
+      } catch {
+        /* ignore */
+      }
+    }
+
     let teardownDone = false;
     async function teardownPromptLine() {
       if (teardownDone) return;
       teardownDone = true;
       inlineDeco.dispose();
-      if (insertedBlank) {
-        try {
-          await activeEditor.edit(
-            (b) =>
-              b.delete(new vscode.Range(insertLine, 0, insertLine + 1, 0)),
-            { undoStopBefore: false, undoStopAfter: false },
-          );
-        } catch {
-          /* ignore */
-        }
-      }
+      await removeBlankLine();
       activeEditor.selection = originalSelection;
       if (originalVisibleRange) {
         activeEditor.revealRange(originalVisibleRange);
       }
     }
 
-    // Remove the blank line + decoration just before the agent edits the
-    // current file, so MCP's content-matching edits see a clean document.
-    // Other file reads/edits are safe with the blank still in place.
     const beforeEditSub = ipcServer.onBeforeEdit(async (filePath) => {
       if (filePath === currentFileAbs) {
-        await teardownPromptLine();
+        await removeBlankLine();
       }
     });
 

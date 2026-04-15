@@ -94,7 +94,7 @@ export async function prepareInlineAgent(
     mcpConfigPath,
     "--include-partial-messages",
     "--tools",
-    "Read",
+    "Read,Glob,Grep",
     "--system-prompt",
     systemPrompt,
     "--resume",
@@ -203,6 +203,10 @@ export async function executeInlineAgent(
   // drained on tool_result so we can log a single line per completed tool with
   // its name, status, and duration.
   const toolsInFlight = new Map<string, { name: string; start: number }>();
+  // Buffer tool_use input JSON per stream block index. Populated by
+  // input_json_delta chunks between content_block_start and content_block_stop,
+  // then parsed to produce a richer status like "Reading src/foo.ts".
+  const activeToolBlocks = new Map<number, { name: string; json: string }>();
   let textResponseContent = "";
   let inputTokens = 0;
   let outputTokens = 0;
@@ -326,6 +330,10 @@ export async function executeInlineAgent(
                 });
               }
 
+              if (typeof evt.index === "number") {
+                activeToolBlocks.set(evt.index, { name: toolName, json: "" });
+              }
+
               const isEditOrWrite =
                 toolName === "mcp__codespark__edit_file" ||
                 toolName === "mcp__codespark__write_file";
@@ -355,6 +363,30 @@ export async function executeInlineAgent(
             evt.delta?.type === "text_delta"
           ) {
             textResponseContent += evt.delta.text ?? "";
+          }
+
+          if (
+            evt?.type === "content_block_delta" &&
+            evt.delta?.type === "input_json_delta"
+          ) {
+            const block = activeToolBlocks.get(evt.index);
+            if (block && typeof evt.delta.partial_json === "string") {
+              block.json += evt.delta.partial_json;
+            }
+          }
+
+          if (evt?.type === "content_block_stop") {
+            const block = activeToolBlocks.get(evt.index);
+            if (block) {
+              activeToolBlocks.delete(evt.index);
+              let input: unknown;
+              try {
+                input = JSON.parse(block.json || "{}");
+              } catch {
+                input = undefined;
+              }
+              onStatus?.(describeTool(block.name, input));
+            }
           }
         }
 
@@ -484,6 +516,55 @@ function mapToolStatus(name: string): string {
   if (name === "Grep") return "Searching...";
   if (name === "Glob") return "Finding...";
   return `${name}...`;
+}
+
+function describeTool(name: string, input: unknown): string {
+  const obj = (input ?? {}) as Record<string, unknown>;
+  const str = (key: string): string | undefined =>
+    typeof obj[key] === "string" ? (obj[key] as string) : undefined;
+
+  if (name === "Read") {
+    const fp = str("file_path");
+    return fp ? `Reading ${basename(fp)}` : mapToolStatus(name);
+  }
+  if (name === "mcp__codespark__edit_file") {
+    const fp = str("file_path");
+    return fp ? `Editing ${basename(fp)}` : mapToolStatus(name);
+  }
+  if (name === "mcp__codespark__write_file") {
+    const fp = str("file_path");
+    return fp ? `Writing ${basename(fp)}` : mapToolStatus(name);
+  }
+  if (name === "mcp__codespark__move_file") {
+    const src = str("source");
+    return src ? `Moving ${basename(src)}` : mapToolStatus(name);
+  }
+  if (name === "mcp__codespark__delete_file") {
+    const fp = str("file_path");
+    return fp ? `Deleting ${basename(fp)}` : mapToolStatus(name);
+  }
+  if (name === "Grep") {
+    const pattern = str("pattern");
+    return pattern ? `Grepping "${truncate(pattern, 40)}"` : mapToolStatus(name);
+  }
+  if (name === "Glob") {
+    const pattern = str("pattern");
+    return pattern ? `Finding ${truncate(pattern, 40)}` : mapToolStatus(name);
+  }
+  if (name === "Bash") {
+    const cmd = str("command");
+    return cmd ? `Running ${truncate(cmd, 40)}` : mapToolStatus(name);
+  }
+  return mapToolStatus(name);
+}
+
+function basename(p: string): string {
+  const i = Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\"));
+  return i >= 0 ? p.slice(i + 1) : p;
+}
+
+function truncate(s: string, n: number): string {
+  return s.length > n ? s.slice(0, n - 1) + "…" : s;
 }
 
 function formatFileContentWithLineNumbers(content: string): string {
