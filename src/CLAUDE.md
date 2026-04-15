@@ -13,6 +13,15 @@ Communication flows:
 - Extension ↔ Webview: `postMessage` / `onDidReceiveMessage`
 - Extension ↔ MCP Server: IPC over Unix domain socket (`ipc-server.ts` → `mcp-server.ts`)
 
+## Code Organization
+
+Within each file, follow this order:
+
+1. **Exported types** — Interfaces, type aliases, enums
+2. **Exported constants** — Configuration, strings, numbers
+3. **Exported functions** — Main API surface
+4. **Rest** — Helpers, internal state, module-level variables
+
 ## Code Style & Structure
 
 ### Control Flow

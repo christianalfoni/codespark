@@ -1,11 +1,7 @@
 import { useRef, useEffect, useState } from "preact/hooks";
 import { Logo } from "./Logo";
 import { type Entry } from "./state";
-import {
-  renderMarkdown,
-  CLIPBOARD_ICON,
-  CHECK_ICON,
-} from "./markdown";
+import { renderMarkdown, CLIPBOARD_ICON, CHECK_ICON } from "./markdown";
 import { prepareForRender } from "./prepareForRender";
 import { AssistantMessage } from "./AssistantMessage";
 import { SessionMenu } from "./SessionMenu";
@@ -42,7 +38,10 @@ export function App({ vscode }: AppProps) {
 
   useMessageHandling(setState, textareaRef, vscode);
   const { userScrolledUp, onScroll } = useMessageListScroll(messageListRef);
-  const { registerUserMessage } = useStickyUserMessage(messageListRef, pinnedQueryRef);
+  const { registerUserMessage } = useStickyUserMessage(
+    messageListRef,
+    pinnedQueryRef,
+  );
   const autoResize = useTextareaAutoResize(textareaRef);
   useCodeActions(messageListRef, pinnedQueryRef);
 
@@ -142,9 +141,14 @@ export function App({ vscode }: AppProps) {
       if (href.startsWith("vscode://file/")) {
         const pathWithLine = href.slice("vscode://file".length);
         const colonIdx = pathWithLine.lastIndexOf(":");
-        const hasLine = colonIdx > 0 && /^\d+$/.test(pathWithLine.slice(colonIdx + 1));
-        const filePath = hasLine ? pathWithLine.slice(0, colonIdx) : pathWithLine;
-        const line = hasLine ? parseInt(pathWithLine.slice(colonIdx + 1), 10) : undefined;
+        const hasLine =
+          colonIdx > 0 && /^\d+$/.test(pathWithLine.slice(colonIdx + 1));
+        const filePath = hasLine
+          ? pathWithLine.slice(0, colonIdx)
+          : pathWithLine;
+        const line = hasLine
+          ? parseInt(pathWithLine.slice(colonIdx + 1), 10)
+          : undefined;
         postMessage({ type: "open-file", path: filePath, line });
       }
       return;
@@ -188,39 +192,39 @@ export function App({ vscode }: AppProps) {
           onClick={onMessageListClick}
         >
           {isEmpty ? (
-          <div class="empty-state">
-            <Logo />
-            <div class="empty-state-text">
-              Research your codebase and the web. Findings are shared with the
-              inline agent.
+            <div class="empty-state">
+              <Logo />
+              <div class="empty-state-text">
+                Research your codebase and the web. Findings are shared with the
+                inline agent.
+              </div>
             </div>
-          </div>
-        ) : (
-          <>
-            {state.entries.map((entry, i) => {
-              const isLast = i === state.entries.length - 1;
-              if (entry.role === "user") {
+          ) : (
+            <>
+              {state.entries.map((entry, i) => {
+                const isLast = i === state.entries.length - 1;
+                if (entry.role === "user") {
+                  return (
+                    <UserMessage
+                      key={i}
+                      index={i}
+                      content={entry.content}
+                      registerRef={registerUserMessage}
+                    />
+                  );
+                }
                 return (
-                  <UserMessage
+                  <AssistantMessage
                     key={i}
-                    index={i}
-                    content={entry.content}
-                    registerRef={registerUserMessage}
+                    entry={entry}
+                    isStreaming={isLast && state.isStreaming}
+                    activeTool={isLast ? state.activeTool : null}
                   />
                 );
-              }
-              return (
-                <AssistantMessage
-                  key={i}
-                  entry={entry}
-                  isStreaming={isLast && state.isStreaming}
-                  activeTool={isLast ? state.activeTool : null}
-                />
-              );
-            })}
-            <div class="message-list-spacer" />
-          </>
-        )}
+              })}
+              <div class="message-list-spacer" />
+            </>
+          )}
         </div>
       </div>
 
@@ -229,7 +233,10 @@ export function App({ vscode }: AppProps) {
           <div class="input-wrapper">
             {state.fileContext && (
               <div class="file-context-badge">
-                <span class="file-context-icon" dangerouslySetInnerHTML={{ __html: FILE_ICON }} />
+                <span
+                  class="file-context-icon"
+                  dangerouslySetInnerHTML={{ __html: FILE_ICON }}
+                />
                 <span class="file-context-path">
                   {state.fileContext.selection
                     ? `${state.fileContext.filePath} (selection)`
@@ -239,7 +246,11 @@ export function App({ vscode }: AppProps) {
             )}
             <textarea
               ref={textareaRef}
-              placeholder={state.isStreaming ? "Send a follow-up message..." : "Do some research to learn and get suggestions..."}
+              placeholder={
+                state.isStreaming
+                  ? "Send a follow-up message..."
+                  : "Do some research to learn and get suggestions..."
+              }
               rows={1}
               onInput={autoResize}
               onKeyDown={onKeyDown}
@@ -332,7 +343,11 @@ function UserMessage({
       onClick={isTruncated ? () => setExpanded((e) => !e) : undefined}
       style={isTruncated ? { cursor: "pointer" } : undefined}
     >
-      <div dangerouslySetInnerHTML={{ __html: renderMarkdown(prepareForRender(display)) }} />
+      <div
+        dangerouslySetInnerHTML={{
+          __html: renderMarkdown(prepareForRender(display)),
+        }}
+      />
       {isTruncated && (
         <span
           class="message-user__toggle"

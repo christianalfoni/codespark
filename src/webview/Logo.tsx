@@ -7,12 +7,12 @@ export function Logo() {
     >
       {/* Left angle bracket */}
       <polygon
-        points="290,80 276,80 232,152 276,224 290,224 246,152"
+        points="298,125 260,152 298,179 298,170 271,152 298,134"
         class="logo-bracket"
       />
       {/* Right angle bracket */}
       <polygon
-        points="390,80 404,80 448,152 404,224 390,224 434,152"
+        points="382,125 420,152 382,179 382,170 409,152 382,134"
         class="logo-bracket"
       />
       {/* Lightning bolt */}
@@ -22,7 +22,7 @@ export function Logo() {
         class="logo-bolt"
       />
       {/* Wordmark */}
-      <text x="340" y="295" class="logo-text">
+      <text x="340" y="255" class="logo-text">
         Code<tspan class="logo-text-accent">Spark</tspan>
       </text>
     </svg>
