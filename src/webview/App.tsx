@@ -44,7 +44,7 @@ export function App({ vscode }: AppProps) {
     pinnedQueryRef,
   );
   const autoResize = useTextareaAutoResize(textareaRef);
-  useCodeActions(messageListRef, pinnedQueryRef);
+  useCodeActions(messageListRef, pinnedQueryRef, state.isStreaming);
 
   const wasStreaming = useRef(false);
   useEffect(() => {

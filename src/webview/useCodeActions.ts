@@ -1,5 +1,5 @@
 import * as preact from "preact";
-import { useEffect } from "preact/hooks";
+import { useEffect, useRef } from "preact/hooks";
 
 /**
  * Positions `.code-actions` buttons at the visible top-right corner of
@@ -9,7 +9,11 @@ import { useEffect } from "preact/hooks";
 export function useCodeActions(
   messageListRef: preact.RefObject<HTMLDivElement>,
   pinnedQueryRef: preact.RefObject<HTMLDivElement>,
+  isStreaming: boolean,
 ) {
+  const isStreamingRef = useRef(isStreaming);
+  isStreamingRef.current = isStreaming;
+
   useEffect(() => {
     const list = messageListRef.current;
     if (!list) return;
@@ -39,6 +43,11 @@ export function useCodeActions(
     }
 
     function show(pre: HTMLElement) {
+      if (isStreamingRef.current) {
+        hide();
+        return;
+      }
+
       if (activePre === pre) {
         position();
         return;
@@ -100,4 +109,16 @@ export function useCodeActions(
       list.removeEventListener("scroll", onScroll);
     };
   }, []);
+
+  // When streaming starts, hide any currently visible code-action buttons so
+  // they don't linger on screen until the next pointer event.
+  useEffect(() => {
+    if (!isStreaming) return;
+    const list = messageListRef.current;
+    if (!list) return;
+    list.querySelectorAll<HTMLElement>(".code-actions-visible").forEach((el) => {
+      el.classList.remove("code-actions-visible");
+      el.style.top = "";
+    });
+  }, [isStreaming]);
 }
