@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 
 export interface InlinePromptDecorations {
   update(value: string, caret?: number): void;
+  showStatus(text: string): void;
   dispose(): void;
 }
 
@@ -19,13 +20,15 @@ export function createInlinePromptDecorations(
     backgroundColor: "var(--vscode-input-background)",
   });
 
-  function render(value: string, caret?: number) {
+  let currentLine = ghostLine;
+
+  function renderPrompt(value: string, caret?: number) {
     const pos = Math.max(0, Math.min(caret ?? value.length, value.length));
     const contentText = `› ${value.slice(0, pos)}▍${value.slice(pos)}`;
 
     editor.setDecorations(ghostType, [
       {
-        range: new vscode.Range(ghostLine, 0, ghostLine, 0),
+        range: new vscode.Range(currentLine, 0, currentLine, 0),
         renderOptions: {
           after: {
             contentText,
@@ -36,10 +39,26 @@ export function createInlinePromptDecorations(
     ]);
   }
 
-  render("");
+  function renderStatus(text: string) {
+    editor.setDecorations(ghostType, [
+      {
+        range: new vscode.Range(currentLine, 0, currentLine, 0),
+        renderOptions: {
+          after: {
+            contentText: `› ${text}`,
+            color: "var(--vscode-disabledForeground)",
+            fontStyle: "italic",
+          },
+        },
+      },
+    ]);
+  }
+
+  renderPrompt("");
 
   return {
-    update: render,
+    update: renderPrompt,
+    showStatus: renderStatus,
     dispose() {
       ghostType.dispose();
     },

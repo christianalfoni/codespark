@@ -11,10 +11,13 @@ export type EditListener = (
   editedRanges: EditedRange[],
 ) => void;
 
+export type BeforeEditListener = (filePath: string) => Promise<void>;
+
 export interface IpcServer {
   socketPath: string;
   ready: Promise<void>;
   onEdit: (listener: EditListener) => { dispose: () => void };
+  onBeforeEdit: (listener: BeforeEditListener) => { dispose: () => void };
   dispose: () => void;
 }
 
@@ -103,11 +106,19 @@ function computeDiffRanges(before: string, after: string): EditedRange[] {
   return editedRanges;
 }
 
+async function runBeforeEditListeners(
+  listeners: Set<BeforeEditListener>,
+  filePath: string,
+): Promise<void> {
+  await Promise.all(Array.from(listeners).map((l) => l(filePath)));
+}
+
 function handleConnectionData(
   chunk: Buffer,
   buffer: string,
   log: vscode.OutputChannel,
   editListeners: Set<EditListener>,
+  beforeEditListeners: Set<BeforeEditListener>,
   conn: net.Socket,
 ): string {
   buffer += chunk.toString();
@@ -148,12 +159,14 @@ function handleConnectionData(
 
     if (req.type === "edit_file") {
       const editReq = req as unknown as EditRequest;
-      handleEditRequest(editReq)
+      runBeforeEditListeners(beforeEditListeners, editReq.file_path)
+        .then(() => handleEditRequest(editReq))
         .then(handleResult(editReq.file_path, editReq.edits.length))
         .catch(handleError(editReq.id));
     } else if (req.type === "write_file") {
       const writeReq = req as unknown as WriteRequest;
-      handleWriteRequest(writeReq, log)
+      runBeforeEditListeners(beforeEditListeners, writeReq.file_path)
+        .then(() => handleWriteRequest(writeReq, log))
         .then(handleResult(writeReq.file_path, 1))
         .catch(handleError(writeReq.id));
     } else if (req.type === "move_file") {
@@ -345,6 +358,7 @@ export function startIpcServer(log: vscode.OutputChannel): IpcServer {
       ? `\\\\.\\pipe\\codespark-${process.pid}`
       : `/tmp/codespark-${process.pid}.sock`;
   const editListeners = new Set<EditListener>();
+  const beforeEditListeners = new Set<BeforeEditListener>();
 
   // Clean up stale socket from prior crash
   try {
@@ -362,7 +376,14 @@ export function startIpcServer(log: vscode.OutputChannel): IpcServer {
     let buffer = "";
 
     conn.on("data", (chunk) => {
-      buffer = handleConnectionData(chunk, buffer, log, editListeners, conn);
+      buffer = handleConnectionData(
+        chunk,
+        buffer,
+        log,
+        editListeners,
+        beforeEditListeners,
+        conn,
+      );
     });
 
     conn.on("error", (err) => {
@@ -387,6 +408,14 @@ export function startIpcServer(log: vscode.OutputChannel): IpcServer {
       return {
         dispose: () => {
           editListeners.delete(listener);
+        },
+      };
+    },
+    onBeforeEdit(listener: BeforeEditListener) {
+      beforeEditListeners.add(listener);
+      return {
+        dispose: () => {
+          beforeEditListeners.delete(listener);
         },
       };
     },

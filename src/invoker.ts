@@ -293,8 +293,6 @@ export function createInvokeCommand(
       inlineDeco.update(value, caret);
     });
 
-    inlineDeco.dispose();
-
     // Always hand focus back to the editor once the prompt closes — on both
     // submit and cancel. On submit, the agent runs next but the user should
     // be watching the editor, not the hidden webview input.
@@ -307,22 +305,24 @@ export function createInvokeCommand(
       /* ignore */
     }
 
-    // Undo the inserted blank line now that the editor has focus again.
-    if (insertedBlank) {
-      await vscode.commands.executeCommand("undo");
-    }
-
-    editor.selection = originalSelection;
-    if (originalVisibleRange) {
-      editor.revealRange(originalVisibleRange);
-    }
-
     if (!instruction) {
+      inlineDeco.dispose();
+      if (insertedBlank) {
+        await vscode.commands.executeCommand("undo");
+      }
+      editor.selection = originalSelection;
+      if (originalVisibleRange) {
+        editor.revealRange(originalVisibleRange);
+      }
       agentPromise.then((agent) => abortInlineAgent(agent)).catch(() => {});
       invokeDim?.dispose();
       decorationProvider.deactivate();
       return;
     }
+
+    // Submitted — keep the prompt line alive and swap it into a dimmed status
+    // indicator that reflects what the agent is currently doing.
+    inlineDeco.showStatus("Thinking...");
 
     log.appendLine(`[context] Cursor at line ${cursorLineNum + 1}`);
     log.appendLine(
@@ -369,6 +369,39 @@ export function createInvokeCommand(
       isInstructionFile,
     };
 
+    const activeEditor = editor;
+    const currentFileAbs = activeEditor.document.uri.fsPath;
+    let teardownDone = false;
+    async function teardownPromptLine() {
+      if (teardownDone) return;
+      teardownDone = true;
+      inlineDeco.dispose();
+      if (insertedBlank) {
+        try {
+          await activeEditor.edit(
+            (b) =>
+              b.delete(new vscode.Range(insertLine, 0, insertLine + 1, 0)),
+            { undoStopBefore: false, undoStopAfter: false },
+          );
+        } catch {
+          /* ignore */
+        }
+      }
+      activeEditor.selection = originalSelection;
+      if (originalVisibleRange) {
+        activeEditor.revealRange(originalVisibleRange);
+      }
+    }
+
+    // Remove the blank line + decoration just before the agent edits the
+    // current file, so MCP's content-matching edits see a clean document.
+    // Other file reads/edits are safe with the blank still in place.
+    const beforeEditSub = ipcServer.onBeforeEdit(async (filePath) => {
+      if (filePath === currentFileAbs) {
+        await teardownPromptLine();
+      }
+    });
+
     try {
       const result = await executeInlineAgent(
         agent,
@@ -378,9 +411,14 @@ export function createInvokeCommand(
         () => {
           statusBarItem.text = "$(loading~spin) CodeSpark · agent working...";
         },
+        (text) => {
+          inlineDeco.showStatus(text);
+        },
       );
 
       pulse.dispose();
+      beforeEditSub.dispose();
+      await teardownPromptLine();
 
       recordQuery({
         provider: result.provider,
@@ -464,6 +502,8 @@ export function createInvokeCommand(
       }
     } catch (err: unknown) {
       pulse.dispose();
+      beforeEditSub.dispose();
+      await teardownPromptLine();
       decorationProvider.deactivate();
       recordQuery({
         provider: "",

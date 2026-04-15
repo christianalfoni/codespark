@@ -146,6 +146,7 @@ export async function executeInlineAgent(
   log: vscode.OutputChannel,
   ipcServer: IpcServer,
   onAgentMode?: () => void,
+  onStatus?: (text: string) => void,
 ): Promise<LLMResult> {
   const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath!;
   const { proc } = agent;
@@ -328,6 +329,10 @@ export async function executeInlineAgent(
                   onAgentMode();
                 }
               }
+
+              onStatus?.(mapToolStatus(toolName));
+            } else if (evt.content_block?.type === "text") {
+              onStatus?.("Thinking...");
             }
 
             // (text blocks after edits no longer trigger early exit —
@@ -429,6 +434,18 @@ export async function executeInlineAgent(
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+function mapToolStatus(name: string): string {
+  if (name === "Read") return "Reading...";
+  if (name === "mcp__codespark__edit_file") return "Editing...";
+  if (name === "mcp__codespark__write_file") return "Writing...";
+  if (name === "mcp__codespark__move_file") return "Moving...";
+  if (name === "mcp__codespark__delete_file") return "Deleting...";
+  if (name === "Bash") return "Running...";
+  if (name === "Grep") return "Searching...";
+  if (name === "Glob") return "Finding...";
+  return `${name}...`;
+}
 
 function formatFileContentWithLineNumbers(content: string): string {
   return content
