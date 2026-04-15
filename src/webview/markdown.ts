@@ -50,7 +50,7 @@ const renderer: RendererObject = {
   },
 
   codespan({ text }: { text: string }) {
-    return `<code>${text}</code>`;
+    return `<code>${escapeHtml(text)}</code>`;
   },
 };
 
