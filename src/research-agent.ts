@@ -24,7 +24,7 @@ export interface ResearchSession {
 
 const SESSIONS_KEY = "codeSpark.researchSessions";
 const ACTIVE_SESSION_KEY = "codeSpark.activeResearchSession";
-const LAST_CLAUDE_MD_CHECK_SHA_KEY = "codeSpark.lastClaudeMdCheckSha";
+
 const MAX_SESSIONS = 5;
 const MAX_SUMMARY_LENGTH = 4000;
 
@@ -60,13 +60,7 @@ export function getResearchSummary(): string | undefined {
   return session?.summary || undefined;
 }
 
-export function getLastClaudeMdCheckSha(): string | undefined {
-  return _workspaceState?.get<string>(LAST_CLAUDE_MD_CHECK_SHA_KEY);
-}
 
-export function setLastClaudeMdCheckSha(sha: string): void {
-  _workspaceState?.update(LAST_CLAUDE_MD_CHECK_SHA_KEY, sha);
-}
 
 export function createSession(name?: string): ResearchSession {
   const session: ResearchSession = {
@@ -189,7 +183,6 @@ export function startResearchQuery(
   sessionId: string,
   mcpConfigPath?: string,
   resumeSdkSessionId?: string,
-  planFilePath?: string,
 ): { handle: ResearchQueryHandle; isFollowUp: boolean } {
   const existing = _liveQueries.get(sessionId);
   if (existing && !existing.process.killed && existing.process.exitCode === null) {
@@ -198,7 +191,7 @@ export function startResearchQuery(
     return { handle: existing, isFollowUp: true };
   }
 
-  const handle = createResearchQuery(prompt, cwd, log, mcpConfigPath, resumeSdkSessionId, planFilePath);
+  const handle = createResearchQuery(prompt, cwd, log, mcpConfigPath, resumeSdkSessionId);
   _liveQueries.set(sessionId, handle);
   return { handle, isFollowUp: false };
 }

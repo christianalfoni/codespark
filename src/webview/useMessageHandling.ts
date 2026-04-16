@@ -46,9 +46,6 @@ export function useMessageHandling(
             : prev.contextState,
           sessions: msg.sessions,
           activeSessionId: msg.activeSessionId,
-          commitsSinceLastCheck: msg.commitsSinceLastCheck,
-          planMode: msg.planMode,
-          canPlan: msg.canPlan,
         };
       }
       case "restore": {
@@ -62,10 +59,7 @@ export function useMessageHandling(
             : ("none" as ContextState),
           sessions: msg.sessions,
           activeSessionId: msg.activeSessionId,
-          commitsSinceLastCheck: msg.commitsSinceLastCheck,
           totalCostUsd: 0,
-          planMode: msg.planMode,
-          canPlan: msg.canPlan,
         };
       }
       case "sessions-updated": {

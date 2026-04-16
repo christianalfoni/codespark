@@ -32,13 +32,10 @@ export interface SwitchSessionMessage {
   id: string;
   currentEntries: import("./state").Entry[];
 }
-export interface ClaudeMdReviewMessage {
-  type: "claude-md-review";
-  currentEntries: import("./state").Entry[];
-}
-export interface TogglePlanMessage {
-  type: "toggle-plan";
-  enabled: boolean;
+export interface ApplyCodeMessage {
+  type: "apply-code";
+  filePath: string;
+  code: string;
 }
 
 export type WebviewToExtension =
@@ -50,8 +47,7 @@ export type WebviewToExtension =
   | RunCommandMessage
   | NewSessionMessage
   | SwitchSessionMessage
-  | ClaudeMdReviewMessage
-  | TogglePlanMessage;
+  | ApplyCodeMessage;
 
 export interface SessionInfo {
   id: string;
@@ -64,9 +60,6 @@ export interface InitMessage {
   hasContext: boolean;
   sessions: SessionInfo[];
   activeSessionId: string | null;
-  commitsSinceLastCheck: number;
-  planMode: boolean;
-  canPlan: boolean;
 }
 export interface TurnStartMessage {
   type: "turn-start";
@@ -114,9 +107,6 @@ export interface RestoreMessage {
   sessions: SessionInfo[];
   activeSessionId: string | null;
   hasContext: boolean;
-  commitsSinceLastCheck: number;
-  planMode: boolean;
-  canPlan: boolean;
 }
 
 export interface InjectUserMessage {

@@ -92,26 +92,6 @@ export function App({ vscode }: AppProps) {
     }, 0);
   }
 
-  function startClaudeMdReview() {
-    const currentEntries = state.entries;
-    setState((prev) => ({
-      ...prev,
-      entries: [],
-      isStreaming: true,
-      activeTool: null,
-      fileContext: null,
-      commitsSinceLastCheck: 0,
-      totalCostUsd: 0,
-    }));
-    vscode.postMessage({ type: "claude-md-review", currentEntries });
-  }
-
-  function togglePlanMode() {
-    const next = !state.planMode;
-    setState((prev) => ({ ...prev, planMode: next }));
-    vscode.postMessage({ type: "toggle-plan", enabled: next });
-  }
-
   function switchToSession(id: string) {
     if (id === state.activeSessionId) return;
     vscode.postMessage({
@@ -179,6 +159,21 @@ export function App({ vscode }: AppProps) {
         btn as HTMLButtonElement,
         vscode.postMessage.bind(vscode),
       );
+      return;
+    }
+
+    if (btn?.classList.contains("code-apply-btn")) {
+      const filePath = btn.dataset.file ?? "";
+      const code = btn.dataset.code ?? "";
+      if (filePath && code) {
+        vscode.postMessage({ type: "apply-code", filePath, code });
+      }
+      return;
+    }
+
+    const fileLabel = target.closest(".code-file-label") as HTMLElement | null;
+    if (fileLabel?.dataset.file) {
+      vscode.postMessage({ type: "open-file", path: fileLabel.dataset.file });
       return;
     }
   }
@@ -287,27 +282,6 @@ export function App({ vscode }: AppProps) {
                   onSwitch={switchToSession}
                 />
               )}
-              {state.canPlan && (
-                <button
-                  class={`plan-btn${state.planMode ? " plan-btn--active" : ""}`}
-                  title={state.planMode ? "Disable plan mode" : "Enable plan mode"}
-                  disabled={state.isStreaming}
-                  onClick={togglePlanMode}
-                >
-                  Plan
-                </button>
-              )}
-              <button
-                class="claude-md-btn"
-                title="Review codebase patterns and update CLAUDE.md"
-                disabled={state.isStreaming}
-                onClick={startClaudeMdReview}
-              >
-                CLAUDE.md
-                {state.commitsSinceLastCheck >= 10 && (
-                  <span class="claude-md-dot" />
-                )}
-              </button>
               <div style={{ flex: 1 }} />
               {state.isStreaming && (
                 <button

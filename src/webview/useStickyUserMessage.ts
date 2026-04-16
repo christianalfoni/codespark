@@ -22,6 +22,22 @@ export function useStickyUserMessage(
     const pinned = pinnedRef.current;
     if (!root || !pinned) return;
 
+    function onClick() {
+      const source = elementsRef.current.get(currentIndexRef.current);
+      if (source) {
+        source.click();
+        // Re-sync overlay after Preact re-renders the source
+        requestAnimationFrame(() => {
+          if (currentIndexRef.current !== -1) {
+            const updated = elementsRef.current.get(currentIndexRef.current);
+            if (updated) pinned!.innerHTML = updated.innerHTML;
+          }
+        });
+      }
+    }
+
+    pinned.addEventListener("click", onClick);
+
     function update() {
       let lastIndex = -1;
 
@@ -51,6 +67,7 @@ export function useStickyUserMessage(
     root.addEventListener("scroll", onScroll, { passive: true });
     return () => {
       root.removeEventListener("scroll", onScroll);
+      pinned.removeEventListener("click", onClick);
       cancelAnimationFrame(rafRef.current);
     };
   }, [messageListRef, pinnedRef]);

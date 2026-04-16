@@ -120,6 +120,7 @@ body {
   z-index: 3;
   padding: 10px 28px;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
 }
 
 .message-user__toggle {
@@ -429,6 +430,38 @@ body {
 .code-run-btn:hover {
   color: var(--vscode-charts-green, #89d185);
   background: rgba(137, 209, 133, 0.15);
+}
+
+.code-apply-btn {
+  color: var(--vscode-panelTitle-activeBorder);
+}
+
+.code-apply-btn:hover {
+  color: var(--vscode-panelTitle-activeBorder);
+  background: color-mix(in srgb, var(--vscode-panelTitle-activeBorder) 15%, transparent);
+}
+
+.code-file-label {
+  position: absolute;
+  top: 6px;
+  left: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8em;
+  color: var(--vscode-descriptionForeground);
+  font-family: var(--vscode-font-family);
+  z-index: 2;
+  cursor: pointer;
+  height: 26px;
+}
+
+.code-file-label:hover {
+  color: var(--vscode-textLink-foreground);
+}
+
+pre.has-file-label {
+  padding-top: 36px;
 }
 
 /* ── Syntax highlighting (highlight.js, VS Code themed) ──── */
@@ -752,81 +785,6 @@ body {
   width: 12px;
   height: 12px;
   fill: currentColor;
-}
-
-/* ── Plan mode toggle ────────────────────────────────────── */
-
-.plan-btn {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  height: 28px;
-  padding: 0 8px;
-  border-radius: 6px;
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--vscode-descriptionForeground);
-  font-family: var(--vscode-font-family);
-  font-size: 11px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: color 0.15s, background 0.15s, border-color 0.15s;
-  white-space: nowrap;
-}
-
-.plan-btn:hover:not(:disabled) {
-  color: var(--vscode-editor-foreground);
-}
-
-.plan-btn--active {
-  color: var(--vscode-panelTitle-activeForeground, var(--vscode-editor-foreground));
-  border-color: var(--vscode-panelTitle-activeBorder);
-  background: color-mix(in srgb, var(--vscode-panelTitle-activeBorder) 15%, transparent);
-}
-
-.plan-btn--active:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--vscode-panelTitle-activeBorder) 25%, transparent);
-}
-
-.plan-btn:disabled {
-  opacity: 0.3;
-  cursor: default;
-}
-
-/* ── CLAUDE.md review button ─────────────────────────────── */
-
-.claude-md-btn {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  height: 28px;
-  padding: 0 8px;
-  border-radius: 6px;
-  border: none;
-  background: transparent;
-  color: var(--vscode-descriptionForeground);
-  font-family: var(--vscode-font-family);
-  font-size: 11px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: color 0.15s;
-  white-space: nowrap;
-}
-
-.claude-md-btn:hover:not(:disabled) {
-  color: var(--vscode-editor-foreground);
-}
-
-.claude-md-btn:disabled {
-  opacity: 0.3;
-  cursor: default;
-}
-
-.claude-md-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--vscode-panelTitle-activeBorder);
 }
 
 /* ── Session menu (custom popover) ────────────────────────── */

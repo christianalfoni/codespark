@@ -39,7 +39,6 @@ export function createResearchQuery(
   log: vscode.OutputChannel,
   mcpConfigPath?: string,
   resumeSessionId?: string,
-  planFilePath?: string,
 ): ResearchQueryHandle {
   log.appendLine(
     `[claude-code-research] Creating query (resume: ${resumeSessionId ?? "none"}) — ${prompt.slice(0, 100)}`,
@@ -62,7 +61,7 @@ export function createResearchQuery(
     "--disallowedTools",
     "mcp__codespark__edit_file,mcp__codespark__write_file,mcp__codespark__move_file,mcp__codespark__delete_file",
     "--system-prompt",
-    buildResearchSystemPrompt(cwd, planFilePath),
+    buildResearchSystemPrompt(cwd),
   ];
 
   if (resumeSessionId) {

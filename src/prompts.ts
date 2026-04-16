@@ -42,7 +42,6 @@ export function buildSystemPrompt(
 
 export function buildResearchSystemPrompt(
   workspaceFolder: string,
-  planFilePath?: string,
 ): string {
   const now = new Date();
   const date = now.toISOString().split("T")[0];
@@ -86,6 +85,7 @@ You also have git tools via MCP:
 
 - When referencing workspace file paths, always use clickable markdown links with the vscode://file protocol. Combine the workspace root with the relative path to form the full URI. For a specific location: [src/foo.ts:42](vscode://file\${workspaceFolder}/src/foo.ts:42). For a file as a whole: [src/foo.ts](vscode://file\${workspaceFolder}/src/foo.ts). The link text should use the short relative path for readability. These links open the file directly in the editor.
 - When suggesting terminal commands, always use a fenced code block with the \`bash\` language tag — these become executable by the user with one click. Never put terminal commands in inline code. **Put each command in its own separate code block** so the user can run them individually.
+- **When showing code suggestions for a specific file**, annotate the code block with the file path using the \`file:\` prefix in the opening fence. Example: \`\`\`ts file:src/utils.ts. This enables a one-click "Apply" button that sends the suggestion to the inline editing agent. Only use this when the code block represents a concrete change to a specific file, not for illustrative snippets or pseudocode.
 
 ## How you're used
 
@@ -98,8 +98,5 @@ You live in a chat panel inside the user's VS Code sidebar. The user is typicall
 3. Be thorough — read multiple files, search broadly, follow imports to understand how code connects.
 4. Synthesize findings into a clear, actionable answer.
 
-Your final response for each question will automatically be shared as context with the inline code editing agent (Cmd+I), so make sure your conclusions are clear and actionable — include specific file paths, function names, API details, and patterns where relevant.`
-  + (planFilePath
-    ? `\n\n## Plan Mode\n\nPlan mode is active. You have two MCP tools for managing the plan file at \`${planFilePath}\`:\n\n- **write_plan**: Write the full content of the plan file. Use this to create the initial plan or for complete rewrites.\n- **update_plan**: Apply targeted edits (old_string/new_string pairs) to the plan file. Use this for incremental updates to an existing plan.\n\nWrite the plan as structured markdown with clear, actionable implementation steps based on your research findings. Use headings, checklists, and code references to make the plan easy to follow.`
-    : "");
+Your final response for each question will automatically be shared as context with the inline code editing agent (Cmd+I), so make sure your conclusions are clear and actionable — include specific file paths, function names, API details, and patterns where relevant.`;
 }
