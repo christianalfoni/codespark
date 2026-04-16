@@ -586,7 +586,7 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
     if (this._view) {
       // Show clean user message + file context indicator in the webview
       this._post({ type: "inject-user", text: opts.query });
-      this._post({ type: "tool-start", tool: "read_reference", toolId: -1, description: opts.filePath });
+      this._post({ type: "tool-start", tool: "read_reference", toolId: -1 });
       this._post({ type: "tool-end", tool: "read_reference", toolId: -1, isError: false });
 
       await this._handlePromptWithContext(opts);
@@ -619,7 +619,7 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
     }
 
     // Show file context indicator in tool list
-    this._post({ type: "tool-start", tool: "read_reference", toolId: -1, description: ctx.filePath });
+    this._post({ type: "tool-start", tool: "read_reference", toolId: -1 });
     this._post({ type: "tool-end", tool: "read_reference", toolId: -1, isError: false });
 
     const query = ctx.selection
