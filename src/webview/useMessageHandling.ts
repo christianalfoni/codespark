@@ -47,6 +47,8 @@ export function useMessageHandling(
           sessions: msg.sessions,
           activeSessionId: msg.activeSessionId,
           commitsSinceLastCheck: msg.commitsSinceLastCheck,
+          planMode: msg.planMode,
+          canPlan: msg.canPlan,
         };
       }
       case "restore": {
@@ -62,6 +64,8 @@ export function useMessageHandling(
           activeSessionId: msg.activeSessionId,
           commitsSinceLastCheck: msg.commitsSinceLastCheck,
           totalCostUsd: 0,
+          planMode: msg.planMode,
+          canPlan: msg.canPlan,
         };
       }
       case "sessions-updated": {

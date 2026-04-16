@@ -242,6 +242,87 @@ If the destination's parent directories don't exist, they will be created.`,
   );
 
   // -------------------------------------------------------------------------
+  // Plan tool
+  // -------------------------------------------------------------------------
+
+  // @ts-ignore
+  server.tool(
+    "write_plan",
+    `Write the full content of the plan file for the current branch. This tool overwrites the entire file.
+
+Usage:
+- Use this tool to create the initial plan or to do a complete rewrite.
+- Prefer the update_plan tool for modifying an existing plan — it only sends the diff.
+- The plan should be structured markdown with clear, actionable implementation steps.`,
+    {
+      content: z
+        .string()
+        .describe("The full markdown content to write to the plan file"),
+    },
+    async ({ content }) => {
+      try {
+        const res = await sendIpcRequest("write_plan", { content });
+        if (res.success) {
+          return { content: [{ type: "text" as const, text: res.message }] };
+        } else {
+          return {
+            content: [{ type: "text" as const, text: `Error: ${res.error}` }],
+            isError: true,
+          };
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return {
+          content: [{ type: "text" as const, text: `IPC error: ${msg}` }],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  // @ts-ignore
+  server.tool(
+    "update_plan",
+    `Apply text edits to the plan file. Accepts multiple edits in a single call.
+
+Each edit replaces \`old_string\` with \`new_string\`. All edit ranges are computed
+against the original document text before any replacements are applied, so edits
+do not affect each other's positions — you do not need to account for offset shifts.
+
+If any edit fails (e.g. old_string not found or is ambiguous), the entire batch
+is rejected and no changes are made.`,
+    {
+      edits: z
+        .array(
+          z.object({
+            old_string: z.string().describe("The exact text to find in the plan file"),
+            new_string: z.string().describe("The replacement text"),
+          }),
+        )
+        .describe("Array of edits to apply atomically"),
+    },
+    async ({ edits }) => {
+      try {
+        const res = await sendIpcRequest("update_plan", { edits });
+        if (res.success) {
+          return { content: [{ type: "text" as const, text: res.message }] };
+        } else {
+          return {
+            content: [{ type: "text" as const, text: `Error: ${res.error}` }],
+            isError: true,
+          };
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return {
+          content: [{ type: "text" as const, text: `IPC error: ${msg}` }],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  // -------------------------------------------------------------------------
   // Read-only git tools
   // -------------------------------------------------------------------------
 

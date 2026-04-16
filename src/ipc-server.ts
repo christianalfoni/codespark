@@ -23,6 +23,8 @@ export interface IpcServer {
   ready: Promise<void>;
   onEdit: (listener: EditListener) => { dispose: () => void };
   onBeforeEdit: (listener: BeforeEditListener) => { dispose: () => void };
+  setPlanFilePath: (path: string | null) => void;
+  getPlanFilePath: () => string | null;
   dispose: () => void;
 }
 
@@ -63,6 +65,7 @@ export function startIpcServer(log: vscode.OutputChannel): IpcServer {
       : `/tmp/codespark-${process.pid}.sock`;
   const editListeners = new Set<EditListener>();
   const beforeEditListeners = new Set<BeforeEditListener>();
+  let planFilePath: string | null = null;
 
   // Clean up stale socket from prior crash
   try {
@@ -89,6 +92,7 @@ export function startIpcServer(log: vscode.OutputChannel): IpcServer {
         editListeners,
         beforeEditListeners,
         conn,
+        () => planFilePath,
       );
     });
 
@@ -124,6 +128,12 @@ export function startIpcServer(log: vscode.OutputChannel): IpcServer {
           beforeEditListeners.delete(listener);
         },
       };
+    },
+    setPlanFilePath(path: string | null) {
+      planFilePath = path;
+    },
+    getPlanFilePath() {
+      return planFilePath;
     },
     dispose() {
       server.close();
@@ -217,6 +227,7 @@ function handleConnectionData(
   editListeners: Set<EditListener>,
   beforeEditListeners: Set<BeforeEditListener>,
   conn: net.Socket,
+  getPlanFilePath: () => string | null,
 ): string {
   buffer += chunk.toString();
 
@@ -283,6 +294,53 @@ function handleConnectionData(
       handleDeleteRequest(deleteReq, log)
         .then((res) => conn.write(JSON.stringify(res) + "\n"))
         .catch(handleError(deleteReq.id));
+    } else if (req.type === "write_plan") {
+      const planPath = getPlanFilePath();
+      if (!planPath) {
+        conn.write(
+          JSON.stringify({
+            id: req.id,
+            success: false,
+            error: "Plan mode is not active",
+          }) + "\n",
+        );
+      } else {
+        const writeReq: WriteRequest = {
+          id: req.id as string,
+          type: "write_file",
+          file_path: planPath,
+          content: req.content as string,
+        };
+        runBeforeEditListeners(beforeEditListeners, planPath)
+          .then(() => handleWriteRequest(writeReq, log))
+          .then(handleResult(planPath, 1))
+          .catch(handleError(req.id));
+      }
+    } else if (req.type === "update_plan") {
+      const planPath = getPlanFilePath();
+      if (!planPath) {
+        conn.write(
+          JSON.stringify({
+            id: req.id,
+            success: false,
+            error: "Plan mode is not active",
+          }) + "\n",
+        );
+      } else {
+        const editReq: EditRequest = {
+          id: req.id as string,
+          type: "edit_file",
+          file_path: planPath,
+          edits: req.edits as Array<{ old_string: string; new_string: string }>,
+        };
+        log.appendLine(
+          `[ipc] update_plan: ${editReq.edits.length} edit(s) on ${planPath}`,
+        );
+        runBeforeEditListeners(beforeEditListeners, planPath)
+          .then(() => handleEditRequest(editReq))
+          .then(handleResult(planPath, editReq.edits.length))
+          .catch(handleError(req.id));
+      }
     } else {
       conn.write(
         JSON.stringify({

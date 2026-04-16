@@ -106,6 +106,12 @@ export function App({ vscode }: AppProps) {
     vscode.postMessage({ type: "claude-md-review", currentEntries });
   }
 
+  function togglePlanMode() {
+    const next = !state.planMode;
+    setState((prev) => ({ ...prev, planMode: next }));
+    vscode.postMessage({ type: "toggle-plan", enabled: next });
+  }
+
   function switchToSession(id: string) {
     if (id === state.activeSessionId) return;
     vscode.postMessage({
@@ -280,6 +286,16 @@ export function App({ vscode }: AppProps) {
                   disabled={state.isStreaming}
                   onSwitch={switchToSession}
                 />
+              )}
+              {state.canPlan && (
+                <button
+                  class={`plan-btn${state.planMode ? " plan-btn--active" : ""}`}
+                  title={state.planMode ? "Disable plan mode" : "Enable plan mode"}
+                  disabled={state.isStreaming}
+                  onClick={togglePlanMode}
+                >
+                  Plan
+                </button>
               )}
               <button
                 class="claude-md-btn"

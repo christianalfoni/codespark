@@ -36,6 +36,10 @@ export interface ClaudeMdReviewMessage {
   type: "claude-md-review";
   currentEntries: import("./state").Entry[];
 }
+export interface TogglePlanMessage {
+  type: "toggle-plan";
+  enabled: boolean;
+}
 
 export type WebviewToExtension =
   | SendMessage
@@ -46,7 +50,8 @@ export type WebviewToExtension =
   | RunCommandMessage
   | NewSessionMessage
   | SwitchSessionMessage
-  | ClaudeMdReviewMessage;
+  | ClaudeMdReviewMessage
+  | TogglePlanMessage;
 
 export interface SessionInfo {
   id: string;
@@ -60,6 +65,8 @@ export interface InitMessage {
   sessions: SessionInfo[];
   activeSessionId: string | null;
   commitsSinceLastCheck: number;
+  planMode: boolean;
+  canPlan: boolean;
 }
 export interface TurnStartMessage {
   type: "turn-start";
@@ -108,6 +115,8 @@ export interface RestoreMessage {
   activeSessionId: string | null;
   hasContext: boolean;
   commitsSinceLastCheck: number;
+  planMode: boolean;
+  canPlan: boolean;
 }
 
 export interface InjectUserMessage {

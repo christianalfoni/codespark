@@ -1,4 +1,6 @@
 import * as vscode from "vscode";
+import * as path from "path";
+import * as fs from "fs";
 import {
   startResearchQuery,
   getLiveQuery,
@@ -19,6 +21,13 @@ import {
   getLastClaudeMdCheckSha,
   setLastClaudeMdCheckSha,
 } from "./research-agent";
+import { IpcServer } from "./ipc-server";
+import {
+  startFileScan,
+  startEmptyFilePlaceholder,
+  focusLargestChange,
+} from "./editor-effects";
+import { markRead } from "./readTracker";
 import { execFileSync } from "child_process";
 
 function getNonce(): string {
@@ -44,10 +53,15 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
   private _readyPromise: Promise<void> = new Promise((resolve) => {
     this._readyResolve = resolve;
   });
+  private _planFilePath: string | null = null;
+  private _planScanEffect: { dispose: () => void } | null = null;
+  private _planEditSub: { dispose: () => void } | null = null;
+
   constructor(
     private readonly _extensionUri: vscode.Uri,
     private readonly _log: vscode.OutputChannel,
-    private readonly _mcpConfigPath?: string,
+    private readonly _mcpConfigPath: string | undefined,
+    private readonly _ipcServer: IpcServer,
   ) {}
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
@@ -101,6 +115,12 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
         case "claude-md-review":
           this._handleClaudeMdReview(msg.currentEntries);
           break;
+        case "toggle-plan":
+          this._handleTogglePlan(msg.enabled).catch((err) => {
+            const errMsg = err instanceof Error ? err.message : String(err);
+            this._log.appendLine(`[research-view] toggle-plan error: ${errMsg}`);
+          });
+          break;
       }
     });
 
@@ -144,6 +164,19 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
+  private _getCurrentBranch(): string | null {
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!workspaceFolder) return null;
+    try {
+      return execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
+        cwd: workspaceFolder,
+        encoding: "utf-8",
+      }).trim();
+    } catch {
+      return null;
+    }
+  }
+
   private _getCurrentCommitSha(): string | undefined {
     const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     if (!workspaceFolder) return undefined;
@@ -159,6 +192,8 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
 
   private _sendInit(): void {
     const commitsSinceLastCheck = this._getCommitsSinceLastCheck();
+    const planMode = this._planFilePath !== null;
+    const canPlan = this._getCurrentBranch() !== null;
     const session = getActiveSession();
     if (session && session.entries.length > 0) {
       this._post({
@@ -168,6 +203,8 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
         activeSessionId: getActiveSessionId(),
         hasContext: !!session.summary,
         commitsSinceLastCheck,
+        planMode,
+        canPlan,
       });
     } else {
       this._post({
@@ -176,6 +213,8 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
         sessions: getSessionInfos(),
         activeSessionId: getActiveSessionId(),
         commitsSinceLastCheck,
+        planMode,
+        canPlan,
       });
     }
   }
@@ -328,6 +367,114 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
     terminal.sendText(command);
   }
 
+  // ---------------------------------------------------------------------------
+  // Plan mode
+  // ---------------------------------------------------------------------------
+
+  private async _handleTogglePlan(enabled: boolean): Promise<void> {
+    this._log.appendLine(`[research-view] toggle-plan: enabled=${enabled}`);
+
+    if (!enabled) {
+      this._disposePlanMode();
+      return;
+    }
+
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!workspaceFolder) {
+      this._log.appendLine("[research-view] No workspace folder");
+      return;
+    }
+
+    // Get current branch name
+    let branchName: string;
+    try {
+      branchName = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
+        cwd: workspaceFolder,
+        encoding: "utf-8",
+      }).trim();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this._log.appendLine(`[research-view] Could not determine branch name: ${msg}`);
+      return;
+    }
+
+    // Sanitize branch name for use as filename (replace / with -)
+    const safeBranch = branchName.replace(/\//g, "-");
+    const plansDir = path.join(workspaceFolder, ".plans");
+    const planPath = path.join(plansDir, `${safeBranch}.md`);
+
+    this._log.appendLine(`[research-view] Plan path: ${planPath}`);
+
+    // Create .plans directory if needed
+    if (!fs.existsSync(plansDir)) {
+      fs.mkdirSync(plansDir, { recursive: true });
+    }
+
+    // Create the plan file if it doesn't exist
+    if (!fs.existsSync(planPath)) {
+      fs.writeFileSync(planPath, "", "utf-8");
+    }
+
+    this._planFilePath = planPath;
+    this._ipcServer.setPlanFilePath(planPath);
+    markRead(planPath);
+    this._log.appendLine(`[research-view] Plan mode enabled: ${planPath}`);
+
+    // Open the plan file in the editor, then refocus the research input
+    const doc = await vscode.workspace.openTextDocument(planPath);
+    await vscode.window.showTextDocument(doc, vscode.ViewColumn.One);
+    this._post({ type: "focus" });
+
+    // Register edit listener for plan file scanning/focus
+    this._planEditSub = this._ipcServer.onEdit((filePath, _count, editedRanges) => {
+      if (filePath !== this._planFilePath) return;
+
+      // Stop scanning animation
+      this._planScanEffect?.dispose();
+      this._planScanEffect = null;
+
+      // Find the plan editor and focus to the largest change
+      const editor = vscode.window.visibleTextEditors.find(
+        (e) => e.document.uri.fsPath === this._planFilePath,
+      );
+      if (editor && editedRanges.length > 0) {
+        focusLargestChange(editor, editedRanges);
+      }
+    });
+  }
+
+  private _disposePlanMode(): void {
+    this._planScanEffect?.dispose();
+    this._planScanEffect = null;
+    this._planEditSub?.dispose();
+    this._planEditSub = null;
+    this._planFilePath = null;
+    this._ipcServer.setPlanFilePath(null);
+    this._log.appendLine("[research-view] Plan mode disabled");
+  }
+
+  /** Start scanning on the plan file editor (called when update_plan tool starts) */
+  private _startPlanScan(): void {
+    if (!this._planFilePath) return;
+
+    const editor = vscode.window.visibleTextEditors.find(
+      (e) => e.document.uri.fsPath === this._planFilePath,
+    );
+    if (!editor) return;
+
+    this._planScanEffect?.dispose();
+    const isEmpty = editor.document.getText().trim().length === 0;
+    this._planScanEffect = isEmpty
+      ? startEmptyFilePlaceholder(editor)
+      : startFileScan(editor);
+  }
+
+  /** Stop scanning on the plan file editor */
+  private _stopPlanScan(): void {
+    this._planScanEffect?.dispose();
+    this._planScanEffect = null;
+  }
+
   private async _handlePrompt(text: string, files: string[] = []): Promise<void> {
     this._log.appendLine(`[research-view:prompt] ${text}`);
     const workspaceFolder =
@@ -359,6 +506,7 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
       sessionId,
       this._mcpConfigPath,
       savedSdkSessionId,
+      this._planFilePath ?? undefined,
     );
 
     // If this is a follow-up, the event loop is already running — just return
@@ -369,6 +517,7 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
     try {
       for await (const evt of iterateResearchEvents(handle, this._log)) {
         if (evt.type === "done") {
+          this._stopPlanScan();
           const prompt = this._promptQueue.shift();
           if (evt.resultText.trim() && prompt) {
             appendResearchContext(sessionId, prompt.text, evt.resultText.trim(), prompt.files, this._log);
@@ -385,6 +534,15 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
           });
           // Don't break — keep listening for follow-up turns
         } else {
+          // Start/stop scanning on the plan file when plan tools run
+          const isPlanTool = evt.type === "tool-start" || evt.type === "tool-end"
+            ? evt.tool === "mcp__codespark__write_plan" || evt.tool === "mcp__codespark__update_plan"
+            : false;
+          if (isPlanTool && evt.type === "tool-start") {
+            this._startPlanScan();
+          } else if (isPlanTool && evt.type === "tool-end") {
+            this._stopPlanScan();
+          }
           this._post(evt);
         }
       }

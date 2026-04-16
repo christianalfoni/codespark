@@ -33,7 +33,10 @@ export function buildSystemPrompt(
 // Research system prompt
 // ---------------------------------------------------------------------------
 
-export function buildResearchSystemPrompt(workspaceFolder: string): string {
+export function buildResearchSystemPrompt(
+  workspaceFolder: string,
+  planFilePath?: string,
+): string {
   const now = new Date();
   const date = now.toISOString().split("T")[0];
   const platform =
@@ -88,5 +91,8 @@ You live in a chat panel inside the user's VS Code sidebar. The user is typicall
 3. Be thorough — read multiple files, search broadly, follow imports to understand how code connects.
 4. Synthesize findings into a clear, actionable answer.
 
-Your final response for each question will automatically be shared as context with the inline code editing agent (Cmd+I), so make sure your conclusions are clear and actionable — include specific file paths, function names, API details, and patterns where relevant.`;
+Your final response for each question will automatically be shared as context with the inline code editing agent (Cmd+I), so make sure your conclusions are clear and actionable — include specific file paths, function names, API details, and patterns where relevant.`
+  + (planFilePath
+    ? `\n\n## Plan Mode\n\nPlan mode is active. You have two MCP tools for managing the plan file at \`${planFilePath}\`:\n\n- **write_plan**: Write the full content of the plan file. Use this to create the initial plan or for complete rewrites.\n- **update_plan**: Apply targeted edits (old_string/new_string pairs) to the plan file. Use this for incremental updates to an existing plan.\n\nWrite the plan as structured markdown with clear, actionable implementation steps based on your research findings. Use headings, checklists, and code references to make the plan easy to follow.`
+    : "");
 }

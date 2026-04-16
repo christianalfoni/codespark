@@ -189,6 +189,7 @@ export function startResearchQuery(
   sessionId: string,
   mcpConfigPath?: string,
   resumeSdkSessionId?: string,
+  planFilePath?: string,
 ): { handle: ResearchQueryHandle; isFollowUp: boolean } {
   const existing = _liveQueries.get(sessionId);
   if (existing && !existing.process.killed && existing.process.exitCode === null) {
@@ -197,7 +198,7 @@ export function startResearchQuery(
     return { handle: existing, isFollowUp: true };
   }
 
-  const handle = createResearchQuery(prompt, cwd, log, mcpConfigPath, resumeSdkSessionId);
+  const handle = createResearchQuery(prompt, cwd, log, mcpConfigPath, resumeSdkSessionId, planFilePath);
   _liveQueries.set(sessionId, handle);
   return { handle, isFollowUp: false };
 }
