@@ -2,7 +2,7 @@
   "name": "codespark-agent",
   "displayName": "CodeSpark",
   "description": "Claude Code CLI at the tip of your cursor",
-  "version": "0.18.0",
+  "version": "0.18.1",
   "publisher": "codespark",
   "license": "MIT",
   "icon": "media/icon.png",

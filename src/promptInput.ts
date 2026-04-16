@@ -61,8 +61,8 @@ export function createInlinePrompt(
   });
 
   function renderPrompt() {
-    const beforeText = `›\u00A0${buffer.slice(0, caret)}`;
-    const afterText = buffer.slice(caret);
+    const beforeText = `›\u00A0${buffer.slice(0, caret).replace(/ /g, "\u00A0")}`;
+    const afterText = buffer.slice(caret).replace(/ /g, "\u00A0");
 
     editor.setDecorations(promptDeco, [
       {
