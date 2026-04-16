@@ -4,6 +4,10 @@ import * as vscode from "vscode";
 import { diffLines } from "diff";
 import { hasRead } from "./readTracker";
 
+// ---------------------------------------------------------------------------
+// Exported Types
+// ---------------------------------------------------------------------------
+
 export type EditedRange = { startLine: number; endLine: number };
 
 export type EditListener = (
@@ -21,6 +25,10 @@ export interface IpcServer {
   onBeforeEdit: (listener: BeforeEditListener) => { dispose: () => void };
   dispose: () => void;
 }
+
+// ---------------------------------------------------------------------------
+// Internal Types
+// ---------------------------------------------------------------------------
 
 interface EditRequest {
   id: string;
@@ -43,6 +51,94 @@ interface IpcResponse {
   error?: string;
   editedRanges?: EditedRange[];
 }
+
+// ---------------------------------------------------------------------------
+// Exported Functions
+// ---------------------------------------------------------------------------
+
+export function startIpcServer(log: vscode.OutputChannel): IpcServer {
+  const socketPath =
+    process.platform === "win32"
+      ? `\\\\.\\pipe\\codespark-${process.pid}`
+      : `/tmp/codespark-${process.pid}.sock`;
+  const editListeners = new Set<EditListener>();
+  const beforeEditListeners = new Set<BeforeEditListener>();
+
+  // Clean up stale socket from prior crash
+  try {
+    fs.unlinkSync(socketPath);
+  } catch {
+    // ignore — file didn't exist
+  }
+
+  let readyResolve: () => void;
+  const ready = new Promise<void>((resolve) => {
+    readyResolve = resolve;
+  });
+
+  const server = net.createServer((conn) => {
+    log.appendLine("[ipc] Client connected");
+
+    let buffer = "";
+
+    conn.on("data", (chunk) => {
+      buffer = handleConnectionData(
+        chunk,
+        buffer,
+        log,
+        editListeners,
+        beforeEditListeners,
+        conn,
+      );
+    });
+
+    conn.on("error", (err) => {
+      log.appendLine(`[ipc] Connection error: ${err.message}`);
+    });
+  });
+
+  server.listen(socketPath, () => {
+    log.appendLine(`[ipc] Server listening on ${socketPath}`);
+    readyResolve();
+  });
+
+  server.on("error", (err) => {
+    log.appendLine(`[ipc] Server error: ${err.message}`);
+  });
+
+  return {
+    socketPath,
+    ready,
+    onEdit(listener: EditListener) {
+      editListeners.add(listener);
+      return {
+        dispose: () => {
+          editListeners.delete(listener);
+        },
+      };
+    },
+    onBeforeEdit(listener: BeforeEditListener) {
+      beforeEditListeners.add(listener);
+      return {
+        dispose: () => {
+          beforeEditListeners.delete(listener);
+        },
+      };
+    },
+    dispose() {
+      server.close();
+      try {
+        fs.unlinkSync(socketPath);
+      } catch {
+        // ignore
+      }
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 function computeTextEdits(
   text: string,
@@ -160,6 +256,9 @@ function handleConnectionData(
 
     if (req.type === "edit_file") {
       const editReq = req as unknown as EditRequest;
+      log.appendLine(
+        `[ipc] edit_file: ${editReq.edits.length} edit(s) on ${editReq.file_path}`,
+      );
       runBeforeEditListeners(beforeEditListeners, editReq.file_path)
         .then(() => handleEditRequest(editReq))
         .then(handleResult(editReq.file_path, editReq.edits.length))
@@ -360,83 +459,5 @@ async function handleDeleteRequest(
     id: req.id,
     success: true,
     message: `Deleted ${req.file_path}`,
-  };
-}
-
-export function startIpcServer(log: vscode.OutputChannel): IpcServer {
-  const socketPath =
-    process.platform === "win32"
-      ? `\\\\.\\pipe\\codespark-${process.pid}`
-      : `/tmp/codespark-${process.pid}.sock`;
-  const editListeners = new Set<EditListener>();
-  const beforeEditListeners = new Set<BeforeEditListener>();
-
-  // Clean up stale socket from prior crash
-  try {
-    fs.unlinkSync(socketPath);
-  } catch {
-    // ignore — file didn't exist
-  }
-
-  let readyResolve: () => void;
-  const ready = new Promise<void>((resolve) => { readyResolve = resolve; });
-
-  const server = net.createServer((conn) => {
-    log.appendLine("[ipc] Client connected");
-
-    let buffer = "";
-
-    conn.on("data", (chunk) => {
-      buffer = handleConnectionData(
-        chunk,
-        buffer,
-        log,
-        editListeners,
-        beforeEditListeners,
-        conn,
-      );
-    });
-
-    conn.on("error", (err) => {
-      log.appendLine(`[ipc] Connection error: ${err.message}`);
-    });
-  });
-
-  server.listen(socketPath, () => {
-    log.appendLine(`[ipc] Server listening on ${socketPath}`);
-    readyResolve();
-  });
-
-  server.on("error", (err) => {
-    log.appendLine(`[ipc] Server error: ${err.message}`);
-  });
-
-  return {
-    socketPath,
-    ready,
-    onEdit(listener: EditListener) {
-      editListeners.add(listener);
-      return {
-        dispose: () => {
-          editListeners.delete(listener);
-        },
-      };
-    },
-    onBeforeEdit(listener: BeforeEditListener) {
-      beforeEditListeners.add(listener);
-      return {
-        dispose: () => {
-          beforeEditListeners.delete(listener);
-        },
-      };
-    },
-    dispose() {
-      server.close();
-      try {
-        fs.unlinkSync(socketPath);
-      } catch {
-        // ignore
-      }
-    },
   };
 }

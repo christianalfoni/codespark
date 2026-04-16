@@ -1,13 +1,13 @@
 import * as vscode from "vscode";
 
-interface FocusArea {
+export interface FocusArea {
   lines: string[];
   focusStartLine: number;
   focusEndLine: number;
   enclosingBlock?: vscode.FoldingRange;
 }
 
-async function evaluateFocusArea(
+export async function evaluateFocusArea(
   editor: vscode.TextEditor,
 ): Promise<FocusArea> {
   const cursorLineNum = editor.selection.active.line;
@@ -85,5 +85,3 @@ async function evaluateFocusArea(
     };
   }
 }
-
-export { FocusArea, evaluateFocusArea };

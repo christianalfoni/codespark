@@ -1,10 +1,10 @@
 import * as vscode from "vscode";
-import { findInstructionsForFile, ResolvedInstructions } from "./instructions";
+import { findClaudeFilesForFile, ResolvedClaudeFiles } from "./claudeFiles";
 
 export function createUpdateActiveInstructions(
   statusBarItem: vscode.StatusBarItem,
 ) {
-  let currentInstructions: ResolvedInstructions = {
+  let currentInstructions: ResolvedClaudeFiles = {
     root: undefined,
     local: [],
     referencedFiles: [],
@@ -18,7 +18,7 @@ export function createUpdateActiveInstructions(
       return;
     }
 
-    currentInstructions = findInstructionsForFile(editor.document.uri);
+    currentInstructions = findClaudeFilesForFile(editor.document.uri);
 
     const labels: string[] = [];
     if (currentInstructions.root) {

@@ -1,11 +1,13 @@
 import * as vscode from "vscode";
 import * as fs from "fs";
-import { findInstructionsForFile, ResolvedInstructions } from "./instructions";
+import { findClaudeFilesForFile, ResolvedClaudeFiles } from "./claudeFiles";
 
 export class InstructionFileDecorationProvider
   implements vscode.FileDecorationProvider
 {
-  private _onDidChange = new vscode.EventEmitter<vscode.Uri | vscode.Uri[] | undefined>();
+  private _onDidChange = new vscode.EventEmitter<
+    vscode.Uri | vscode.Uri[] | undefined
+  >();
   readonly onDidChangeFileDecorations = this._onDidChange.event;
 
   private inlinedFileUris = new Set<string>();
@@ -15,7 +17,7 @@ export class InstructionFileDecorationProvider
     this._onDidChange.fire(undefined);
   }
 
-  activate(editorUri: vscode.Uri): ResolvedInstructions {
+  activate(editorUri: vscode.Uri): ResolvedClaudeFiles {
     this.inlinedFileUris.clear();
     this.referencedFileUris.clear();
     this.referencedFolderUris.clear();
@@ -26,7 +28,7 @@ export class InstructionFileDecorationProvider
       return { root: undefined, local: [], referencedFiles: [] };
     }
 
-    const instructions = findInstructionsForFile(editorUri);
+    const instructions = findClaudeFilesForFile(editorUri);
 
     // Track CLAUDE.md files (inlined into context)
     if (instructions.root) {

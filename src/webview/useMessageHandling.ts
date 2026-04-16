@@ -1,12 +1,12 @@
 import { useEffect } from "preact/hooks";
 import type * as preact from "preact";
-import type { ExtensionToWebview, SessionInfo } from "../types";
+import type { ExtensionToWebview, SessionInfo } from "./types";
 import type {
   ChatState,
   Entry,
   AssistantEntry,
   ContextState,
-} from "../state";
+} from "./state";
 
 interface VsCodeApi {
   postMessage(msg: unknown): void;

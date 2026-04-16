@@ -11,11 +11,10 @@ declare function acquireVsCodeApi(): {
 
 const vscode = acquireVsCodeApi();
 const root = document.getElementById("root")!;
-const logoUri = root.dataset.logo ?? "";
 
 render(
   <>
-    <App vscode={vscode} logoUri={logoUri} />
+    <App vscode={vscode} />
     <InlinePromptCapture vscode={vscode} />
   </>,
   root,
