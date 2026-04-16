@@ -153,7 +153,6 @@ export function activate(context: vscode.ExtensionContext) {
         activeInstructions.update,
         mcpConfigPath,
         ipcServer,
-        researchView,
       ),
     ),
   );

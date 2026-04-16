@@ -2,7 +2,7 @@
   "name": "codespark-agent",
   "displayName": "CodeSpark",
   "description": "Claude Code CLI at the tip of your cursor",
-  "version": "0.17.3",
+  "version": "0.17.4",
   "publisher": "codespark",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -85,6 +85,56 @@
         "mac": "cmd+shift+i",
         "win": "ctrl+shift+i",
         "linux": "ctrl+shift+i"
+      },
+      {
+        "command": "codeSpark.inlinePrompt.submit",
+        "key": "enter",
+        "when": "codeSpark.inlinePromptActive"
+      },
+      {
+        "command": "codeSpark.inlinePrompt.cancel",
+        "key": "escape",
+        "when": "codeSpark.inlinePromptActive"
+      },
+      {
+        "command": "codeSpark.inlinePrompt.backspace",
+        "key": "backspace",
+        "when": "codeSpark.inlinePromptActive"
+      },
+      {
+        "command": "codeSpark.inlinePrompt.delete",
+        "key": "delete",
+        "when": "codeSpark.inlinePromptActive"
+      },
+      {
+        "command": "codeSpark.inlinePrompt.cursorLeft",
+        "key": "left",
+        "when": "codeSpark.inlinePromptActive"
+      },
+      {
+        "command": "codeSpark.inlinePrompt.cursorRight",
+        "key": "right",
+        "when": "codeSpark.inlinePromptActive"
+      },
+      {
+        "command": "codeSpark.inlinePrompt.cursorHome",
+        "key": "home",
+        "when": "codeSpark.inlinePromptActive"
+      },
+      {
+        "command": "codeSpark.inlinePrompt.cursorEnd",
+        "key": "end",
+        "when": "codeSpark.inlinePromptActive"
+      },
+      {
+        "command": "codeSpark.inlinePrompt.cursorUp",
+        "key": "up",
+        "when": "codeSpark.inlinePromptActive"
+      },
+      {
+        "command": "codeSpark.inlinePrompt.cursorDown",
+        "key": "down",
+        "when": "codeSpark.inlinePromptActive"
       }
     ],
     "colors": [],

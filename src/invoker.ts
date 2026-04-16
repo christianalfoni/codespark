@@ -8,11 +8,10 @@ import {
   abortInlineAgent,
 } from "./claude-code-inline";
 import { ResolvedContext, LLMResult } from "./types";
-import { createInlinePromptDecorations } from "./promptInput";
+import { createInlinePrompt } from "./promptInput";
 import { recordQuery } from "./stats";
 import { evaluateFocusArea } from "./editor";
 import { IpcServer } from "./ipc-server";
-import { ResearchViewProvider } from "./research-view";
 
 /* ── File-level decoration helpers ────────────────────────────── */
 
@@ -137,7 +136,6 @@ export function createInvokeCommand(
   updateActiveInstructions: () => void,
   mcpConfigPath: string,
   ipcServer: IpcServer,
-  researchView: ResearchViewProvider,
 ) {
   return async () => {
     const editor = vscode.window.activeTextEditor;
@@ -260,53 +258,43 @@ export function createInvokeCommand(
     const currentLineEmpty =
       !hadSelection && editor.document.lineAt(insertLine).isEmptyOrWhitespace;
 
-    // Insert a blank above the target when we don't already have one to host
     // Insert a blank line to host the ghost-text prompt. Uses a proper undo
     // stop so we can cleanly reverse it with `undo` when the prompt closes.
     let insertedBlank = false;
     if (!currentLineEmpty) {
       try {
-        insertedBlank = await editor.edit((b) =>
-          b.insert(new vscode.Position(insertLine, 0), "\n"),
+        insertedBlank = await editor.edit(
+          (b) => b.insert(new vscode.Position(insertLine, 0), "\n"),
+          { undoStopBefore: true, undoStopAfter: false },
         );
       } catch {
         insertedBlank = false;
       }
     }
 
-    // Collapse the selection onto the prompt line. The selected lines stay
-    // bright via invokeDim; the selection highlight itself is dropped so the
-    // only active visual is the prompt line.
+    // Collapse the selection onto the prompt line so the only active visual
+    // is the prompt decoration.
     if (currentLineEmpty || insertedBlank) {
       const pos = new vscode.Position(insertLine, 0);
       editor.selection = new vscode.Selection(pos, pos);
     }
 
-    const ghostLine =
+    const promptLine =
       currentLineEmpty || insertedBlank
         ? insertLine
         : Math.max(0, cursorLineNum - 1);
 
-    const inlineDeco = createInlinePromptDecorations(editor, ghostLine);
+    // Open the inline prompt — keystrokes are captured directly via the
+    // `type` command override, no webview relay needed.
+    const { prompt: inlinePrompt, instruction } = createInlinePrompt(
+      editor,
+      promptLine,
+    );
 
-    const instruction = await researchView.startInlinePrompt((value, caret) => {
-      inlineDeco.update(value, caret);
-    });
+    const instructionText = await instruction;
 
-    // Always hand focus back to the editor once the prompt closes — on both
-    // submit and cancel. On submit, the agent runs next but the user should
-    // be watching the editor, not the hidden webview input.
-    try {
-      await vscode.window.showTextDocument(editor.document, {
-        viewColumn: editor.viewColumn,
-        preserveFocus: false,
-      });
-    } catch {
-      /* ignore */
-    }
-
-    if (!instruction) {
-      inlineDeco.dispose();
+    if (!instructionText) {
+      inlinePrompt.dispose();
       if (insertedBlank) {
         await vscode.commands.executeCommand("undo");
       }
@@ -322,7 +310,7 @@ export function createInvokeCommand(
 
     // Submitted — keep the prompt line alive and swap it into a dimmed status
     // indicator that reflects what the agent is currently doing.
-    inlineDeco.showStatus("Thinking...");
+    inlinePrompt.showStatus("Thinking...");
 
     log.appendLine(`[context] Cursor at line ${cursorLineNum + 1}`);
     log.appendLine(
@@ -363,7 +351,7 @@ export function createInvokeCommand(
       cursorLine: cursorLineNum + 1,
       cursorOnEmptyLine,
       contextSnippet,
-      instruction,
+      instruction: instructionText,
       instructionContent,
       referenceFiles,
       isInstructionFile,
@@ -394,7 +382,7 @@ export function createInvokeCommand(
     async function teardownPromptLine() {
       if (teardownDone) return;
       teardownDone = true;
-      inlineDeco.dispose();
+      inlinePrompt.dispose();
       await removeBlankLine();
       activeEditor.selection = originalSelection;
       if (originalVisibleRange) {
@@ -404,6 +392,7 @@ export function createInvokeCommand(
 
     const beforeEditSub = ipcServer.onBeforeEdit(async (filePath) => {
       if (filePath === currentFileAbs) {
+        inlinePrompt.dispose();
         await removeBlankLine();
       }
     });
@@ -418,7 +407,7 @@ export function createInvokeCommand(
           statusBarItem.text = "$(loading~spin) CodeSpark · agent working...";
         },
         (text) => {
-          inlineDeco.showStatus(text);
+          inlinePrompt.showStatus(text);
         },
       );
 

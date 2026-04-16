@@ -1,8 +1,6 @@
 import "./styles.css";
 import { render } from "preact";
 import { App } from "./App";
-import { InlinePromptCapture } from "./InlinePromptCapture";
-
 declare function acquireVsCodeApi(): {
   postMessage(msg: unknown): void;
   getState(): any;
@@ -12,10 +10,4 @@ declare function acquireVsCodeApi(): {
 const vscode = acquireVsCodeApi();
 const root = document.getElementById("root")!;
 
-render(
-  <>
-    <App vscode={vscode} />
-    <InlinePromptCapture vscode={vscode} />
-  </>,
-  root,
-);
+render(<App vscode={vscode} />, root);
