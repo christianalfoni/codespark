@@ -193,10 +193,10 @@ export async function executeInlineAgent(
     message: { role: "user", content: userInstruction },
   });
   proc.stdin!.write(inputMsg + "\n");
-  proc.stdin!.end();
 
   let hasEdits = false;
   let editToolSeen = false;
+  let retried = false;
   let firstToolSeen = false;
   let ttftLogged = false;
   // In-flight tool calls keyed by tool_use_id. Populated on content_block_start,
@@ -431,6 +431,28 @@ export async function executeInlineAgent(
 
         if (msg.type === "result") {
           if (msg.subtype === "success") {
+            // If the model responded with text instead of editing, retry once
+            // with a nudge to make it actually perform the edit.
+            if (!editToolSeen && !retried) {
+              retried = true;
+              log.appendLine(
+                `[cli-inline:no-edit] LLM responded with text instead of edits, retrying: ${textResponseContent.trim()}`,
+              );
+              textResponseContent = "";
+              ttftLogged = false;
+              onStatus?.("Retrying...");
+              const retryMsg = JSON.stringify({
+                type: "user",
+                message: {
+                  role: "user",
+                  content:
+                    "Do not respond with text. You must use the edit_file tool to make the changes to the file. Make your best judgment and edit the code now.",
+                },
+              });
+              proc.stdin!.write(retryMsg + "\n");
+              continue;
+            }
+
             if (!editToolSeen && textResponseContent.trim()) {
               log.appendLine(
                 `[cli-inline:no-edit] LLM responded with text instead of edits: ${textResponseContent.trim()}`,
@@ -449,6 +471,7 @@ export async function executeInlineAgent(
             return;
           }
 
+          proc.stdin?.end();
           resolveOnDone?.();
         }
       }
@@ -689,7 +712,7 @@ function buildSessionJSONL(
         content: [
           {
             type: "text",
-            text: "I've read the file, I'll evaluate if I need to do anything else first or use the edit_file tool immediately.",
+            text: "I've read the file. I'll make assumptions where needed and apply the changes now.",
           },
         ],
         stop_reason: "end_turn",
