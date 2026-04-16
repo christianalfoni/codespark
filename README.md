@@ -29,9 +29,12 @@ Powered by Claude Code CLI running Haiku, optimized for speed. It works from you
 
 ### Research agent (`Cmd+Shift+I` / `Ctrl+Shift+I`)
 
-Powered by Claude Code CLI running default models, optimized to build your own personal context. It can read files, grep through your codebase, search the web, and fetch documentation — but it cannot edit anything. When the research panel is already open, invoking it again attaches the current file and cursor position as context.
+Powered by Claude Code CLI running default models, optimized to build your own personal context. It can read files, grep through your codebase, search the web, and fetch documentation. Invoking it from a file creates a new edit-enabled session — the research agent can directly edit that file while also researching. Invoking it again on the same file continues the session; switching to a different file starts a new one.
 
-The output is integrated with VS Code: file paths like `src/foo.ts:42` become clickable links that open the file at that line, and fenced code blocks with `bash` render with a run button that executes the command in your terminal.
+The output is integrated with VS Code:
+- File paths like `src/foo.ts:42` become clickable links that open the file at that line
+- Fenced code blocks with `bash` render with a run button that executes the command in your terminal
+- Code blocks annotated with a file path (e.g. `` ```ts file:src/foo.ts ``) show the file name and an **Apply** button that opens the file and sends the suggestion to the inline agent for application
 
 The two agents are connected: ask a question in the research panel, and the next time you invoke the inline agent, it knows what you learned.
 
@@ -41,14 +44,12 @@ The two agents are connected: ask a question in the research panel, and the next
 
 This is the same `CLAUDE.md` convention used by Claude Code in the terminal. Instructions you write for CodeSpark — patterns, conventions, constraints, preferred libraries — also improve Claude Code CLI when you use it from the terminal. You're not maintaining two configurations; you're building one set of instructions that makes the agent better everywhere.
 
-**CLAUDE.md Review** — The research panel has a `CLAUDE.md` button in the input toolbar. Clicking it starts a new research session that analyzes recent codebase changes for newly emerged patterns, style conventions, or violations of existing rules. It suggests updates to existing `CLAUDE.md` files and recommends creating new ones in folders that would benefit from domain-specific instructions. All suggestions are formatted as copyable markdown blocks. The extension tracks commits since the last review and shows a badge on the button when 10 or more commits have landed without a check.
-
 ## Shortcuts
 
 | Mac           | Windows / Linux | What it does                                                                                                      |
 | ------------- | --------------- | ----------------------------------------------------------------------------------------------------------------- |
 | `Cmd+I`       | `Ctrl+I`        | Open the inline agent — describe a change and it edits the file at your cursor                                    |
-| `Cmd+Shift+I` | `Ctrl+Shift+I`  | Open the research agent — attaches the current file and cursor position as context when the panel is already open |
+| `Cmd+Shift+I` | `Ctrl+Shift+I`  | Open the research agent with the current file — can research and directly edit the file |
 
 These shortcuts may conflict with other extensions (e.g. GitHub Copilot uses the same bindings). To rebind them, open the command palette and search for "Preferences: Open Keyboard Shortcuts (JSON)", then add your preferred bindings:
 

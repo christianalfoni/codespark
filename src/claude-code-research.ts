@@ -19,7 +19,7 @@ export type WebviewEvent =
   | { type: "turn-start" }
   | { type: "token"; text: string }
   | { type: "tool-start"; tool: string; toolId: number; description?: string }
-  | { type: "tool-end"; tool: string; toolId: number; isError: boolean }
+  | { type: "tool-end"; tool: string; toolId: number; isError: boolean; description?: string }
   | {
       type: "done";
       resultText: string;
@@ -39,6 +39,7 @@ export function createResearchQuery(
   log: vscode.OutputChannel,
   mcpConfigPath?: string,
   resumeSessionId?: string,
+  allowEdits?: boolean,
 ): ResearchQueryHandle {
   log.appendLine(
     `[claude-code-research] Creating query (resume: ${resumeSessionId ?? "none"}) — ${prompt.slice(0, 100)}`,
@@ -58,8 +59,12 @@ export function createResearchQuery(
     ...(mcpConfigPath ? ["--mcp-config", mcpConfigPath] : []),
     "--tools",
     "Read,Glob,Grep,WebSearch,WebFetch",
-    "--disallowedTools",
-    "mcp__codespark__edit_file,mcp__codespark__write_file,mcp__codespark__move_file,mcp__codespark__delete_file",
+    ...(allowEdits
+      ? []
+      : [
+          "--disallowedTools",
+          "mcp__codespark__edit_file,mcp__codespark__write_file,mcp__codespark__move_file,mcp__codespark__delete_file",
+        ]),
     "--system-prompt",
     buildResearchSystemPrompt(cwd),
   ];
@@ -125,7 +130,9 @@ export async function* iterateResearchEvents(
   log: vscode.OutputChannel,
 ): AsyncGenerator<WebviewEvent> {
   let toolIdCounter = 0;
-  const pendingTools = new Map<number, { tool: string; toolId: number }>();
+  const pendingTools = new Map<number, { tool: string; toolId: number; toolUseId?: string }>();
+  /** Map from tool_use_id → our internal toolId, for matching tool results */
+  const toolUseIdMap = new Map<string, { tool: string; toolId: number }>();
   let lastAssistantText = "";
 
   const rl = readline.createInterface({ input: handle.process.stdout! });
@@ -153,7 +160,11 @@ export async function* iterateResearchEvents(
           if (evt.content_block?.type === "tool_use") {
             const toolId = ++toolIdCounter;
             const toolName = evt.content_block.name ?? "unknown";
-            pendingTools.set(evt.index, { tool: toolName, toolId });
+            const toolUseId = evt.content_block.id;
+            pendingTools.set(evt.index, { tool: toolName, toolId, toolUseId });
+            if (typeof toolUseId === "string") {
+              toolUseIdMap.set(toolUseId, { tool: toolName, toolId });
+            }
             yield {
               type: "tool-start",
               tool: toolName,
@@ -173,7 +184,7 @@ export async function* iterateResearchEvents(
       }
 
       if (msg.type === "assistant") {
-        yield* flushPendingTools(pendingTools);
+        yield* flushPendingTools(pendingTools, toolUseIdMap);
 
         const content = msg.message?.content;
         if (Array.isArray(content)) {
@@ -187,8 +198,47 @@ export async function* iterateResearchEvents(
         }
       }
 
+      // Handle tool results — detect errors and yield tool-end with error info
+      if (msg.type === "user") {
+        const content = msg.message?.content;
+        if (Array.isArray(content)) {
+          for (const block of content) {
+            if (block?.type !== "tool_result") continue;
+            const id = block.tool_use_id;
+            const pending = typeof id === "string" ? toolUseIdMap.get(id) : undefined;
+            if (!pending) continue;
+            toolUseIdMap.delete(id);
+
+            const isError = !!block.is_error;
+            let description: string | undefined;
+            if (isError) {
+              // Extract error text from the tool result content
+              if (typeof block.content === "string") {
+                description = block.content.slice(0, 200);
+              } else if (Array.isArray(block.content)) {
+                const textBlock = block.content.find((b: any) => b.type === "text");
+                if (textBlock?.text) {
+                  description = textBlock.text.slice(0, 200);
+                }
+              }
+              log.appendLine(
+                `[claude-code-research:tool-error] ${pending.tool}: ${description ?? "unknown error"}`,
+              );
+            }
+
+            yield {
+              type: "tool-end",
+              tool: pending.tool,
+              toolId: pending.toolId,
+              isError,
+              description,
+            };
+          }
+        }
+      }
+
       if (msg.type === "result") {
-        yield* flushPendingTools(pendingTools);
+        yield* flushPendingTools(pendingTools, toolUseIdMap);
 
         const sdkSessionId = msg.session_id ?? "";
         handle.sdkSessionId = sdkSessionId;
@@ -227,19 +277,27 @@ export async function* iterateResearchEvents(
     yield { type: "error", text: errMsg };
   }
 
-  yield* flushPendingTools(pendingTools);
+  yield* flushPendingTools(pendingTools, toolUseIdMap);
 }
 
 function* flushPendingTools(
-  pendingTools: Map<number, { tool: string; toolId: number }>,
+  pendingTools: Map<number, { tool: string; toolId: number; toolUseId?: string }>,
+  toolUseIdMap: Map<string, { tool: string; toolId: number }>,
 ): Generator<WebviewEvent> {
   for (const [, pending] of pendingTools) {
+    // Skip tools that were already resolved via tool_result handling
+    if (pending.toolUseId && !toolUseIdMap.has(pending.toolUseId)) continue;
+
     yield {
       type: "tool-end",
       tool: pending.tool,
       toolId: pending.toolId,
       isError: false,
     };
+
+    if (pending.toolUseId) {
+      toolUseIdMap.delete(pending.toolUseId);
+    }
   }
   pendingTools.clear();
 }

@@ -125,6 +125,7 @@ export function useMessageHandling(
                   status: msg.isError
                     ? ("error" as const)
                     : ("success" as const),
+                  description: msg.description ?? t.description,
                 }
               : t,
           );

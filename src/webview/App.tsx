@@ -67,7 +67,6 @@ export function App({ vscode }: AppProps) {
       isStreaming: true,
       activeTool: null,
       contextState: "pending",
-      fileContext: null,
     });
     userScrolledUp.current = false;
     vscode.postMessage({ type: "send", text });
@@ -251,7 +250,9 @@ export function App({ vscode }: AppProps) {
                 <span class="file-context-path">
                   {state.fileContext.selection
                     ? `${state.fileContext.filePath} (selection)`
-                    : `${state.fileContext.filePath}:${state.fileContext.cursorLine}`}
+                    : state.fileContext.cursorLine <= 1
+                      ? state.fileContext.filePath
+                      : `${state.fileContext.filePath}:${state.fileContext.cursorLine}`}
                 </span>
               </div>
             )}

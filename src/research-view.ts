@@ -27,6 +27,7 @@ import {
 } from "./claude-code-inline";
 import { ResolvedContext } from "./types";
 import { startFileScan } from "./editor-effects";
+import { markRead } from "./readTracker";
 
 
 function getNonce(): string {
@@ -48,6 +49,12 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
   private _promptQueue: { text: string; files: string[] }[] = [];
   /** Whether an event loop is already running for the active session */
   private _eventLoopRunning = false;
+  /** Whether the current session allows the research agent to edit files */
+  private _allowEdits = false;
+  /** Absolute path of the file the research agent is allowed to edit */
+  private _editableFilePath: string | null = null;
+  /** Active file scan effect, disposed when editing finishes */
+  private _editScanEffect: { dispose: () => void } | null = null;
   private _readyResolve?: () => void;
   private _readyPromise: Promise<void> = new Promise((resolve) => {
     this._readyResolve = resolve;
@@ -165,12 +172,16 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
     }
     this._eventLoopRunning = false;
     this._promptQueue = [];
+    this._editScanEffect?.dispose();
+    this._editScanEffect = null;
   }
 
   private _handleNewSession(currentEntries: any[]): void {
     this._saveCurrentSession(currentEntries);
     this._cancelCurrent();
     this._pendingFileContext = undefined;
+    this._allowEdits = false;
+    this._editableFilePath = null;
     createSession();
     this._sendSessionsUpdate();
   }
@@ -178,6 +189,8 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
   private _handleSwitchSession(id: string, currentEntries: any[]): void {
     this._saveCurrentSession(currentEntries);
     this._cancelCurrent();
+    this._allowEdits = false;
+    this._editableFilePath = null;
     const session = switchSession(id);
     if (session) {
       this._post({
@@ -211,7 +224,6 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
       vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     if (!workspaceFolder) return;
 
-    const path = await import("path");
     const absolute = path.resolve(workspaceFolder, filePath);
     const uri = vscode.Uri.file(absolute);
 
@@ -271,15 +283,17 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
     const absolute = path.resolve(workspaceFolder, filePath);
     this._log.appendLine(`[research-view:apply] Applying to ${filePath}`);
 
-    // Open the file in the editor
-    let doc: vscode.TextDocument;
+    // Create the file if it doesn't exist
     try {
-      doc = await vscode.workspace.openTextDocument(vscode.Uri.file(absolute));
+      await fs.promises.access(absolute);
     } catch {
-      this._log.appendLine(`[research-view:apply] Could not open file: ${absolute}`);
-      vscode.window.showErrorMessage(`CodeSpark: Could not open file ${filePath}`);
-      return;
+      await fs.promises.mkdir(path.dirname(absolute), { recursive: true });
+      await fs.promises.writeFile(absolute, "");
+      this._log.appendLine(`[research-view:apply] Created new file: ${filePath}`);
     }
+
+    // Open the file in the editor
+    const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(absolute));
 
     const editor = await vscode.window.showTextDocument(doc);
     const fileContent = doc.getText();
@@ -381,6 +395,56 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
+  private _applyEditHighlighting(editedLines: Array<{ startLine: number; endLine: number }>): void {
+    if (!this._editableFilePath) return;
+
+    const editor = vscode.window.visibleTextEditors.find(
+      (e) => e.document.uri.fsPath === this._editableFilePath,
+    );
+    if (!editor) return;
+
+    const editedLineSet = new Set<number>();
+    for (const range of editedLines) {
+      for (let l = range.startLine; l <= range.endLine; l++) {
+        editedLineSet.add(l);
+      }
+    }
+
+    const dimType = vscode.window.createTextEditorDecorationType({
+      isWholeLine: true,
+      opacity: "0.3",
+    });
+
+    const dimRanges: vscode.Range[] = [];
+    for (let l = 0; l < editor.document.lineCount; l++) {
+      if (!editedLineSet.has(l)) {
+        dimRanges.push(new vscode.Range(l, 0, l, 0));
+      }
+    }
+    editor.setDecorations(dimType, dimRanges);
+
+    const docUri = editor.document.uri.fsPath;
+
+    function cleanup() {
+      dimType.dispose();
+      saveListener.dispose();
+      changeListener.dispose();
+    }
+
+    const saveListener = vscode.workspace.onDidSaveTextDocument((d) => {
+      if (d.uri.fsPath === docUri) cleanup();
+    });
+
+    const changeListener = vscode.workspace.onDidChangeTextDocument((e) => {
+      if (
+        e.document.uri.fsPath === docUri &&
+        e.reason === vscode.TextDocumentChangeReason.Undo
+      ) {
+        cleanup();
+      }
+    });
+  }
+
   private async _handlePrompt(text: string, files: string[] = []): Promise<void> {
     this._log.appendLine(`[research-view:prompt] ${text}`);
     const workspaceFolder =
@@ -412,10 +476,22 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
       sessionId,
       this._mcpConfigPath,
       savedSdkSessionId,
+      this._allowEdits,
     );
 
     // If this is a follow-up, the event loop is already running — just return
     if (isFollowUp) return;
+
+    // Listen for IPC edits when the research agent has edit permissions
+    let ipcEditSub: { dispose: () => void } | undefined;
+    let editedLines: Array<{ startLine: number; endLine: number }> = [];
+    if (this._allowEdits && this._editableFilePath) {
+      const editableFile = this._editableFilePath;
+      ipcEditSub = this._ipcServer.onEdit((filePath, _count, editedRanges) => {
+        if (filePath !== editableFile) return;
+        editedLines.push(...editedRanges);
+      });
+    }
 
     // Start the long-lived event loop for this process
     this._eventLoopRunning = true;
@@ -431,6 +507,11 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
           if (evt.sdkSessionId) {
             saveAgentMessages(sessionId, [{ sdkSessionId: evt.sdkSessionId }]);
           }
+
+          // Safety cleanup in case tool-end was missed
+          this._editScanEffect?.dispose();
+          this._editScanEffect = null;
+
           this._post({
             type: "done",
             numTurns: evt.numTurns,
@@ -438,6 +519,37 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
           });
           // Don't break — keep listening for follow-up turns
         } else {
+          const isEditTool =
+            evt.type === "tool-start" || evt.type === "tool-end"
+              ? evt.tool === "mcp__codespark__edit_file" ||
+                evt.tool === "mcp__codespark__write_file"
+              : false;
+
+          // Start scanner when an edit/write tool begins
+          if (
+            evt.type === "tool-start" &&
+            isEditTool &&
+            this._editableFilePath &&
+            !this._editScanEffect
+          ) {
+            const editor = vscode.window.visibleTextEditors.find(
+              (e) => e.document.uri.fsPath === this._editableFilePath,
+            );
+            if (editor) {
+              this._editScanEffect = startFileScan(editor);
+            }
+          }
+
+          // Stop scanner and apply highlighting when edit/write tool ends
+          if (evt.type === "tool-end" && isEditTool) {
+            this._editScanEffect?.dispose();
+            this._editScanEffect = null;
+            if (editedLines.length > 0) {
+              this._applyEditHighlighting(editedLines);
+              editedLines = [];
+            }
+          }
+
           this._post(evt);
         }
       }
@@ -447,6 +559,9 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
       this._post({ type: "error", text: msg });
       this._post({ type: "done" });
     }
+    this._editScanEffect?.dispose();
+    this._editScanEffect = null;
+    ipcEditSub?.dispose();
     this._eventLoopRunning = false;
   }
 
@@ -456,6 +571,35 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
     this._post({ type: "set-file-context", filePath: ctx.filePath, cursorLine: ctx.cursorLine, selection: ctx.selection ?? null });
     this._log.appendLine(
       `[research-view] File context set: ${ctx.filePath}:${ctx.cursorLine}`,
+    );
+  }
+
+  /** Create a new session with file context and edit permissions (SHIFT+CMD+I) */
+  public startFileSession(ctx: { filePath: string; cursorLine: number; selection?: string }): void {
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    const absolute = workspaceFolder ? path.resolve(workspaceFolder, ctx.filePath) : null;
+
+    // If the current session already targets this file, just continue it
+    if (this._allowEdits && this._editableFilePath === absolute) {
+      this._pendingFileContext = ctx;
+      this._post({ type: "set-file-context", filePath: ctx.filePath, cursorLine: ctx.cursorLine, selection: ctx.selection ?? null });
+      this._log.appendLine(
+        `[research-view] Continuing file session: ${ctx.filePath}`,
+      );
+      return;
+    }
+
+    this._cancelCurrent();
+    this._allowEdits = true;
+    this._editableFilePath = absolute;
+
+    createSession();
+    this._sendSessionsUpdate();
+
+    this._pendingFileContext = ctx;
+    this._post({ type: "set-file-context", filePath: ctx.filePath, cursorLine: ctx.cursorLine, selection: ctx.selection ?? null });
+    this._log.appendLine(
+      `[research-view] File session started: ${ctx.filePath} (edits enabled)`,
     );
   }
 
@@ -490,8 +634,12 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
 
   private async _handleSendWithContext(text: string): Promise<void> {
     const ctx = this._pendingFileContext!;
-    this._pendingFileContext = undefined;
-    this._post({ type: "set-file-context", filePath: null, cursorLine: 0, selection: null });
+    if (this._allowEdits) {
+      // Keep file context visible for the whole edit session
+    } else {
+      this._pendingFileContext = undefined;
+      this._post({ type: "set-file-context", filePath: null, cursorLine: 0, selection: null });
+    }
 
     const workspaceFolder =
       vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
@@ -501,8 +649,6 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
       return;
     }
 
-    const path = await import("path");
-    const fs = await import("fs");
     const absolute = path.resolve(workspaceFolder, ctx.filePath);
     let fileContent: string;
     try {
@@ -511,6 +657,11 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
       this._post({ type: "error", text: `Could not read file: ${ctx.filePath}` });
       this._post({ type: "done" });
       return;
+    }
+
+    // Mark as read so the write_file tool's read-check passes
+    if (this._allowEdits) {
+      markRead(absolute);
     }
 
     // Show file context indicator in tool list
@@ -539,7 +690,13 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
     contextSnippet: string;
   }): Promise<void> {
     // Prepend file content to the prompt so the agent has context
-    const contextPrompt = `Currently viewing \`${opts.filePath}\` (line ${opts.cursorLine}):\n\`\`\`\n${opts.fileContent}\n\`\`\`\n\n${opts.query}`;
+    let contextPrompt = `Currently viewing \`${opts.filePath}\` (line ${opts.cursorLine}):\n\`\`\`\n${opts.fileContent}\n\`\`\`\n\n`;
+
+    if (this._allowEdits) {
+      contextPrompt += `You have permission to directly edit \`${opts.filePath}\` using the edit_file or write_file tools. When the user's request involves changing this file, make the edits directly rather than just suggesting code. Only edit this specific file — do not edit other files.\n\n`;
+    }
+
+    contextPrompt += opts.query;
 
     await this._handlePrompt(contextPrompt, [opts.filePath]);
   }

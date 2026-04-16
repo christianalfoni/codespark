@@ -172,9 +172,8 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(
     vscode.commands.registerCommand("codeSpark.openResearch", async () => {
-      const alreadyOpen = researchView.isVisible;
       const editor = vscode.window.activeTextEditor;
-      if (alreadyOpen && editor) {
+      if (editor) {
         const filePath = vscode.workspace.asRelativePath(
           editor.document.uri.fsPath,
         );
@@ -182,7 +181,7 @@ export function activate(context: vscode.ExtensionContext) {
         const selection = editor.selection.isEmpty
           ? undefined
           : editor.document.getText(editor.selection);
-        researchView.setFileContext({ filePath, cursorLine, selection });
+        researchView.startFileSession({ filePath, cursorLine, selection });
       }
       await vscode.commands.executeCommand("codeSpark.research.focus");
       researchView.focusInput();
