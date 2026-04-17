@@ -18,11 +18,21 @@ export type EditListener = (
 
 export type BeforeEditListener = (filePath: string) => Promise<void>;
 
+export interface WorkItemInput {
+  title: string;
+  description: string;
+  filePath: string;
+  lineHint?: number;
+}
+
+export type WorkItemsListener = (items: WorkItemInput[]) => void;
+
 export interface IpcServer {
   socketPath: string;
   ready: Promise<void>;
   onEdit: (listener: EditListener) => { dispose: () => void };
   onBeforeEdit: (listener: BeforeEditListener) => { dispose: () => void };
+  onWorkItems: (listener: WorkItemsListener) => { dispose: () => void };
   dispose: () => void;
 }
 
@@ -63,6 +73,7 @@ export function startIpcServer(log: vscode.OutputChannel): IpcServer {
       : `/tmp/codespark-${process.pid}.sock`;
   const editListeners = new Set<EditListener>();
   const beforeEditListeners = new Set<BeforeEditListener>();
+  const workItemsListeners = new Set<WorkItemsListener>();
 
   // Clean up stale socket from prior crash
   try {
@@ -88,6 +99,7 @@ export function startIpcServer(log: vscode.OutputChannel): IpcServer {
         log,
         editListeners,
         beforeEditListeners,
+        workItemsListeners,
         conn,
       );
     });
@@ -122,6 +134,14 @@ export function startIpcServer(log: vscode.OutputChannel): IpcServer {
       return {
         dispose: () => {
           beforeEditListeners.delete(listener);
+        },
+      };
+    },
+    onWorkItems(listener: WorkItemsListener) {
+      workItemsListeners.add(listener);
+      return {
+        dispose: () => {
+          workItemsListeners.delete(listener);
         },
       };
     },
@@ -216,6 +236,7 @@ function handleConnectionData(
   log: vscode.OutputChannel,
   editListeners: Set<EditListener>,
   beforeEditListeners: Set<BeforeEditListener>,
+  workItemsListeners: Set<WorkItemsListener>,
   conn: net.Socket,
 ): string {
   buffer += chunk.toString();
@@ -283,6 +304,14 @@ function handleConnectionData(
       handleDeleteRequest(deleteReq, log)
         .then((res) => conn.write(JSON.stringify(res) + "\n"))
         .catch(handleError(deleteReq.id));
+    } else if (req.type === "update_work_items") {
+      const items = (req as any).items as WorkItemInput[];
+      log.appendLine(`[ipc] update_work_items: ${items.length} item(s)`);
+      for (const listener of workItemsListeners) {
+        listener(items);
+      }
+      const res = { id: req.id, success: true, message: `Created ${items.length} work item(s)` };
+      conn.write(JSON.stringify(res) + "\n");
     } else {
       conn.write(
         JSON.stringify({

@@ -10,12 +10,20 @@ import {
 // Session types
 // ---------------------------------------------------------------------------
 
+export interface WorkItemData {
+  title: string;
+  description: string;
+  filePath: string;
+  lineHint?: number;
+}
+
 export interface ResearchSession {
   id: string;
   name: string;
   entries: Entry[];
   agentMessages: any[];
   summary: string;
+  workItems: WorkItemData[];
 }
 
 // ---------------------------------------------------------------------------
@@ -57,7 +65,24 @@ export function getActiveSession(): ResearchSession | undefined {
 
 export function getResearchSummary(): string | undefined {
   const session = getActiveSession();
-  return session?.summary || undefined;
+  if (!session) return undefined;
+
+  const parts: string[] = [];
+
+  // Include work items if present
+  const workItems = session.workItems;
+  if (workItems && workItems.length > 0) {
+    const itemLines = workItems.map((item, i) =>
+      `${i + 1}. **${item.title}** — \`${item.filePath}${item.lineHint ? `:${item.lineHint}` : ""}\`\n   ${item.description}`,
+    );
+    parts.push(`## Work Items\n\n${itemLines.join("\n\n")}`);
+  }
+
+  if (session.summary) {
+    parts.push(session.summary);
+  }
+
+  return parts.length > 0 ? parts.join("\n\n---\n\n") : undefined;
 }
 
 
@@ -69,6 +94,7 @@ export function createSession(name?: string): ResearchSession {
     entries: [],
     agentMessages: [],
     summary: "",
+    workItems: [],
   };
   _sessions.push(session);
   // Enforce max sessions — drop oldest
@@ -101,6 +127,14 @@ export function updateSessionEntries(id: string, entries: Entry[]): void {
   const session = _sessions.find((s) => s.id === id);
   if (session) {
     session.entries = entries;
+    persistSessions();
+  }
+}
+
+export function saveWorkItems(id: string, items: WorkItemData[]): void {
+  const session = _sessions.find((s) => s.id === id);
+  if (session) {
+    session.workItems = items;
     persistSessions();
   }
 }
@@ -183,7 +217,6 @@ export function startResearchQuery(
   sessionId: string,
   mcpConfigPath?: string,
   resumeSdkSessionId?: string,
-  allowEdits?: boolean,
 ): { handle: ResearchQueryHandle; isFollowUp: boolean } {
   const existing = _liveQueries.get(sessionId);
   if (existing && !existing.process.killed && existing.process.exitCode === null) {
@@ -192,7 +225,7 @@ export function startResearchQuery(
     return { handle: existing, isFollowUp: true };
   }
 
-  const handle = createResearchQuery(prompt, cwd, log, mcpConfigPath, resumeSdkSessionId, allowEdits);
+  const handle = createResearchQuery(prompt, cwd, log, mcpConfigPath, resumeSdkSessionId);
   _liveQueries.set(sessionId, handle);
   return { handle, isFollowUp: false };
 }

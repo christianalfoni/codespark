@@ -6,6 +6,7 @@ import { prepareForRender } from "./prepareForRender";
 import { AssistantMessage } from "./AssistantMessage";
 import { SessionMenu } from "./SessionMenu";
 import { StatsBar } from "./StatsBar";
+import { WorkItems, WorkItemDetail } from "./WorkItems";
 import { useAppState } from "./useAppState";
 import { useMessageHandling } from "./useMessageHandling";
 import { useMessageListScroll } from "./useMessageListScroll";
@@ -67,6 +68,7 @@ export function App({ vscode }: AppProps) {
       isStreaming: true,
       activeTool: null,
       contextState: "pending",
+      selectedWorkItemIndex: null,
     });
     userScrolledUp.current = false;
     vscode.postMessage({ type: "send", text });
@@ -179,63 +181,80 @@ export function App({ vscode }: AppProps) {
 
   const isEmpty = state.entries.length === 0;
   const hasSessions = state.sessions.length > 0;
+  const selectedWorkItem =
+    state.selectedWorkItemIndex !== null
+      ? state.workItems[state.selectedWorkItemIndex]
+      : null;
 
   return (
     <>
+      {state.workItems.length > 0 && (
+        <WorkItems
+          items={state.workItems}
+          selectedIndex={state.selectedWorkItemIndex}
+          onSelect={(index) => setState((prev) => ({ ...prev, selectedWorkItemIndex: index }))}
+        />
+      )}
       <div class="message-list-wrapper">
         <div
           ref={pinnedQueryRef}
           class="pinned-query message message-user"
           style={{ display: "none" }}
         />
-        <div
-          class="message-list"
-          ref={messageListRef}
-          onScroll={onScroll}
-          onClick={onMessageListClick}
-        >
-          {isEmpty ? (
-            <div class="empty-state">
-              <Logo />
-              <div class="empty-state-text">
-                Research your codebase and the web. Findings are shared with the
-                inline agent.
+        {selectedWorkItem ? (
+          <div class="message-list">
+            <WorkItemDetail item={selectedWorkItem} />
+          </div>
+        ) : (
+          <div
+            class="message-list"
+            ref={messageListRef}
+            onScroll={onScroll}
+            onClick={onMessageListClick}
+          >
+            {isEmpty ? (
+              <div class="empty-state">
+                <Logo />
+                <div class="empty-state-text">
+                  Research your codebase and the web. Findings are shared with
+                  the inline agent.
+                </div>
               </div>
-            </div>
-          ) : (
-            <>
-              {state.entries.map((entry, i) => {
-                const isLast = i === state.entries.length - 1;
-                if (entry.role === "user") {
+            ) : (
+              <>
+                {state.entries.map((entry, i) => {
+                  const isLast = i === state.entries.length - 1;
+                  if (entry.role === "user") {
+                    return (
+                      <UserMessage
+                        key={i}
+                        index={i}
+                        content={entry.content}
+                        registerRef={registerUserMessage}
+                      />
+                    );
+                  }
                   return (
-                    <UserMessage
+                    <AssistantMessage
                       key={i}
-                      index={i}
-                      content={entry.content}
-                      registerRef={registerUserMessage}
+                      entry={entry}
+                      isStreaming={isLast && state.isStreaming}
+                      activeTool={isLast ? state.activeTool : null}
                     />
                   );
-                }
-                return (
-                  <AssistantMessage
-                    key={i}
-                    entry={entry}
-                    isStreaming={isLast && state.isStreaming}
-                    activeTool={isLast ? state.activeTool : null}
+                })}
+                {!state.isStreaming && (
+                  <StatsBar
+                    numTurns={countTurns(state.entries)}
+                    totalCostUsd={state.totalCostUsd}
+                    conversationText={serializeConversation(state.entries)}
                   />
-                );
-              })}
-              {!state.isStreaming && (
-                <StatsBar
-                  numTurns={countTurns(state.entries)}
-                  totalCostUsd={state.totalCostUsd}
-                  conversationText={serializeConversation(state.entries)}
-                />
-              )}
-              <div class="message-list-spacer" />
-            </>
-          )}
-        </div>
+                )}
+                <div class="message-list-spacer" />
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       <div class="input-area">

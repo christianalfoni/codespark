@@ -121,6 +121,18 @@ export interface SetFileContextMessage {
   selection: string | null;
 }
 
+export interface WorkItem {
+  title: string;
+  description: string;
+  filePath: string;
+  lineHint?: number;
+}
+
+export interface WorkItemsMessage {
+  type: "work-items";
+  items: WorkItem[];
+}
+
 export type ExtensionToWebview =
   | InitMessage
   | TurnStartMessage
@@ -134,7 +146,8 @@ export type ExtensionToWebview =
   | SessionsUpdatedMessage
   | RestoreMessage
   | InjectUserMessage
-  | SetFileContextMessage;
+  | SetFileContextMessage
+  | WorkItemsMessage;
 
 export interface ChatMessage {
   role: "user" | "assistant";

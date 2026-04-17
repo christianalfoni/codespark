@@ -12,7 +12,7 @@ import { createInlinePrompt } from "./promptInput";
 import { recordQuery } from "./stats";
 import { evaluateFocusArea } from "./editor";
 import { IpcServer } from "./ipc-server";
-import { startFileScan, startEmptyFilePlaceholder } from "./editor-effects";
+import { startFileScan } from "./editor-effects";
 
 /* ── Main command ─────────────────────────────────────────────── */
 
@@ -214,12 +214,9 @@ export function createInvokeCommand(
       );
     }
 
-    // Start scanning immediately after prompt submission
     invokeDim?.dispose();
     const isEmpty = editor.document.getText().trim().length === 0;
-    let pulse: { dispose: () => void } = isEmpty
-      ? startEmptyFilePlaceholder(editor)
-      : startFileScan(editor);
+    let pulse: { dispose: () => void } | null = isEmpty ? null : startFileScan(editor);
 
     statusBarItem.text = "$(loading~spin) CodeSpark · thinking...";
 
@@ -298,7 +295,7 @@ export function createInvokeCommand(
         },
       );
 
-      pulse.dispose();
+      pulse?.dispose();
       beforeEditSub.dispose();
       await teardownPromptLine();
 
@@ -383,7 +380,7 @@ export function createInvokeCommand(
         });
       }
     } catch (err: unknown) {
-      pulse.dispose();
+      pulse?.dispose();
       beforeEditSub.dispose();
       await teardownPromptLine();
       decorationProvider.deactivate();

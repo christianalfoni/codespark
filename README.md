@@ -29,12 +29,14 @@ Powered by Claude Code CLI running Haiku, optimized for speed. It works from you
 
 ### Research agent (`Cmd+Shift+I` / `Ctrl+Shift+I`)
 
-Powered by Claude Code CLI running default models, optimized to build your own personal context. It can read files, grep through your codebase, search the web, and fetch documentation. Invoking it from a file creates a new edit-enabled session — the research agent can directly edit that file while also researching. Invoking it again on the same file continues the session; switching to a different file starts a new one.
+Powered by Claude Code CLI running default models, optimized to build your own personal context. It can read files, grep through your codebase, search the web, and fetch documentation. Think of it as a teacher — it helps you understand code and plan implementations without doing the work for you.
 
 The output is integrated with VS Code:
 - File paths like `src/foo.ts:42` become clickable links that open the file at that line
 - Fenced code blocks with `bash` render with a run button that executes the command in your terminal
 - Code blocks annotated with a file path (e.g. `` ```ts file:src/foo.ts ``) show the file name and an **Apply** button that opens the file and sends the suggestion to the inline agent for application
+
+**Work items:** When you ask the research agent to help implement something, it can break the work into focused items — each targeting a specific file with a list of considerations and hints. Work items appear as a list in the sidebar; click one to see its details, click again to return to the conversation. Work items are shared with the inline agent so it has context about the overall plan.
 
 The two agents are connected: ask a question in the research panel, and the next time you invoke the inline agent, it knows what you learned.
 
@@ -49,7 +51,7 @@ This is the same `CLAUDE.md` convention used by Claude Code in the terminal. Ins
 | Mac           | Windows / Linux | What it does                                                                                                      |
 | ------------- | --------------- | ----------------------------------------------------------------------------------------------------------------- |
 | `Cmd+I`       | `Ctrl+I`        | Open the inline agent — describe a change and it edits the file at your cursor                                    |
-| `Cmd+Shift+I` | `Ctrl+Shift+I`  | Open the research agent with the current file — can research and directly edit the file |
+| `Cmd+Shift+I` | `Ctrl+Shift+I`  | Open the research agent with the current file as context |
 
 These shortcuts may conflict with other extensions (e.g. GitHub Copilot uses the same bindings). To rebind them, open the command palette and search for "Preferences: Open Keyboard Shortcuts (JSON)", then add your preferred bindings:
 

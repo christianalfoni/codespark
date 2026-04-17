@@ -148,6 +148,13 @@ export function useMessageHandling(
             : null,
         };
       }
+      case "work-items": {
+        return {
+          ...prev,
+          workItems: msg.items,
+          selectedWorkItemIndex: null,
+        };
+      }
       case "done": {
         return {
           ...prev,
