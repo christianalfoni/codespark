@@ -263,7 +263,7 @@ Calling this tool replaces any existing work items. Include items you want to ke
         .array(
           z.object({
             title: z.string().describe("Short title (e.g. 'Add message type')"),
-            description: z.string().describe("A markdown bullet list of considerations and hints for this work item. Use '- ' bullets. Guide without giving the full solution."),
+            description: z.string().describe("A markdown bullet list of considerations and hints. Use '- ' bullets. When referencing code (types, function signatures, patterns to follow), use fenced code blocks rather than inline code — they are easier to copy and read. Guide without giving the full solution."),
             filePath: z.string().describe("Relative path to the file to work on"),
             lineHint: z.number().optional().describe("Approximate line number to start at"),
           }),
