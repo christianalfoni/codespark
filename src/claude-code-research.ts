@@ -184,7 +184,11 @@ export async function* iterateResearchEvents(
       }
 
       if (msg.type === "assistant") {
-        yield* flushPendingTools(pendingTools, toolUseIdMap);
+        // Don't flush pending tools here — the assistant message arrives BEFORE
+        // tools execute. Flushing now would emit premature tool-end events,
+        // causing IPC edit highlighting to be skipped (editedLines still empty).
+        // Tools are properly ended by tool_result handling (user message) and
+        // safety-flushed at the result message and end-of-stream.
 
         const content = msg.message?.content;
         if (Array.isArray(content)) {

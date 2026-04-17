@@ -511,6 +511,10 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
           // Safety cleanup in case tool-end was missed
           this._editScanEffect?.dispose();
           this._editScanEffect = null;
+          if (editedLines.length > 0) {
+            this._applyEditHighlighting(editedLines);
+            editedLines = [];
+          }
 
           this._post({
             type: "done",
