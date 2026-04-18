@@ -257,7 +257,7 @@ Describe WHAT needs to be done and WHERE, but do not write the full solution —
 context for the user to attempt it themselves. The breakdown is also shared with the inline
 editing agent (Cmd+I) so it has context about the overall approach.
 
-Calling this tool replaces any existing breakdown. Include steps you want to keep when updating.`,
+Calling this tool replaces any existing breakdown. Before updating, read the relevant files to check what has already been implemented — then adjust all steps to reflect the current code state.`,
     {
       items: z
         .array(
