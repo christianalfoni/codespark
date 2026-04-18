@@ -170,6 +170,19 @@ export function App({ vscode }: AppProps) {
     }
   }
 
+  function onSelectWorkItem(index: number | null) {
+    setState((prev) => ({ ...prev, selectedWorkItemIndex: index }));
+
+    if (index !== null) {
+      const workItem = state.workItems[index];
+      vscode.postMessage({
+        type: "open-file",
+        path: workItem.filePath,
+        line: workItem.lineHint,
+      });
+    }
+  }
+
   const isEmpty = state.entries.length === 0;
   const hasSessions = state.sessions.length > 0;
   const selectedWorkItem =
@@ -183,9 +196,7 @@ export function App({ vscode }: AppProps) {
         <WorkItems
           items={state.workItems}
           selectedIndex={state.selectedWorkItemIndex}
-          onSelect={(index) =>
-            setState((prev) => ({ ...prev, selectedWorkItemIndex: index }))
-          }
+          onSelect={onSelectWorkItem}
         />
       )}
       <div class="message-list-wrapper">
