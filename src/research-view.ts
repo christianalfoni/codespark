@@ -136,7 +136,6 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
   private _sendInit(): void {
     const session = getActiveSession();
     if (session && session.entries.length > 0) {
-      // Restore work items from session
       this._workItems = session.workItems ?? [];
       this._post({
         type: "restore",
@@ -145,8 +144,8 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
         activeSessionId: getActiveSessionId(),
         hasContext: !!session.summary,
       });
-      this._postWorkItems();
     } else {
+      this._workItems = session?.workItems ?? [];
       this._post({
         type: "init",
         hasContext: !!getResearchSummary(),
@@ -154,6 +153,7 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
         activeSessionId: getActiveSessionId(),
       });
     }
+    this._postWorkItems();
   }
 
   private _sendSessionsUpdate(): void {
