@@ -4,16 +4,16 @@ import { renderMarkdown } from "./markdown";
 import { prepareForRender } from "./prepareForRender";
 
 const TOOL_DISPLAY_NAMES: Record<string, string> = {
-  "read_reference": "Read Reference",
-  "mcp__codespark__git_status": "Git Status",
-  "mcp__codespark__git_log": "Git Log",
-  "mcp__codespark__git_diff": "Git Diff",
-  "mcp__codespark__git_blame": "Git Blame",
-  "mcp__codespark__edit_file": "Edit File",
-  "mcp__codespark__write_file": "Write File",
-  "mcp__codespark__move_file": "Move File",
-  "mcp__codespark__delete_file": "Delete File",
-  "mcp__codespark__update_work_items": "Updating Work Items",
+  read_reference: "Read Reference",
+  mcp__codespark__git_status: "Git Status",
+  mcp__codespark__git_log: "Git Log",
+  mcp__codespark__git_diff: "Git Diff",
+  mcp__codespark__git_blame: "Git Blame",
+  mcp__codespark__edit_file: "Edit File",
+  mcp__codespark__write_file: "Write File",
+  mcp__codespark__move_file: "Move File",
+  mcp__codespark__delete_file: "Delete File",
+  mcp__codespark__update_work_items: "Updating Work Items",
 };
 
 interface ToolGroup {
@@ -31,11 +31,17 @@ function groupTools(tools: ToolEntry[]): ToolGroup[] {
       existing.count++;
       // Aggregate status: pending > error > success
       if (t.status === "pending") existing.status = "pending";
-      else if (t.status === "error" && existing.status !== "pending") existing.status = "error";
+      else if (t.status === "error" && existing.status !== "pending")
+        existing.status = "error";
       // Drop description when grouped
       existing.description = undefined;
     } else {
-      groups.push({ name: t.name, count: 1, status: t.status, description: t.description });
+      groups.push({
+        name: t.name,
+        count: 1,
+        status: t.status,
+        description: t.description,
+      });
     }
   }
   return groups;
@@ -51,13 +57,11 @@ function InlineTools({ tools }: { tools: ToolEntry[] }) {
           <span class={`tool-dot tool-dot-${g.status}`} />
           <span class="tool-label">
             {TOOL_DISPLAY_NAMES[g.name] ?? g.name}
-            {g.description && (
+            {g.status !== "error" && g.description && (
               <span class="tool-description">{g.description}</span>
             )}
           </span>
-          {g.count > 1 && (
-            <span class="tool-count">({g.count})</span>
-          )}
+          {g.count > 1 && <span class="tool-count">({g.count})</span>}
         </span>
       ))}
     </span>
@@ -101,7 +105,9 @@ export function AssistantMessage({
         <div key={`text-${i}`} class="message message-assistant">
           <div
             class="assistant-content"
-            dangerouslySetInnerHTML={{ __html: renderMarkdown(prepareForRender(turn.text)) }}
+            dangerouslySetInnerHTML={{
+              __html: renderMarkdown(prepareForRender(turn.text)),
+            }}
           />
         </div>,
       );
