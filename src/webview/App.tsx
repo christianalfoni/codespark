@@ -19,6 +19,7 @@ import {
   FILE_ICON,
   copyCodeWithFeedback,
   handleCommandClick,
+  REVIEW_ICON,
 } from "./utils";
 
 interface VsCodeApi {
@@ -307,6 +308,19 @@ export function App({ vscode }: AppProps) {
                   activeSessionId={state.activeSessionId}
                   disabled={state.isStreaming}
                   onSwitch={switchToSession}
+                />
+              )}
+              {state.workItems.length && (
+                <button
+                  class="reset-btn review-btn"
+                  title="Review Work Items"
+                  disabled={state.isStreaming}
+                  onClick={() =>
+                    send(
+                      "Review the changes I made for the current work items. Check if I followed the guidance correctly and suggest any improvements.",
+                    )
+                  }
+                  dangerouslySetInnerHTML={{ __html: REVIEW_ICON }}
                 />
               )}
               <div style={{ flex: 1 }} />

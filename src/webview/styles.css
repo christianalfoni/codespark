@@ -730,6 +730,10 @@ pre.has-file-label {
   fill: currentColor;
 }
 
+.review-btn:hover:not(:disabled) {
+  color: var(--vscode-panelTitle-activeBorder);
+}
+
 /* ── Stats bar ───────────────────────────────────────────── */
 
 .stats-bar {
