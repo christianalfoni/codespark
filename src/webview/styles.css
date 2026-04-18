@@ -109,16 +109,18 @@ body {
 
 .message-user {
   padding: 10px 12px;
+  border-radius: 6px;
   background: var(--vscode-input-background);
 }
 
 .pinned-query {
   position: absolute;
   top: 0;
-  left: 0;
-  right: 0;
+  left: 16px;
+  right: 22px;
   z-index: 3;
-  padding: 10px 28px;
+  padding: 10px 12px;
+  border-radius: 6px;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
   cursor: pointer;
 }
@@ -856,8 +858,6 @@ pre.has-file-label {
 .breakdown-panel {
   padding: 10px 16px 8px;
   flex-shrink: 0;
-  border-bottom: 1px solid
-    color-mix(in srgb, var(--vscode-panel-border) 50%, transparent);
 }
 
 .breakdown-header {
@@ -941,6 +941,20 @@ pre.has-file-label {
   );
 }
 
+.step-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.step-selected .step-icon {
+  opacity: 1;
+}
+
 .step-title {
   flex: 1;
   overflow: hidden;
@@ -950,18 +964,35 @@ pre.has-file-label {
 }
 
 .step-detail {
-  padding: 16px;
+  padding: 0 0 16px;
 }
 
-.step-detail-file {
-  font-size: 11px;
+.step-detail-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
   font-family: var(--vscode-editor-font-family, monospace);
-  color: var(--vscode-descriptionForeground);
-  margin-bottom: 12px;
-  opacity: 0.8;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+}
+
+.step-detail-icon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+
+.step-detail-icon svg {
+  width: 13px;
+  height: 13px;
 }
 
 .step-detail-content {
+  padding: 0 16px;
   line-height: 1.6;
 }
 

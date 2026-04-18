@@ -2,7 +2,7 @@
   "name": "codespark-agent",
   "displayName": "CodeSpark",
   "description": "Build with understanding — AI that helps you think, not just type",
-  "version": "0.22.1",
+  "version": "0.22.2",
   "publisher": "codespark",
   "license": "MIT",
   "icon": "media/icon.png",
