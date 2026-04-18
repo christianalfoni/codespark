@@ -2,12 +2,12 @@ import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
 import {
-  startResearchQuery,
+  startAssistantQuery,
   getLiveQuery,
   abortLiveQuery,
-  iterateResearchEvents,
-  getResearchSummary,
-  appendResearchContext,
+  iterateAssistantEvents,
+  getAssistantSummary,
+  appendAssistantContext,
   getActiveSessionId,
   getActiveSession,
   createSession,
@@ -15,10 +15,10 @@ import {
   deleteSession,
   updateSessionEntries,
   saveAgentMessages,
-  saveWorkItems,
+  saveBreakdownSteps,
   getSessionInfos,
-} from "./research-agent";
-import { IpcServer, WorkItemInput } from "./ipc-server";
+} from "./assistant-agent";
+import { IpcServer, BreakdownStepInput } from "./ipc-server";
 
 function getNonce(): string {
   let text = "";
@@ -30,8 +30,8 @@ function getNonce(): string {
   return text;
 }
 
-export class ResearchViewProvider implements vscode.WebviewViewProvider {
-  public static readonly viewId = "codeSpark.research";
+export class AssistantViewProvider implements vscode.WebviewViewProvider {
+  public static readonly viewId = "codeSpark.assistant";
 
   private _view?: vscode.WebviewView;
   private _pendingFileContext?: {
@@ -47,8 +47,8 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
   private _readyPromise: Promise<void> = new Promise((resolve) => {
     this._readyResolve = resolve;
   });
-  /** Current work items for the active session */
-  private _workItems: WorkItemInput[] = [];
+  /** Current breakdown steps for the active session */
+  private _steps: BreakdownStepInput[] = [];
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
@@ -56,12 +56,12 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
     private readonly _mcpConfigPath: string | undefined,
     private readonly _ipcServer: IpcServer,
   ) {
-    this._ipcServer.onWorkItems((items) => {
-      this._workItems = items;
-      this._postWorkItems();
-      this._persistWorkItems();
+    this._ipcServer.onBreakdown((steps) => {
+      this._steps = steps;
+      this._postBreakdown();
+      this._persistBreakdown();
       this._log.appendLine(
-        `[research-view] Work items created: ${items.length}`,
+        `[assistant-view] Breakdown created: ${steps.length} step(s)`,
       );
     });
   }
@@ -81,7 +81,7 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
 
     webviewView.webview.onDidReceiveMessage((msg) => {
       this._log.appendLine(
-        `[research-view] msg: ${JSON.stringify(msg).slice(0, 200)}`,
+        `[assistant-view] msg: ${JSON.stringify(msg).slice(0, 200)}`,
       );
 
       switch (msg.type) {
@@ -136,7 +136,7 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
   private _sendInit(): void {
     const session = getActiveSession();
     if (session && session.entries.length > 0) {
-      this._workItems = session.workItems ?? [];
+      this._steps = session.breakdownSteps ?? [];
       this._post({
         type: "restore",
         entries: session.entries,
@@ -145,15 +145,15 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
         hasContext: !!session.summary,
       });
     } else {
-      this._workItems = session?.workItems ?? [];
+      this._steps = session?.breakdownSteps ?? [];
       this._post({
         type: "init",
-        hasContext: !!getResearchSummary(),
+        hasContext: !!getAssistantSummary(),
         sessions: getSessionInfos(),
         activeSessionId: getActiveSessionId(),
       });
     }
-    this._postWorkItems();
+    this._postBreakdown();
   }
 
   private _sendSessionsUpdate(): void {
@@ -177,10 +177,10 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
     this._saveCurrentSession(currentEntries);
     this._cancelCurrent();
     this._pendingFileContext = undefined;
-    this._workItems = [];
+    this._steps = [];
     createSession();
     this._sendSessionsUpdate();
-    this._postWorkItems();
+    this._postBreakdown();
   }
 
   private _handleSwitchSession(id: string, currentEntries: any[]): void {
@@ -188,8 +188,8 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
     this._cancelCurrent();
     const session = switchSession(id);
     if (session) {
-      // Restore work items from session
-      this._workItems = session.workItems ?? [];
+      // Restore breakdown steps from session
+      this._steps = session.breakdownSteps ?? [];
       this._post({
         type: "restore",
         entries: session.entries,
@@ -197,7 +197,7 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
         activeSessionId: id,
         hasContext: !!session.summary,
       });
-      this._postWorkItems();
+      this._postBreakdown();
     }
   }
 
@@ -235,7 +235,7 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
       }
       await vscode.window.showTextDocument(doc, options);
     } catch {
-      this._log.appendLine(`[research-view] Could not open file: ${absolute}`);
+      this._log.appendLine(`[assistant-view] Could not open file: ${absolute}`);
     }
   }
 
@@ -276,35 +276,35 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
   }
 
   // ---------------------------------------------------------------------------
-  // Work Items
+  // Breakdown
   // ---------------------------------------------------------------------------
 
-  private _postWorkItems(): void {
+  private _postBreakdown(): void {
     this._post({
-      type: "work-items",
-      items: this._workItems.map((a) => ({
-        title: a.title,
-        description: a.description,
-        filePath: a.filePath,
-        lineHint: a.lineHint,
+      type: "breakdown",
+      steps: this._steps.map((s) => ({
+        title: s.title,
+        description: s.description,
+        filePath: s.filePath,
+        lineHint: s.lineHint,
       })),
     });
   }
 
-  private _persistWorkItems(): void {
+  private _persistBreakdown(): void {
     const sessionId = getActiveSessionId();
     if (!sessionId) return;
-    saveWorkItems(sessionId, this._workItems);
+    saveBreakdownSteps(sessionId, this._steps);
   }
 
-  private _buildWorkItemsContext(): string {
-    if (this._workItems.length === 0) return "";
+  private _buildBreakdownContext(): string {
+    if (this._steps.length === 0) return "";
 
-    const lines: string[] = ["[Work Items:"];
-    for (let i = 0; i < this._workItems.length; i++) {
-      const item = this._workItems[i];
+    const lines: string[] = ["[Breakdown:"];
+    for (let i = 0; i < this._steps.length; i++) {
+      const step = this._steps[i];
       lines.push(
-        `${i + 1}. ${item.title} — ${item.filePath}${item.lineHint ? `:${item.lineHint}` : ""}`,
+        `${i + 1}. ${step.title} — ${step.filePath}${step.lineHint ? `:${step.lineHint}` : ""}`,
       );
     }
     lines.push("]");
@@ -315,12 +315,12 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
     text: string,
     files: string[] = [],
   ): Promise<void> {
-    // Prepend work items context so the agent knows current state
-    const workItemsContext = this._buildWorkItemsContext();
-    if (workItemsContext) {
-      text = workItemsContext + text;
+    // Prepend breakdown context so the agent knows current state
+    const breakdownContext = this._buildBreakdownContext();
+    if (breakdownContext) {
+      text = breakdownContext + text;
     }
-    this._log.appendLine(`[research-view:prompt] ${text}`);
+    this._log.appendLine(`[assistant-view:prompt] ${text}`);
     const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     if (!workspaceFolder) {
       this._post({ type: "error", text: "No workspace folder open." });
@@ -342,7 +342,7 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
     const session = getActiveSession();
     const savedSdkSessionId = session?.agentMessages?.[0]?.sdkSessionId;
 
-    const { handle, isFollowUp } = startResearchQuery(
+    const { handle, isFollowUp } = startAssistantQuery(
       text,
       workspaceFolder,
       this._log,
@@ -357,11 +357,11 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
     // Start the long-lived event loop for this process
     this._eventLoopRunning = true;
     try {
-      for await (const evt of iterateResearchEvents(handle, this._log)) {
+      for await (const evt of iterateAssistantEvents(handle, this._log)) {
         if (evt.type === "done") {
           const prompt = this._promptQueue.shift();
           if (evt.resultText.trim() && prompt) {
-            appendResearchContext(
+            appendAssistantContext(
               sessionId,
               prompt.text,
               evt.resultText.trim(),
@@ -387,7 +387,7 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      this._log.appendLine(`[research:error] ${msg}`);
+      this._log.appendLine(`[assistant:error] ${msg}`);
       this._post({ type: "error", text: msg });
       this._post({ type: "done" });
     }
@@ -408,7 +408,7 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
       selection: ctx.selection ?? null,
     });
     this._log.appendLine(
-      `[research-view] File context set: ${ctx.filePath}:${ctx.cursorLine}`,
+      `[assistant-view] File context set: ${ctx.filePath}:${ctx.cursorLine}`,
     );
   }
 
@@ -428,7 +428,7 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
         selection: ctx.selection ?? null,
       });
       this._log.appendLine(
-        `[research-view] Continuing file session: ${ctx.filePath}`,
+        `[assistant-view] Continuing file session: ${ctx.filePath}`,
       );
       return;
     }
@@ -446,7 +446,7 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
       selection: ctx.selection ?? null,
     });
     this._log.appendLine(
-      `[research-view] File session started: ${ctx.filePath}`,
+      `[assistant-view] File session started: ${ctx.filePath}`,
     );
   }
 
@@ -467,7 +467,7 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
     contextSnippet: string;
   }): Promise<void> {
     // Ensure the panel is visible
-    await vscode.commands.executeCommand("codeSpark.research.focus");
+    await vscode.commands.executeCommand("codeSpark.assistant.focus");
 
     if (this._view) {
       // Show clean user message + file context indicator in the webview
@@ -519,7 +519,7 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
     const query = ctx.selection
       ? `\`\`\`\n${ctx.selection}\n\`\`\`\n\n${text}`
       : text;
-    this._log.appendLine(`[research-view:prompt] ${query}`);
+    this._log.appendLine(`[assistant-view:prompt] ${query}`);
 
     await this._handlePromptWithContext({
       query,
@@ -575,7 +575,7 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
       font-src ${webview.cspSource};
       img-src ${webview.cspSource};">
   <link rel="stylesheet" href="${cssUri}">
-  <title>Research</title>
+  <title>Assistant</title>
 </head>
 <body>
   <div id="root" data-logo="${logoUri}"></div>

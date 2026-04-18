@@ -148,11 +148,11 @@ export function useMessageHandling(
             : null,
         };
       }
-      case "work-items": {
+      case "breakdown": {
         return {
           ...prev,
-          workItems: msg.items,
-          selectedWorkItemIndex: null,
+          breakdownSteps: msg.steps,
+          selectedStepIndex: null,
         };
       }
       case "done": {

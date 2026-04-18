@@ -8,10 +8,10 @@ import { initStats, showStats, resetStats } from "./stats";
 import { createInvokeCommand } from "./invoker";
 import { createUpdateActiveInstructions } from "./statusbar";
 import {
-  initResearchSummary,
-  clearResearchSummary,
-} from "./research-agent";
-import { ResearchViewProvider } from "./research-view";
+  initAssistantSummary,
+  clearAssistantSummary,
+} from "./assistant-agent";
+import { AssistantViewProvider } from "./assistant-view";
 import { startIpcServer } from "./ipc-server";
 
 function isClaudeCliAvailable(): boolean {
@@ -49,7 +49,7 @@ export function activate(context: vscode.ExtensionContext) {
   }
 
   initStats(context.workspaceState);
-  initResearchSummary(context.workspaceState);
+  initAssistantSummary(context.workspaceState);
 
   // Start IPC server and MCP server (long-lived HTTP transport)
   const ipcServer = startIpcServer(log);
@@ -140,8 +140,8 @@ export function activate(context: vscode.ExtensionContext) {
   watcher.onDidDelete(onInstructionsChanged("Deleted"));
   context.subscriptions.push(watcher);
 
-  // Research agent webview panel (created before invoke command so it can be passed)
-  const researchView = new ResearchViewProvider(context.extensionUri, log, mcpConfigPath, ipcServer);
+  // Assistant agent webview panel (created before invoke command so it can be passed)
+  const assistantView = new AssistantViewProvider(context.extensionUri, log, mcpConfigPath, ipcServer);
 
   context.subscriptions.push(
     vscode.commands.registerCommand(
@@ -171,7 +171,7 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("codeSpark.openResearch", async () => {
+    vscode.commands.registerCommand("codeSpark.openAssistant", async () => {
       const editor = vscode.window.activeTextEditor;
       if (editor) {
         const filePath = vscode.workspace.asRelativePath(
@@ -181,25 +181,25 @@ export function activate(context: vscode.ExtensionContext) {
         const selection = editor.selection.isEmpty
           ? undefined
           : editor.document.getText(editor.selection);
-        researchView.startFileSession({ filePath, cursorLine, selection });
+        assistantView.startFileSession({ filePath, cursorLine, selection });
       }
-      await vscode.commands.executeCommand("codeSpark.research.focus");
-      researchView.focusInput();
+      await vscode.commands.executeCommand("codeSpark.assistant.focus");
+      assistantView.focusInput();
     }),
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("codeSpark.clearResearchSummary", () => {
-      clearResearchSummary();
+    vscode.commands.registerCommand("codeSpark.clearAssistantSummary", () => {
+      clearAssistantSummary();
       vscode.window.showInformationMessage(
-        "CodeSpark: Research summary cleared.",
+        "CodeSpark: Assistant summary cleared.",
       );
     }),
   );
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(
-      ResearchViewProvider.viewId,
-      researchView,
+      AssistantViewProvider.viewId,
+      assistantView,
       { webviewOptions: { retainContextWhenHidden: true } },
     ),
   );

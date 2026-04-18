@@ -1,48 +1,48 @@
 import * as vscode from "vscode";
 import type { Entry } from "./webview/state";
 import {
-  createResearchQuery,
-  iterateResearchEvents,
-  type ResearchQueryHandle,
-} from "./claude-code-research";
+  createAssistantQuery,
+  iterateAssistantEvents,
+  type AssistantQueryHandle,
+} from "./claude-code-assistant";
 
 // ---------------------------------------------------------------------------
 // Session types
 // ---------------------------------------------------------------------------
 
-export interface WorkItemData {
+export interface BreakdownStepData {
   title: string;
   description: string;
   filePath: string;
   lineHint?: number;
 }
 
-export interface ResearchSession {
+export interface AssistantSession {
   id: string;
   name: string;
   entries: Entry[];
   agentMessages: any[];
   summary: string;
-  workItems: WorkItemData[];
+  breakdownSteps: BreakdownStepData[];
 }
 
 // ---------------------------------------------------------------------------
 // Session store (backed by workspaceState)
 // ---------------------------------------------------------------------------
 
-const SESSIONS_KEY = "codeSpark.researchSessions";
-const ACTIVE_SESSION_KEY = "codeSpark.activeResearchSession";
+const SESSIONS_KEY = "codeSpark.assistantSessions";
+const ACTIVE_SESSION_KEY = "codeSpark.activeAssistantSession";
 
 const MAX_SESSIONS = 5;
 const MAX_SUMMARY_LENGTH = 4000;
 
 let _workspaceState: vscode.Memento | undefined;
-let _sessions: ResearchSession[] = [];
+let _sessions: AssistantSession[] = [];
 let _activeSessionId: string | null = null;
 
-export function initResearchSummary(workspaceState: vscode.Memento): void {
+export function initAssistantSummary(workspaceState: vscode.Memento): void {
   _workspaceState = workspaceState;
-  _sessions = workspaceState.get<ResearchSession[]>(SESSIONS_KEY) ?? [];
+  _sessions = workspaceState.get<AssistantSession[]>(SESSIONS_KEY) ?? [];
   _activeSessionId = workspaceState.get<string>(ACTIVE_SESSION_KEY) ?? null;
 }
 
@@ -51,7 +51,7 @@ function persistSessions(): void {
   _workspaceState?.update(ACTIVE_SESSION_KEY, _activeSessionId);
 }
 
-export function getSessions(): ResearchSession[] {
+export function getSessions(): AssistantSession[] {
   return _sessions;
 }
 
@@ -59,23 +59,23 @@ export function getActiveSessionId(): string | null {
   return _activeSessionId;
 }
 
-export function getActiveSession(): ResearchSession | undefined {
+export function getActiveSession(): AssistantSession | undefined {
   return _sessions.find((s) => s.id === _activeSessionId);
 }
 
-export function getResearchSummary(): string | undefined {
+export function getAssistantSummary(): string | undefined {
   const session = getActiveSession();
   if (!session) return undefined;
 
   const parts: string[] = [];
 
-  // Include work items if present
-  const workItems = session.workItems;
-  if (workItems && workItems.length > 0) {
-    const itemLines = workItems.map((item, i) =>
-      `${i + 1}. **${item.title}** — \`${item.filePath}${item.lineHint ? `:${item.lineHint}` : ""}\`\n   ${item.description}`,
+  // Include breakdown steps if present
+  const steps = session.breakdownSteps;
+  if (steps && steps.length > 0) {
+    const stepLines = steps.map((step, i) =>
+      `${i + 1}. **${step.title}** — \`${step.filePath}${step.lineHint ? `:${step.lineHint}` : ""}\`\n   ${step.description}`,
     );
-    parts.push(`## Work Items\n\n${itemLines.join("\n\n")}`);
+    parts.push(`## Breakdown\n\n${stepLines.join("\n\n")}`);
   }
 
   if (session.summary) {
@@ -87,14 +87,14 @@ export function getResearchSummary(): string | undefined {
 
 
 
-export function createSession(name?: string): ResearchSession {
-  const session: ResearchSession = {
+export function createSession(name?: string): AssistantSession {
+  const session: AssistantSession = {
     id: `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     name: name ?? "",
     entries: [],
     agentMessages: [],
     summary: "",
-    workItems: [],
+    breakdownSteps: [],
   };
   _sessions.push(session);
   // Enforce max sessions — drop oldest
@@ -106,7 +106,7 @@ export function createSession(name?: string): ResearchSession {
   return session;
 }
 
-export function switchSession(id: string): ResearchSession | undefined {
+export function switchSession(id: string): AssistantSession | undefined {
   const session = _sessions.find((s) => s.id === id);
   if (session) {
     _activeSessionId = id;
@@ -131,10 +131,10 @@ export function updateSessionEntries(id: string, entries: Entry[]): void {
   }
 }
 
-export function saveWorkItems(id: string, items: WorkItemData[]): void {
+export function saveBreakdownSteps(id: string, steps: BreakdownStepData[]): void {
   const session = _sessions.find((s) => s.id === id);
   if (session) {
-    session.workItems = items;
+    session.breakdownSteps = steps;
     persistSessions();
   }
 }
@@ -147,7 +147,7 @@ export function saveAgentMessages(id: string, messages: any[]): void {
   }
 }
 
-export function appendResearchContext(
+export function appendAssistantContext(
   sessionId: string,
   userPrompt: string,
   response: string,
@@ -177,11 +177,11 @@ export function appendResearchContext(
 
   persistSessions();
   log.appendLine(
-    `[research] Session "${session.name}" context updated (${session.summary.length} chars)`,
+    `[assistant] Session "${session.name}" context updated (${session.summary.length} chars)`,
   );
 }
 
-export function clearResearchSummary(): void {
+export function clearAssistantSummary(): void {
   // Clear active session only
   const session = getActiveSession();
   if (session) {
@@ -199,38 +199,38 @@ export function getSessionInfos(): { id: string; name: string; createdAt: number
 }
 
 // ---------------------------------------------------------------------------
-// Live research query management
+// Live assistant query management
 // ---------------------------------------------------------------------------
 
-const _liveQueries = new Map<string, ResearchQueryHandle>();
+const _liveQueries = new Map<string, AssistantQueryHandle>();
 
 /**
- * Start a new research query. If a live process already exists for this session,
+ * Start a new assistant query. If a live process already exists for this session,
  * send the message to it via stdin instead of spawning a new process.
  * Returns the handle and a boolean indicating whether this is a follow-up
  * message on an existing process (true) or a fresh spawn (false).
  */
-export function startResearchQuery(
+export function startAssistantQuery(
   prompt: string,
   cwd: string,
   log: vscode.OutputChannel,
   sessionId: string,
   mcpConfigPath?: string,
   resumeSdkSessionId?: string,
-): { handle: ResearchQueryHandle; isFollowUp: boolean } {
+): { handle: AssistantQueryHandle; isFollowUp: boolean } {
   const existing = _liveQueries.get(sessionId);
   if (existing && !existing.process.killed && existing.process.exitCode === null) {
-    log.appendLine(`[research-agent] Sending follow-up to existing process for session ${sessionId}`);
+    log.appendLine(`[assistant-agent] Sending follow-up to existing process for session ${sessionId}`);
     existing.sendMessage(prompt);
     return { handle: existing, isFollowUp: true };
   }
 
-  const handle = createResearchQuery(prompt, cwd, log, mcpConfigPath, resumeSdkSessionId);
+  const handle = createAssistantQuery(prompt, cwd, log, mcpConfigPath, resumeSdkSessionId);
   _liveQueries.set(sessionId, handle);
   return { handle, isFollowUp: false };
 }
 
-export function getLiveQuery(sessionId: string): ResearchQueryHandle | undefined {
+export function getLiveQuery(sessionId: string): AssistantQueryHandle | undefined {
   return _liveQueries.get(sessionId);
 }
 
@@ -246,4 +246,4 @@ export function disposeLiveQuery(sessionId: string): void {
   abortLiveQuery(sessionId);
 }
 
-export { iterateResearchEvents } from "./claude-code-research";
+export { iterateAssistantEvents } from "./claude-code-assistant";

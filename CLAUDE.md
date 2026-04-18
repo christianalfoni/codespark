@@ -1,11 +1,11 @@
 # CodeSpark
 
-VS Code extension that integrates Claude Code CLI for inline editing and research.
+VS Code extension that integrates Claude Code CLI for inline editing and an assistant agent.
 
 ## Project Structure
 
 - `src/` — Extension source (TypeScript, compiled to `out/`)
-- `src/webview/` — Preact-based UI for the research panel
+- `src/webview/` — Preact-based UI for the assistant panel
 - `src/mcp-server.ts` — Standalone MCP server process (spawned by the extension)
 - `media/` — Icons, logos, stylesheets
 

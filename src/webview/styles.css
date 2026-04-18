@@ -274,9 +274,9 @@ body {
   font-family: var(--vscode-editor-font-family);
   font-size: var(--vscode-editor-font-size);
   color: var(--vscode-editor-foreground);
-  background: var(--vscode-textCodeBlock-background, rgba(255, 255, 255, 0.06));
-  padding: 2px 5px;
-  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
 }
 
 .message pre {
@@ -851,16 +851,16 @@ pre.has-file-label {
   margin-right: 6px;
 }
 
-/* ── Work items ──────────────────────────────────────────── */
+/* ── Breakdown ───────────────────────────────────────────── */
 
-.work-items-panel {
+.breakdown-panel {
   padding: 10px 16px 8px;
   flex-shrink: 0;
   border-bottom: 1px solid
     color-mix(in srgb, var(--vscode-panel-border) 50%, transparent);
 }
 
-.work-items-header {
+.breakdown-header {
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
@@ -869,13 +869,13 @@ pre.has-file-label {
   margin-bottom: 6px;
 }
 
-.work-items-list {
+.breakdown-list {
   display: flex;
   flex-direction: column;
   gap: 1px;
 }
 
-.work-item {
+.step {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -891,7 +891,7 @@ pre.has-file-label {
   transition: background 0.1s;
 }
 
-.work-item:hover {
+.step:hover {
   background: color-mix(
     in srgb,
     var(--vscode-editor-foreground) 6%,
@@ -899,7 +899,7 @@ pre.has-file-label {
   );
 }
 
-.work-item-selected {
+.step-selected {
   background: color-mix(
     in srgb,
     var(--vscode-panelTitle-activeBorder) 10%,
@@ -908,7 +908,7 @@ pre.has-file-label {
   color: var(--vscode-panelTitle-activeBorder);
 }
 
-.work-item-selected:hover {
+.step-selected:hover {
   background: color-mix(
     in srgb,
     var(--vscode-panelTitle-activeBorder) 14%,
@@ -916,7 +916,7 @@ pre.has-file-label {
   );
 }
 
-.work-item-number {
+.step-number {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -933,7 +933,7 @@ pre.has-file-label {
   );
 }
 
-.work-item-selected .work-item-number {
+.step-selected .step-number {
   background: color-mix(
     in srgb,
     var(--vscode-panelTitle-activeBorder) 25%,
@@ -941,7 +941,7 @@ pre.has-file-label {
   );
 }
 
-.work-item-title {
+.step-title {
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -949,11 +949,11 @@ pre.has-file-label {
   font-weight: 500;
 }
 
-.work-item-detail {
+.step-detail {
   padding: 16px;
 }
 
-.work-item-detail-file {
+.step-detail-file {
   font-size: 11px;
   font-family: var(--vscode-editor-font-family, monospace);
   color: var(--vscode-descriptionForeground);
@@ -961,7 +961,7 @@ pre.has-file-label {
   opacity: 0.8;
 }
 
-.work-item-detail-content {
+.step-detail-content {
   line-height: 1.6;
 }
 

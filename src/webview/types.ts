@@ -115,16 +115,16 @@ export interface SetFileContextMessage {
   selection: string | null;
 }
 
-export interface WorkItem {
+export interface BreakdownStep {
   title: string;
   description: string;
   filePath: string;
   lineHint?: number;
 }
 
-export interface WorkItemsMessage {
-  type: "work-items";
-  items: WorkItem[];
+export interface BreakdownMessage {
+  type: "breakdown";
+  steps: BreakdownStep[];
 }
 
 export type ExtensionToWebview =
@@ -141,7 +141,7 @@ export type ExtensionToWebview =
   | RestoreMessage
   | InjectUserMessage
   | SetFileContextMessage
-  | WorkItemsMessage;
+  | BreakdownMessage;
 
 export interface ChatMessage {
   role: "user" | "assistant";

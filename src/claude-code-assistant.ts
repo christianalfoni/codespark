@@ -1,13 +1,13 @@
 import * as childProcess from "child_process";
 import * as readline from "readline";
 import * as vscode from "vscode";
-import { buildResearchSystemPrompt } from "./prompts";
+import { buildAssistantSystemPrompt } from "./prompts";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-export interface ResearchQueryHandle {
+export interface AssistantQueryHandle {
   process: childProcess.ChildProcess;
   /** SDK session ID, available after the `result` message */
   sdkSessionId?: string;
@@ -33,15 +33,15 @@ export type WebviewEvent =
 // Spawn claude CLI
 // ---------------------------------------------------------------------------
 
-export function createResearchQuery(
+export function createAssistantQuery(
   prompt: string,
   cwd: string,
   log: vscode.OutputChannel,
   mcpConfigPath?: string,
   resumeSessionId?: string,
-): ResearchQueryHandle {
+): AssistantQueryHandle {
   log.appendLine(
-    `[claude-code-research] Creating query (resume: ${resumeSessionId ?? "none"}) — ${prompt.slice(0, 100)}`,
+    `[claude-code-assistant] Creating query (resume: ${resumeSessionId ?? "none"}) — ${prompt.slice(0, 100)}`,
   );
 
   const args = [
@@ -61,7 +61,7 @@ export function createResearchQuery(
     "--disallowedTools",
     "mcp__codespark__edit_file,mcp__codespark__write_file,mcp__codespark__move_file,mcp__codespark__delete_file",
     "--system-prompt",
-    buildResearchSystemPrompt(cwd),
+    buildAssistantSystemPrompt(cwd),
   ];
 
   if (resumeSessionId) {
@@ -74,23 +74,23 @@ export function createResearchQuery(
   });
 
   proc.on("error", (err) => {
-    log.appendLine(`[claude-code-research] Process error: ${err.message}`);
+    log.appendLine(`[claude-code-assistant] Process error: ${err.message}`);
   });
 
   proc.on("exit", (code, signal) => {
     log.appendLine(
-      `[claude-code-research] Process exited (code=${code}, signal=${signal}, pid=${proc.pid})`,
+      `[claude-code-assistant] Process exited (code=${code}, signal=${signal}, pid=${proc.pid})`,
     );
   });
 
   proc.stderr?.on("data", (chunk: Buffer) => {
-    log.appendLine(`[claude-code-research:stderr] ${chunk.toString().trim()}`);
+    log.appendLine(`[claude-code-assistant:stderr] ${chunk.toString().trim()}`);
   });
 
   proc.stdout?.on("data", () => {
     if (!stdoutSeen) {
       stdoutSeen = true;
-      log.appendLine(`[claude-code-research] First stdout data received`);
+      log.appendLine(`[claude-code-assistant] First stdout data received`);
     }
   });
 
@@ -102,11 +102,11 @@ export function createResearchQuery(
       message: { role: "user", content: text },
     });
     log.appendLine(
-      `[claude-code-research] Sending message to stdin: ${msg.slice(0, 100)}`,
+      `[claude-code-assistant] Sending message to stdin: ${msg.slice(0, 100)}`,
     );
     const ok = proc.stdin?.write(msg + "\n");
     log.appendLine(
-      `[claude-code-research] stdin.write ok=${ok}, pid=${proc.pid}`,
+      `[claude-code-assistant] stdin.write ok=${ok}, pid=${proc.pid}`,
     );
   }
 
@@ -120,8 +120,8 @@ export function createResearchQuery(
 // Iterate NDJSON messages and yield webview events
 // ---------------------------------------------------------------------------
 
-export async function* iterateResearchEvents(
-  handle: ResearchQueryHandle,
+export async function* iterateAssistantEvents(
+  handle: AssistantQueryHandle,
   log: vscode.OutputChannel,
 ): AsyncGenerator<WebviewEvent> {
   let toolIdCounter = 0;
@@ -221,7 +221,7 @@ export async function* iterateResearchEvents(
                 }
               }
               log.appendLine(
-                `[claude-code-research:tool-error] ${pending.tool}: ${description ?? "unknown error"}`,
+                `[claude-code-assistant:tool-error] ${pending.tool}: ${description ?? "unknown error"}`,
               );
             }
 
@@ -244,7 +244,7 @@ export async function* iterateResearchEvents(
         if (msg.subtype === "success") {
           const resultText = msg.result ?? lastAssistantText;
           log.appendLine(
-            `[claude-code-research] Query complete (${msg.num_turns} turns, $${msg.total_cost_usd?.toFixed(4)})`,
+            `[claude-code-assistant] Query complete (${msg.num_turns} turns, $${msg.total_cost_usd?.toFixed(4)})`,
           );
           yield {
             type: "done",
@@ -255,7 +255,7 @@ export async function* iterateResearchEvents(
           };
         } else {
           const errors = msg.errors?.join("; ") ?? "Unknown error";
-          log.appendLine(`[claude-code-research] Query error: ${errors}`);
+          log.appendLine(`[claude-code-assistant] Query error: ${errors}`);
           yield { type: "error", text: errors };
           yield {
             type: "done",
@@ -272,7 +272,7 @@ export async function* iterateResearchEvents(
     }
   } catch (err: unknown) {
     const errMsg = err instanceof Error ? err.message : String(err);
-    log.appendLine(`[claude-code-research] Iteration error: ${errMsg}`);
+    log.appendLine(`[claude-code-assistant] Iteration error: ${errMsg}`);
     yield { type: "error", text: errMsg };
   }
 

@@ -6,7 +6,7 @@ import { prepareForRender } from "./prepareForRender";
 import { AssistantMessage } from "./AssistantMessage";
 import { SessionMenu } from "./SessionMenu";
 import { StatsBar } from "./StatsBar";
-import { WorkItems, WorkItemDetail } from "./WorkItems";
+import { Breakdown, StepDetail } from "./Breakdown";
 import { useAppState } from "./useAppState";
 import { useMessageHandling } from "./useMessageHandling";
 import { useMessageListScroll } from "./useMessageListScroll";
@@ -69,7 +69,7 @@ export function App({ vscode }: AppProps) {
       isStreaming: true,
       activeTool: null,
       contextState: "pending",
-      selectedWorkItemIndex: null,
+      selectedStepIndex: null,
     });
     userScrolledUp.current = false;
     vscode.postMessage({ type: "send", text });
@@ -171,36 +171,36 @@ export function App({ vscode }: AppProps) {
     }
   }
 
-  function onSelectWorkItem(index: number | null) {
-    setState((prev) => ({ ...prev, selectedWorkItemIndex: index }));
+  function onSelectStep(index: number | null) {
+    setState((prev) => ({ ...prev, selectedStepIndex: index }));
 
     if (index === null) {
       textareaRef.current?.focus();
       return;
     }
 
-    const workItem = state.workItems[index];
+    const step = state.breakdownSteps[index];
     vscode.postMessage({
       type: "open-file",
-      path: workItem.filePath,
-      line: workItem.lineHint,
+      path: step.filePath,
+      line: step.lineHint,
     });
   }
 
   const isEmpty = state.entries.length === 0;
   const hasSessions = state.sessions.length > 0;
-  const selectedWorkItem =
-    state.selectedWorkItemIndex !== null
-      ? state.workItems[state.selectedWorkItemIndex]
+  const selectedStep =
+    state.selectedStepIndex !== null
+      ? state.breakdownSteps[state.selectedStepIndex]
       : null;
 
   return (
     <>
-      {state.workItems.length > 0 && (
-        <WorkItems
-          items={state.workItems}
-          selectedIndex={state.selectedWorkItemIndex}
-          onSelect={onSelectWorkItem}
+      {state.breakdownSteps.length > 0 && (
+        <Breakdown
+          steps={state.breakdownSteps}
+          selectedIndex={state.selectedStepIndex}
+          onSelect={onSelectStep}
         />
       )}
       <div class="message-list-wrapper">
@@ -209,9 +209,9 @@ export function App({ vscode }: AppProps) {
           class="pinned-query message message-user"
           style={{ display: "none" }}
         />
-        {selectedWorkItem ? (
-          <div class="message-list">
-            <WorkItemDetail item={selectedWorkItem} />
+        {selectedStep ? (
+          <div class="message-list" onClick={onMessageListClick}>
+            <StepDetail step={selectedStep} />
           </div>
         ) : (
           <div
@@ -224,8 +224,7 @@ export function App({ vscode }: AppProps) {
               <div class="empty-state">
                 <Logo />
                 <div class="empty-state-text">
-                  Research your codebase and the web. Findings are shared with
-                  the inline agent.
+                  Your thinking partner — explore code, break down work, get your changes reviewed. Context is shared with the inline agent.
                 </div>
               </div>
             ) : (
@@ -288,7 +287,7 @@ export function App({ vscode }: AppProps) {
               placeholder={
                 state.isStreaming
                   ? "Send a follow-up message..."
-                  : "Do some research to learn and get suggestions..."
+                  : "What do you want to understand or break down?"
               }
               rows={1}
               onInput={autoResize}
@@ -310,14 +309,14 @@ export function App({ vscode }: AppProps) {
                   onSwitch={switchToSession}
                 />
               )}
-              {state.workItems.length && (
+              {state.breakdownSteps.length > 0 && (
                 <button
                   class="reset-btn review-btn"
-                  title="Review Work Items"
+                  title="Review Breakdown"
                   disabled={state.isStreaming}
                   onClick={() =>
                     send(
-                      "Review the changes I made for the current work items. Check if I followed the guidance correctly and suggest any improvements.",
+                      "Review the changes I made for the current breakdown steps. Check if I followed the guidance correctly and suggest any improvements.",
                     )
                   }
                   dangerouslySetInnerHTML={{ __html: REVIEW_ICON }}

@@ -2,9 +2,9 @@
   <img src="./media/logo.png" alt="CodeSpark" width="240" />
 </p>
 
-<p align="center"><em>Claude Code CLI at the tip of your cursor</em></p>
+<p align="center"><em>Build with understanding — AI that helps you think, not just type</em></p>
 
-> Claude Code CLI is great when you can YOLO your way through a project. But in teams and established codebases, decision-making, ownership, and deep understanding matter more. CodeSpark is a different kind of experience — still Claude Code CLI under the hood, but designed to keep you in the driver's seat.
+> AI coding tools are great at generating code. But generated code you don't understand is a liability — you still have to review it, debug it, and maintain it over time. CodeSpark takes a different approach: instead of letting AI decide and execute on its own, it helps _you_ build the mental model, break down the work, and implement step by step. Every PR leaves you understanding the code you ship.
 
 ![CodeSpark in action](./media/screenshot.png)
 
@@ -13,45 +13,65 @@
 1. Install and authenticate the [Claude Code CLI](https://code.claude.com/docs/en/quickstart)
 2. Install the CodeSpark extension: [Install in VS Code](https://marketplace.visualstudio.com/items?itemName=codespark.codespark-agent)
 
-## How it works
+## The workflow
+
+CodeSpark is built around a natural cycle: **understand → break down → implement → review**. You do the coding — two agents support you along the way.
+
+### 1. Understand
+
+Open the assistant (`Cmd+Shift+I` / `Ctrl+Shift+I`) and explore. It reads files, greps through your codebase, searches the web, and fetches documentation. Ask it how something works, why a pattern exists, or what an API expects. Build your mental model before touching any code.
+
+### 2. Break down
+
+Ask the assistant to separate the work into concrete steps. It creates a **breakdown** — each step targeting a specific file with a list of considerations and hints, not a complete solution. Steps appear in the sidebar; click one to see its details and open the relevant file.
+
+### 3. Implement
+
+Work through steps one by one. You're the one coding — the inline agent (`Cmd+I` / `Ctrl+I`) supports you the way a calculator supports solving math problems. You decide what needs to change and why; it takes care of the mechanical parts. Because you're working step by step, you naturally review each change as it's made.
+
+The inline agent knows about your breakdown: findings from the assistant are automatically shared as context, so it understands the bigger picture without you repeating yourself.
+
+### 4. Review
+
+When you're done, ask the assistant to review your changes against the breakdown. Catch mistakes, missed edge cases, or deviations while the context is still fresh.
+
+Then start the next cycle.
+
+## The tools
+
+### Assistant agent (`Cmd+Shift+I` / `Ctrl+Shift+I`)
+
+Your thinking partner. Powered by Claude Code CLI running default models. It can read files, grep through your codebase, search the web, and fetch documentation. It helps you understand and break down the work — without doing it for you.
+
+The output is integrated with VS Code:
+
+- File paths like `src/foo.ts:42` become clickable links that open the file at that line
+- Fenced code blocks with `bash` render with a run button that executes the command in your terminal
+- Code blocks annotated with a file path (e.g. ` ```ts file:src/foo.ts `) show the file name and an **Apply** button that sends the suggestion to the inline agent
 
 ### Inline agent (`Cmd+I` / `Ctrl+I`)
 
-Powered by Claude Code CLI running Haiku, optimized for speed. It works from your cursor, editing the file you're looking at. Most edits are fast, single-turn, file-scoped changes. When the task demands it, the agent reads and writes additional files and goes as wide as it needs — but it always stays within the code, never running commands or reaching outside the project.
+Your calculator. It doesn't code for you — it supports your coding. You stay at your cursor, describe what you want to change, and it handles the mechanical editing. Powered by Claude Code CLI running Haiku, optimized for speed. When the task demands it, it reads and writes additional files — but it always stays within the code, never running commands or reaching outside the project.
 
-**Deterministic context retrieval:**
+**Context it picks up automatically:**
 
 - The current file content and cursor position
-- The closest `CLAUDE.md` in the directory hierarchy (from the file's directory up to the workspace root)
-- Any files linked from those `CLAUDE.md` files (read into context)
-- Any directories linked from those `CLAUDE.md` files (expanded as file listings)
-- The latest research summary from the research agent
-
-### Research agent (`Cmd+Shift+I` / `Ctrl+Shift+I`)
-
-Powered by Claude Code CLI running default models, optimized to build your own personal context. It can read files, grep through your codebase, search the web, and fetch documentation. Think of it as a teacher — it helps you understand code and plan implementations without doing the work for you.
-
-The output is integrated with VS Code:
-- File paths like `src/foo.ts:42` become clickable links that open the file at that line
-- Fenced code blocks with `bash` render with a run button that executes the command in your terminal
-- Code blocks annotated with a file path (e.g. `` ```ts file:src/foo.ts ``) show the file name and an **Apply** button that opens the file and sends the suggestion to the inline agent for application
-
-**Work items:** When you ask the research agent to help implement something, it can break the work into focused items — each targeting a specific file with a list of considerations and hints. Work items appear as a list in the sidebar; click one to see its details, click again to return to the conversation. Work items are shared with the inline agent so it has context about the overall plan.
-
-The two agents are connected: ask a question in the research panel, and the next time you invoke the inline agent, it knows what you learned.
+- The closest `CLAUDE.md` in the directory hierarchy
+- Any files and directories linked from those `CLAUDE.md` files
+- The latest assistant summary and breakdown
 
 ### CLAUDE.md
 
-`CLAUDE.md` files are how you control agent behavior. Place one at the workspace root for project-wide instructions, and add more in subdirectories for domain-specific guidance. When you invoke the inline agent, it picks up the root `CLAUDE.md` plus the closest one in the directory hierarchy above the file you're editing. Instructions you write for CodeSpark — patterns, conventions, constraints, preferred libraries — also improve Claude Code CLI when you use it from the terminal.
+As you discover patterns and conventions in a codebase, write them down in `CLAUDE.md` files. Place one at the workspace root for project-wide instructions, and add more in subdirectories for domain-specific guidance. Both agents pick these up automatically.
 
-This is the same `CLAUDE.md` convention used by Claude Code in the terminal. Instructions you write for CodeSpark — patterns, conventions, constraints, preferred libraries — also improve Claude Code CLI when you use it from the terminal. You're not maintaining two configurations; you're building one set of instructions that makes the agent better everywhere.
+This is the same `CLAUDE.md` convention used by Claude Code in the terminal. Instructions you write for CodeSpark also improve Claude Code CLI — you're building one set of knowledge that makes the AI better everywhere.
 
 ## Shortcuts
 
-| Mac           | Windows / Linux | What it does                                                                                                      |
-| ------------- | --------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `Cmd+I`       | `Ctrl+I`        | Open the inline agent — describe a change and it edits the file at your cursor                                    |
-| `Cmd+Shift+I` | `Ctrl+Shift+I`  | Open the research agent with the current file as context |
+| Mac           | Windows / Linux | What it does                                         |
+| ------------- | --------------- | ---------------------------------------------------- |
+| `Cmd+I`       | `Ctrl+I`        | Open the inline agent — edit the file at your cursor |
+| `Cmd+Shift+I` | `Ctrl+Shift+I`  | Open the assistant — explore and break down work     |
 
 These shortcuts may conflict with other extensions (e.g. GitHub Copilot uses the same bindings). To rebind them, open the command palette and search for "Preferences: Open Keyboard Shortcuts (JSON)", then add your preferred bindings:
 
@@ -60,7 +80,7 @@ These shortcuts may conflict with other extensions (e.g. GitHub Copilot uses the
 ```json
 [
   { "key": "cmd+i", "command": "codeSpark.invoke", "when": "editorTextFocus" },
-  { "key": "cmd+shift+i", "command": "codeSpark.openResearch" }
+  { "key": "cmd+shift+i", "command": "codeSpark.openAssistant" }
 ]
 ```
 
@@ -69,6 +89,6 @@ These shortcuts may conflict with other extensions (e.g. GitHub Copilot uses the
 ```json
 [
   { "key": "ctrl+i", "command": "codeSpark.invoke", "when": "editorTextFocus" },
-  { "key": "ctrl+shift+i", "command": "codeSpark.openResearch" }
+  { "key": "ctrl+shift+i", "command": "codeSpark.openAssistant" }
 ]
 ```

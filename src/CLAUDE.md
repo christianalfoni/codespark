@@ -5,7 +5,7 @@
 This is a VS Code extension with two main agents:
 
 - **Inline agent** (`claude-code-inline.ts`, `invoker.ts`): Fast, cursor-scoped edits via Claude Haiku
-- **Research agent** (`research-agent.ts`, `research-view.ts`, `claude-code-research.ts`): Long-running chat agent for codebase exploration
+- **Assistant agent** (`assistant-agent.ts`, `assistant-view.ts`, `claude-code-assistant.ts`): Long-running chat agent for codebase exploration
 
 Communication flows:
 

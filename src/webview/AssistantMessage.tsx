@@ -13,7 +13,7 @@ const TOOL_DISPLAY_NAMES: Record<string, string> = {
   mcp__codespark__write_file: "Write File",
   mcp__codespark__move_file: "Move File",
   mcp__codespark__delete_file: "Delete File",
-  mcp__codespark__update_work_items: "Updating Work Items",
+  mcp__codespark__update_breakdown: "Updating Breakdown",
 };
 
 interface ToolGroup {

@@ -10,7 +10,7 @@ import * as path from "path";
  * enforce "must Read before write_file" semantics — mirrors the native Write
  * tool's contract, which the model is trained on.
  *
- * Scoped to the inline agent only (research agent can't call write_file).
+ * Scoped to the inline agent only (assistant agent can't call write_file).
  * Only one inline session is active at a time, so a single module-level
  * Set is sufficient — cleared at the start of every inline invocation.
  */

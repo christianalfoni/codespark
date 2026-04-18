@@ -33,9 +33,9 @@ One gotcha: the OpenAPI `/doc` is a lie of omission for client generators — to
 
 Define `CliBackend` with two methods:
 - `runInline(params) → AsyncIterable<InlineEvent>`
-- `runResearch(params) → AsyncIterable<ResearchEvent>`
+- `runAssistant(params) → AsyncIterable<AssistantEvent>`
 
-The event union is what the research path already emits: `turn-start`, `token`, `tool-start`, `tool-end`, `done`, `error`. Move current logic into `src/backends/claude-code-backend.ts`. Call sites in `invoker.ts` and `research-view.ts` talk to the interface only.
+The event union is what the assistant path already emits: `turn-start`, `token`, `tool-start`, `tool-end`, `done`, `error`. Move current logic into `src/backends/claude-code-backend.ts`. Call sites in `invoker.ts` and `assistant-view.ts` talk to the interface only.
 
 ## Phase 2 — OpenCode backend (`src/backends/opencode-backend.ts`)
 
@@ -52,7 +52,7 @@ The event union is what the research path already emits: `turn-start`, `token`, 
 4. Consume SSE: `message.part.updated` → emit `token` events for `TextPart.text` deltas; tool parts → `tool-start`/`tool-end` on state transitions; `session.idle` → `done`.
 5. Pull cost/tokens from the final `AssistantMessage.tokens` / `cost` via `GET /session/:id/message`.
 
-### Research flow
+### Assistant flow
 Same pattern minus prewarm. Multi-turn via another `POST /session/:id/prompt_async` against the same session id.
 
 ### MCP
@@ -60,7 +60,7 @@ Write/merge `opencode.json` at workspace root on activation with:
 ```json
 { "mcp": { "codespark": { "type": "remote", "url": "http://127.0.0.1:<mcp-port>/mcp", "enabled": true } } }
 ```
-Existing `src/mcp-server.ts` stays untouched. Add `permission` rules to deny mutating tools for the research agent.
+Existing `src/mcp-server.ts` stays untouched. Add `permission` rules to deny mutating tools for the assistant agent.
 
 ### Model selection
 New setting `codespark.opencode.model` forwarded as the `model` param of `POST /session/:id/prompt_async` (shape `{providerID, modelID}`). Expose a picker populated by `GET /config/providers`.
@@ -76,7 +76,7 @@ New setting `codespark.opencode.model` forwarded as the `model` param of `POST /
 - **Schema drift.** Import shape is a variant of the public OpenAPI; lock to a specific `opencode` version range. On first run, export one real session and use its shape as a template so we adapt automatically if 1.5 changes the Zod.
 - **Prewarm vs. cache.** Claude Code's `--resume` benefits from Anthropic-level prompt caching. OpenCode's cache behavior varies per provider. Accept that OpenCode inline may be slightly slower/more expensive than Claude inline; revisit if it matters.
 - **Serve as a long-lived child process.** Different lifecycle from the current stateless-per-request Claude pattern. Adds crash-recovery and port-collision handling.
-- **One vs many workspaces.** One `opencode serve` covers all VS Code windows of this extension. If two windows open the same workspace they'll see each other's sessions — scope sessions by creating a fresh `ses_` per inline edit; research sessions have explicit user-visible titles so overlap is fine.
+- **One vs many workspaces.** One `opencode serve` covers all VS Code windows of this extension. If two windows open the same workspace they'll see each other's sessions — scope sessions by creating a fresh `ses_` per inline edit; assistant sessions have explicit user-visible titles so overlap is fine.
 
 ## Suggested order
 

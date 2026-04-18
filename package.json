@@ -1,8 +1,8 @@
 {
   "name": "codespark-agent",
   "displayName": "CodeSpark",
-  "description": "Claude Code CLI at the tip of your cursor",
-  "version": "0.22.0",
+  "description": "Build with understanding — AI that helps you think, not just type",
+  "version": "0.22.1",
   "publisher": "codespark",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -44,8 +44,8 @@
     "views": {
       "codeSpark": [
         {
-          "id": "codeSpark.research",
-          "name": "Research",
+          "id": "codeSpark.assistant",
+          "name": "Assistant",
           "type": "webview"
         }
       ]
@@ -64,12 +64,12 @@
         "title": "CodeSpark: Reset Stats"
       },
       {
-        "command": "codeSpark.clearResearchSummary",
-        "title": "CodeSpark: Clear Research Summary"
+        "command": "codeSpark.clearAssistantSummary",
+        "title": "CodeSpark: Clear Assistant Summary"
       },
       {
-        "command": "codeSpark.openResearch",
-        "title": "CodeSpark: Open Research"
+        "command": "codeSpark.openAssistant",
+        "title": "CodeSpark: Open Assistant"
       }
     ],
     "keybindings": [
@@ -81,7 +81,7 @@
         "when": "editorTextFocus"
       },
       {
-        "command": "codeSpark.openResearch",
+        "command": "codeSpark.openAssistant",
         "mac": "cmd+shift+i",
         "win": "ctrl+shift+i",
         "linux": "ctrl+shift+i"

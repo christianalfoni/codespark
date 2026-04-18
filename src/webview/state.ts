@@ -1,4 +1,4 @@
-import type { WorkItem, ChatMessage, SessionInfo } from "./types";
+import type { BreakdownStep, ChatMessage, SessionInfo } from "./types";
 
 export type ToolStatus = "pending" | "success" | "error";
 
@@ -39,8 +39,8 @@ export interface ChatState {
   activeSessionId: string | null;
   fileContext: { filePath: string; cursorLine: number; selection?: string } | null;
   totalCostUsd: number;
-  workItems: WorkItem[];
-  selectedWorkItemIndex: number | null;
+  breakdownSteps: BreakdownStep[];
+  selectedStepIndex: number | null;
 }
 
 export function createInitialState(saved: any): ChatState {
@@ -53,8 +53,8 @@ export function createInitialState(saved: any): ChatState {
     activeSessionId: null,
     fileContext: null,
     totalCostUsd: 0,
-    workItems: [],
-    selectedWorkItemIndex: null,
+    breakdownSteps: [],
+    selectedStepIndex: null,
   };
 
   if (saved?.entries) {

@@ -18,21 +18,21 @@ export type EditListener = (
 
 export type BeforeEditListener = (filePath: string) => Promise<void>;
 
-export interface WorkItemInput {
+export interface BreakdownStepInput {
   title: string;
   description: string;
   filePath: string;
   lineHint?: number;
 }
 
-export type WorkItemsListener = (items: WorkItemInput[]) => void;
+export type BreakdownListener = (steps: BreakdownStepInput[]) => void;
 
 export interface IpcServer {
   socketPath: string;
   ready: Promise<void>;
   onEdit: (listener: EditListener) => { dispose: () => void };
   onBeforeEdit: (listener: BeforeEditListener) => { dispose: () => void };
-  onWorkItems: (listener: WorkItemsListener) => { dispose: () => void };
+  onBreakdown: (listener: BreakdownListener) => { dispose: () => void };
   dispose: () => void;
 }
 
@@ -73,7 +73,7 @@ export function startIpcServer(log: vscode.OutputChannel): IpcServer {
       : `/tmp/codespark-${process.pid}.sock`;
   const editListeners = new Set<EditListener>();
   const beforeEditListeners = new Set<BeforeEditListener>();
-  const workItemsListeners = new Set<WorkItemsListener>();
+  const breakdownListeners = new Set<BreakdownListener>();
 
   // Clean up stale socket from prior crash
   try {
@@ -99,7 +99,7 @@ export function startIpcServer(log: vscode.OutputChannel): IpcServer {
         log,
         editListeners,
         beforeEditListeners,
-        workItemsListeners,
+        breakdownListeners,
         conn,
       );
     });
@@ -137,11 +137,11 @@ export function startIpcServer(log: vscode.OutputChannel): IpcServer {
         },
       };
     },
-    onWorkItems(listener: WorkItemsListener) {
-      workItemsListeners.add(listener);
+    onBreakdown(listener: BreakdownListener) {
+      breakdownListeners.add(listener);
       return {
         dispose: () => {
-          workItemsListeners.delete(listener);
+          breakdownListeners.delete(listener);
         },
       };
     },
@@ -236,7 +236,7 @@ function handleConnectionData(
   log: vscode.OutputChannel,
   editListeners: Set<EditListener>,
   beforeEditListeners: Set<BeforeEditListener>,
-  workItemsListeners: Set<WorkItemsListener>,
+  breakdownListeners: Set<BreakdownListener>,
   conn: net.Socket,
 ): string {
   buffer += chunk.toString();
@@ -304,13 +304,13 @@ function handleConnectionData(
       handleDeleteRequest(deleteReq, log)
         .then((res) => conn.write(JSON.stringify(res) + "\n"))
         .catch(handleError(deleteReq.id));
-    } else if (req.type === "update_work_items") {
-      const items = (req as any).items as WorkItemInput[];
-      log.appendLine(`[ipc] update_work_items: ${items.length} item(s)`);
-      for (const listener of workItemsListeners) {
-        listener(items);
+    } else if (req.type === "update_breakdown") {
+      const steps = (req as any).items as BreakdownStepInput[];
+      log.appendLine(`[ipc] update_breakdown: ${steps.length} step(s)`);
+      for (const listener of breakdownListeners) {
+        listener(steps);
       }
-      const res = { id: req.id, success: true, message: `Created ${items.length} work item(s)` };
+      const res = { id: req.id, success: true, message: `Created ${steps.length} step(s)` };
       conn.write(JSON.stringify(res) + "\n");
     } else {
       conn.write(
