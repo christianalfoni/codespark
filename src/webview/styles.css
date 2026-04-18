@@ -62,12 +62,11 @@ body {
   align-items: center;
   justify-content: center;
   height: 100%;
-  gap: 12px;
   user-select: none;
 }
 
 .empty-state-logo {
-  height: 250px;
+  height: 300px;
   width: auto;
 }
 
@@ -95,7 +94,7 @@ body {
 .empty-state-text {
   font-size: 13px;
   text-align: center;
-  max-width: 240px;
+  max-width: 340px;
   line-height: 1.5;
   opacity: 0.5;
 }
