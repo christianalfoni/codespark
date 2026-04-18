@@ -16,6 +16,7 @@ export function useStickyUserMessage(
   const elementsRef = useRef<Map<number, HTMLElement>>(new Map());
   const rafRef = useRef(0);
   const currentIndexRef = useRef(-1);
+  const MIRRORED_CLASS = "message-user--mirrored";
 
   useEffect(() => {
     const root = messageListRef.current;
@@ -30,7 +31,10 @@ export function useStickyUserMessage(
         requestAnimationFrame(() => {
           if (currentIndexRef.current !== -1) {
             const updated = elementsRef.current.get(currentIndexRef.current);
-            if (updated) pinned!.innerHTML = updated.innerHTML;
+            if (updated) {
+              pinned!.innerHTML = updated.innerHTML;
+              syncDimensions();
+            }
           }
         });
       }
@@ -48,6 +52,11 @@ export function useStickyUserMessage(
       }
 
       if (lastIndex === currentIndexRef.current) return;
+
+      // Unhide the previously mirrored message
+      const prev = elementsRef.current.get(currentIndexRef.current);
+      if (prev) prev.classList.remove(MIRRORED_CLASS);
+
       currentIndexRef.current = lastIndex;
 
       if (lastIndex === -1) {
@@ -56,7 +65,19 @@ export function useStickyUserMessage(
         const source = elementsRef.current.get(lastIndex)!;
         pinned!.innerHTML = source.innerHTML;
         pinned!.style.display = "";
+        syncDimensions();
+        source.classList.add(MIRRORED_CLASS);
       }
+    }
+
+    function syncDimensions() {
+      if (currentIndexRef.current === -1) return;
+      const source = elementsRef.current.get(currentIndexRef.current);
+      if (!source) return;
+      const sourceRect = source.getBoundingClientRect();
+      const parentRect = pinned!.offsetParent!.getBoundingClientRect();
+      pinned!.style.left = `${sourceRect.left - parentRect.left}px`;
+      pinned!.style.width = `${sourceRect.width}px`;
     }
 
     function onScroll() {
@@ -64,11 +85,20 @@ export function useStickyUserMessage(
       rafRef.current = requestAnimationFrame(update);
     }
 
+    const resizeObserver = new ResizeObserver(() => {
+      syncDimensions();
+    });
+    resizeObserver.observe(root);
+
     root.addEventListener("scroll", onScroll, { passive: true });
     return () => {
       root.removeEventListener("scroll", onScroll);
       pinned.removeEventListener("click", onClick);
       cancelAnimationFrame(rafRef.current);
+      resizeObserver.disconnect();
+      // Clean up: remove mirrored class from the currently mirrored message
+      const current = elementsRef.current.get(currentIndexRef.current);
+      if (current) current.classList.remove(MIRRORED_CLASS);
     };
   }, [messageListRef, pinnedRef]);
 

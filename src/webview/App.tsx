@@ -37,6 +37,7 @@ export function App({ vscode }: AppProps) {
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messageListRef = useRef<HTMLDivElement>(null);
+  const stepListRef = useRef<HTMLDivElement>(null);
   const pinnedQueryRef = useRef<HTMLDivElement>(null);
 
   useMessageHandling(setState, textareaRef, vscode);
@@ -175,9 +176,17 @@ export function App({ vscode }: AppProps) {
     setState((prev) => ({ ...prev, selectedStepIndex: index }));
 
     if (index === null) {
+      userScrolledUp.current = false;
       textareaRef.current?.focus();
       return;
     }
+
+    // Scroll step detail to top
+    requestAnimationFrame(() => {
+      if (stepListRef.current) {
+        stepListRef.current.scrollTop = 0;
+      }
+    });
 
     const step = state.breakdownSteps[index];
     vscode.postMessage({
@@ -210,7 +219,7 @@ export function App({ vscode }: AppProps) {
           style={{ display: "none" }}
         />
         {selectedStep ? (
-          <div class="message-list" onClick={onMessageListClick}>
+          <div ref={stepListRef} class="message-list" onClick={onMessageListClick}>
             <StepDetail step={selectedStep} />
           </div>
         ) : (

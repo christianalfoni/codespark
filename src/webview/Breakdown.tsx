@@ -1,3 +1,4 @@
+import { useRef, useEffect } from "preact/hooks";
 import type { BreakdownStep } from "./types";
 import { renderMarkdown } from "./markdown";
 import { prepareForRender } from "./prepareForRender";
@@ -40,9 +41,29 @@ export function Breakdown({ steps, selectedIndex, onSelect }: BreakdownProps) {
 }
 
 export function StepDetail({ step }: { step: BreakdownStep }) {
+  const headerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const header = headerRef.current;
+    if (!header) return;
+    const scrollParent = header.closest(".message-list") as HTMLElement | null;
+    if (!scrollParent) return;
+
+    function onScroll() {
+      header!.classList.toggle(
+        "step-detail-header--stuck",
+        scrollParent!.scrollTop > 0,
+      );
+    }
+
+    scrollParent.addEventListener("scroll", onScroll, { passive: true });
+    onScroll();
+    return () => scrollParent.removeEventListener("scroll", onScroll);
+  }, [step]);
+
   return (
     <div class="step-detail">
-      <div class="step-detail-header message-user">
+      <div ref={headerRef} class="step-detail-header message-user">
         <span class="step-detail-icon" dangerouslySetInnerHTML={{ __html: FILE_ICON }} />
         <span>{step.filePath}{step.lineHint ? `:${step.lineHint}` : ""}</span>
       </div>
