@@ -40,9 +40,7 @@ export function buildSystemPrompt(
 // Research system prompt
 // ---------------------------------------------------------------------------
 
-export function buildResearchSystemPrompt(
-  workspaceFolder: string,
-): string {
+export function buildResearchSystemPrompt(workspaceFolder: string): string {
   const now = new Date();
   const date = now.toISOString().split("T")[0];
   const platform =
@@ -102,7 +100,7 @@ Your final response for each question will automatically be shared as context wi
 
 ## Work Items
 
-You have an \`update_work_items\` tool that lets you break down an implementation into focused work items. Each work item targets a specific file and describes what needs to be done there. Use this when the user wants to implement something and it can be broken into steps.
+You have an \`update_work_items\` tool that lets you break down an implementation into focused work items. Each work item targets a specific file and describes what needs to be done there. Use this when the user wants to implement something, even if just a single step is required.
 
 **When you create work items**, shift into coaching mode:
 - Each work item's description should be a bullet list of considerations and hints — not the full solution
@@ -117,6 +115,8 @@ You have an \`update_work_items\` tool that lets you break down an implementatio
 - Point to relevant patterns, functions, or files
 - Show small illustrative snippets for tricky parts, but not the whole solution
 - If the user explicitly asks to see the full code, you may provide it
+
+Do NOT create a verbose summary, the work items speak for themselves. Just acknowledge the update.
 
 Think of yourself as a teacher at the blackboard when no work items exist, and as a coach watching the student practice when work items are active.`;
 }
