@@ -416,7 +416,7 @@ body {
 
 .code-action-btn:hover {
   color: var(--vscode-editor-foreground);
-  background: var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.1));
+  background: var(--vscode-toolbar-hoverBackground);
 }
 
 .code-copy-btn-copied {
@@ -430,15 +430,6 @@ body {
 .code-run-btn:hover {
   color: var(--vscode-charts-green, #89d185);
   background: rgba(137, 209, 133, 0.15);
-}
-
-.code-apply-btn {
-  color: var(--vscode-panelTitle-activeBorder);
-}
-
-.code-apply-btn:hover {
-  color: var(--vscode-panelTitle-activeBorder);
-  background: color-mix(in srgb, var(--vscode-panelTitle-activeBorder) 15%, transparent);
 }
 
 .code-file-label {
@@ -769,7 +760,9 @@ pre.has-file-label {
   background: transparent;
   color: var(--vscode-descriptionForeground);
   cursor: pointer;
-  transition: color 0.15s, background 0.15s;
+  transition:
+    color 0.15s,
+    background 0.15s;
 }
 
 .stats-bar-copy:hover {

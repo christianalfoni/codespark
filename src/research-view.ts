@@ -6,10 +6,8 @@ import {
   getLiveQuery,
   abortLiveQuery,
   iterateResearchEvents,
-  clearResearchSummary,
   getResearchSummary,
   appendResearchContext,
-  getSessions,
   getActiveSessionId,
   getActiveSession,
   createSession,
@@ -21,13 +19,6 @@ import {
   getSessionInfos,
 } from "./research-agent";
 import { IpcServer, WorkItemInput } from "./ipc-server";
-import {
-  prepareInlineAgent,
-  executeInlineAgent,
-} from "./claude-code-inline";
-import { ResolvedContext } from "./types";
-import { startFileScan } from "./editor-effects";
-
 
 function getNonce(): string {
   let text = "";
@@ -43,7 +34,11 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewId = "codeSpark.research";
 
   private _view?: vscode.WebviewView;
-  private _pendingFileContext?: { filePath: string; cursorLine: number; selection?: string };
+  private _pendingFileContext?: {
+    filePath: string;
+    cursorLine: number;
+    selection?: string;
+  };
   /** Queue of prompts awaiting done events, in order */
   private _promptQueue: { text: string; files: string[] }[] = [];
   /** Whether an event loop is already running for the active session */
@@ -65,7 +60,9 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
       this._workItems = items;
       this._postWorkItems();
       this._persistWorkItems();
-      this._log.appendLine(`[research-view] Work items created: ${items.length}`);
+      this._log.appendLine(
+        `[research-view] Work items created: ${items.length}`,
+      );
     });
   }
 
@@ -116,9 +113,6 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
           break;
         case "switch-session":
           this._handleSwitchSession(msg.id, msg.currentEntries);
-          break;
-        case "apply-code":
-          this._handleApplyCode(msg.filePath, msg.code);
           break;
       }
     });
@@ -210,7 +204,9 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
   private _saveCurrentSession(entries: any[]): void {
     const sessionId = getActiveSessionId();
     if (!sessionId) return;
-    const hasAssistantResponse = entries.some((e: any) => e.role === "assistant" && e.turns?.length > 0);
+    const hasAssistantResponse = entries.some(
+      (e: any) => e.role === "assistant" && e.turns?.length > 0,
+    );
     if (!hasAssistantResponse) {
       deleteSession(sessionId);
       return;
@@ -224,8 +220,7 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
   }
 
   private async _openFile(filePath: string, line?: number): Promise<void> {
-    const workspaceFolder =
-      vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     if (!workspaceFolder) return;
 
     const absolute = path.resolve(workspaceFolder, filePath);
@@ -262,7 +257,11 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
   private _getTerminal(): vscode.Terminal {
     this._ensureShellListeners();
 
-    if (this._terminal && !this._terminal.exitStatus && !this._busyTerminals.has(this._terminal)) {
+    if (
+      this._terminal &&
+      !this._terminal.exitStatus &&
+      !this._busyTerminals.has(this._terminal)
+    ) {
       return this._terminal;
     }
 
@@ -304,144 +303,25 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
     const lines: string[] = ["[Work Items:"];
     for (let i = 0; i < this._workItems.length; i++) {
       const item = this._workItems[i];
-      lines.push(`${i + 1}. ${item.title} — ${item.filePath}${item.lineHint ? `:${item.lineHint}` : ""}`);
+      lines.push(
+        `${i + 1}. ${item.title} — ${item.filePath}${item.lineHint ? `:${item.lineHint}` : ""}`,
+      );
     }
     lines.push("]");
     return lines.join("\n") + "\n\n";
   }
 
-  // ---------------------------------------------------------------------------
-  // Apply code from research
-  // ---------------------------------------------------------------------------
-
-  private async _handleApplyCode(filePath: string, code: string): Promise<void> {
-    const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-    if (!workspaceFolder) return;
-
-    const absolute = path.resolve(workspaceFolder, filePath);
-    this._log.appendLine(`[research-view:apply] Applying to ${filePath}`);
-
-    // Create the file if it doesn't exist
-    try {
-      await fs.promises.access(absolute);
-    } catch {
-      await fs.promises.mkdir(path.dirname(absolute), { recursive: true });
-      await fs.promises.writeFile(absolute, "");
-      this._log.appendLine(`[research-view:apply] Created new file: ${filePath}`);
-    }
-
-    // Open the file in the editor
-    const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(absolute));
-
-    const editor = await vscode.window.showTextDocument(doc);
-    const fileContent = doc.getText();
-
-    if (!this._mcpConfigPath) {
-      vscode.window.showErrorMessage("CodeSpark: MCP config not available");
-      return;
-    }
-
-    // Prepare inline agent
-    const agent = await prepareInlineAgent(
-      {
-        fileContent,
-        filePath,
-        referenceFiles: [],
-        instructionContent: undefined,
-        isInstructionFile: false,
-      },
-      this._log,
-      this._mcpConfigPath,
-    );
-
-    // Start scanning animation
-    const pulse = startFileScan(editor);
-
-    // Build the "reverse focus" context — the research code block IS the instruction
-    const ctx: ResolvedContext = {
-      fileContent,
-      filePath,
-      selection: undefined,
-      cursorLine: 1,
-      cursorOnEmptyLine: false,
-      contextSnippet: "The whole file",
-      instruction: `The research agent suggested the following change for this file. Apply it:\n\n\`\`\`\n${code}\n\`\`\``,
-      instructionContent: undefined,
-      referenceFiles: [],
-      isInstructionFile: false,
-    };
-
-    try {
-      const result = await executeInlineAgent(
-        agent,
-        ctx,
-        this._log,
-        this._ipcServer,
-      );
-
-      pulse.dispose();
-      this._log.appendLine(
-        `[research-view:apply] Done (${result.latencyMs}ms, edits=${result.hasEdits})`,
-      );
-
-      if (result.editedLines.length > 0) {
-        // Dim non-edited lines to highlight the changes
-        const editedLineSet = new Set<number>();
-        for (const range of result.editedLines) {
-          for (let l = range.startLine; l <= range.endLine; l++) {
-            editedLineSet.add(l);
-          }
-        }
-
-        const dimType = vscode.window.createTextEditorDecorationType({
-          isWholeLine: true,
-          opacity: "0.3",
-        });
-
-        const dimRanges: vscode.Range[] = [];
-        for (let l = 0; l < editor.document.lineCount; l++) {
-          if (!editedLineSet.has(l)) {
-            dimRanges.push(new vscode.Range(l, 0, l, 0));
-          }
-        }
-        editor.setDecorations(dimType, dimRanges);
-
-        function cleanup() {
-          dimType.dispose();
-          saveListener.dispose();
-          changeListener.dispose();
-        }
-
-        const saveListener = vscode.workspace.onDidSaveTextDocument((d) => {
-          if (d.uri.fsPath === doc.uri.fsPath) cleanup();
-        });
-
-        const changeListener = vscode.workspace.onDidChangeTextDocument((e) => {
-          if (
-            e.document.uri.fsPath === doc.uri.fsPath &&
-            e.reason === vscode.TextDocumentChangeReason.Undo
-          ) {
-            cleanup();
-          }
-        });
-      }
-    } catch (err: unknown) {
-      pulse.dispose();
-      const msg = err instanceof Error ? err.message : String(err);
-      this._log.appendLine(`[research-view:apply] Error: ${msg}`);
-      vscode.window.showErrorMessage(`CodeSpark: ${msg}`);
-    }
-  }
-
-  private async _handlePrompt(text: string, files: string[] = []): Promise<void> {
+  private async _handlePrompt(
+    text: string,
+    files: string[] = [],
+  ): Promise<void> {
     // Prepend work items context so the agent knows current state
     const workItemsContext = this._buildWorkItemsContext();
     if (workItemsContext) {
       text = workItemsContext + text;
     }
     this._log.appendLine(`[research-view:prompt] ${text}`);
-    const workspaceFolder =
-      vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     if (!workspaceFolder) {
       this._post({ type: "error", text: "No workspace folder open." });
       this._post({ type: "done" });
@@ -481,7 +361,13 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
         if (evt.type === "done") {
           const prompt = this._promptQueue.shift();
           if (evt.resultText.trim() && prompt) {
-            appendResearchContext(sessionId, prompt.text, evt.resultText.trim(), prompt.files, this._log);
+            appendResearchContext(
+              sessionId,
+              prompt.text,
+              evt.resultText.trim(),
+              prompt.files,
+              this._log,
+            );
             this._post({ type: "context-updated" });
             this._sendSessionsUpdate();
           }
@@ -509,20 +395,38 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
   }
 
   /** Set file context to be attached to the next query from the webview */
-  public setFileContext(ctx: { filePath: string; cursorLine: number; selection?: string }): void {
+  public setFileContext(ctx: {
+    filePath: string;
+    cursorLine: number;
+    selection?: string;
+  }): void {
     this._pendingFileContext = ctx;
-    this._post({ type: "set-file-context", filePath: ctx.filePath, cursorLine: ctx.cursorLine, selection: ctx.selection ?? null });
+    this._post({
+      type: "set-file-context",
+      filePath: ctx.filePath,
+      cursorLine: ctx.cursorLine,
+      selection: ctx.selection ?? null,
+    });
     this._log.appendLine(
       `[research-view] File context set: ${ctx.filePath}:${ctx.cursorLine}`,
     );
   }
 
   /** Create a new session with file context (SHIFT+CMD+I) */
-  public startFileSession(ctx: { filePath: string; cursorLine: number; selection?: string }): void {
+  public startFileSession(ctx: {
+    filePath: string;
+    cursorLine: number;
+    selection?: string;
+  }): void {
     // If there's already a pending file context for this file, just update it
     if (this._pendingFileContext?.filePath === ctx.filePath) {
       this._pendingFileContext = ctx;
-      this._post({ type: "set-file-context", filePath: ctx.filePath, cursorLine: ctx.cursorLine, selection: ctx.selection ?? null });
+      this._post({
+        type: "set-file-context",
+        filePath: ctx.filePath,
+        cursorLine: ctx.cursorLine,
+        selection: ctx.selection ?? null,
+      });
       this._log.appendLine(
         `[research-view] Continuing file session: ${ctx.filePath}`,
       );
@@ -535,7 +439,12 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
     this._sendSessionsUpdate();
 
     this._pendingFileContext = ctx;
-    this._post({ type: "set-file-context", filePath: ctx.filePath, cursorLine: ctx.cursorLine, selection: ctx.selection ?? null });
+    this._post({
+      type: "set-file-context",
+      filePath: ctx.filePath,
+      cursorLine: ctx.cursorLine,
+      selection: ctx.selection ?? null,
+    });
     this._log.appendLine(
       `[research-view] File session started: ${ctx.filePath}`,
     );
@@ -564,7 +473,12 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
       // Show clean user message + file context indicator in the webview
       this._post({ type: "inject-user", text: opts.query });
       this._post({ type: "tool-start", tool: "read_reference", toolId: -1 });
-      this._post({ type: "tool-end", tool: "read_reference", toolId: -1, isError: false });
+      this._post({
+        type: "tool-end",
+        tool: "read_reference",
+        toolId: -1,
+        isError: false,
+      });
 
       await this._handlePromptWithContext(opts);
     }
@@ -573,8 +487,7 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
   private async _handleSendWithContext(text: string): Promise<void> {
     const ctx = this._pendingFileContext!;
 
-    const workspaceFolder =
-      vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     if (!workspaceFolder) {
       this._post({ type: "error", text: "No workspace folder open." });
       this._post({ type: "done" });
@@ -586,14 +499,22 @@ export class ResearchViewProvider implements vscode.WebviewViewProvider {
     try {
       fileContent = await fs.promises.readFile(absolute, "utf-8");
     } catch {
-      this._post({ type: "error", text: `Could not read file: ${ctx.filePath}` });
+      this._post({
+        type: "error",
+        text: `Could not read file: ${ctx.filePath}`,
+      });
       this._post({ type: "done" });
       return;
     }
 
     // Show file context indicator in tool list
     this._post({ type: "tool-start", tool: "read_reference", toolId: -1 });
-    this._post({ type: "tool-end", tool: "read_reference", toolId: -1, isError: false });
+    this._post({
+      type: "tool-end",
+      tool: "read_reference",
+      toolId: -1,
+      isError: false,
+    });
 
     const query = ctx.selection
       ? `\`\`\`\n${ctx.selection}\n\`\`\`\n\n${text}`

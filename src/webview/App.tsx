@@ -163,15 +163,6 @@ export function App({ vscode }: AppProps) {
       return;
     }
 
-    if (btn?.classList.contains("code-apply-btn")) {
-      const filePath = btn.dataset.file ?? "";
-      const code = btn.dataset.code ?? "";
-      if (filePath && code) {
-        vscode.postMessage({ type: "apply-code", filePath, code });
-      }
-      return;
-    }
-
     const fileLabel = target.closest(".code-file-label") as HTMLElement | null;
     if (fileLabel?.dataset.file) {
       vscode.postMessage({ type: "open-file", path: fileLabel.dataset.file });
@@ -192,7 +183,9 @@ export function App({ vscode }: AppProps) {
         <WorkItems
           items={state.workItems}
           selectedIndex={state.selectedWorkItemIndex}
-          onSelect={(index) => setState((prev) => ({ ...prev, selectedWorkItemIndex: index }))}
+          onSelect={(index) =>
+            setState((prev) => ({ ...prev, selectedWorkItemIndex: index }))
+          }
         />
       )}
       <div class="message-list-wrapper">

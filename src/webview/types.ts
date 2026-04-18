@@ -32,11 +32,6 @@ export interface SwitchSessionMessage {
   id: string;
   currentEntries: import("./state").Entry[];
 }
-export interface ApplyCodeMessage {
-  type: "apply-code";
-  filePath: string;
-  code: string;
-}
 
 export type WebviewToExtension =
   | SendMessage
@@ -46,8 +41,7 @@ export type WebviewToExtension =
   | OpenFileMessage
   | RunCommandMessage
   | NewSessionMessage
-  | SwitchSessionMessage
-  | ApplyCodeMessage;
+  | SwitchSessionMessage;
 
 export interface SessionInfo {
   id: string;
