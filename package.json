@@ -1,7 +1,7 @@
 {
   "name": "codespark-agent",
   "displayName": "CodeSpark",
-  "description": "Build with understanding — AI that helps you think, not just type",
+  "description": "A coding agent where you still code",
   "version": "0.22.4",
   "publisher": "codespark",
   "license": "MIT",
