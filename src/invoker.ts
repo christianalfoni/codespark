@@ -244,6 +244,9 @@ export function createInvokeCommand(
     const activeEditor = editor;
     const currentFileAbs = activeEditor.document.uri.fsPath;
 
+    // Restrict edits to the current file while the inline agent runs
+    ipcServer.allowedEditFile = currentFileAbs;
+
     // The blank line must be removed before the agent edits the current file
     // so MCP's content-matching sees a clean document. Status decoration and
     // selection restore, however, should survive individual tool failures —
@@ -266,6 +269,7 @@ export function createInvokeCommand(
     async function teardownPromptLine() {
       if (teardownDone) return;
       teardownDone = true;
+      ipcServer.allowedEditFile = null;
       inlinePrompt.dispose();
       await removeBlankLine();
       activeEditor.selection = originalSelection;
@@ -297,7 +301,6 @@ export function createInvokeCommand(
 
       pulse?.dispose();
       beforeEditSub.dispose();
-      await teardownPromptLine();
 
       recordQuery({
         provider: result.provider,
@@ -310,6 +313,17 @@ export function createInvokeCommand(
       });
 
       decorationProvider.deactivate();
+
+      // If no edits were applied but the agent gave a text response,
+      // show it in the inline prompt and wait for the user to dismiss it.
+      if (!result.hasEdits && result.textResponse) {
+        statusBarItem.text = `$(sparkle) CodeSpark`;
+        await inlinePrompt.showResponse(result.textResponse);
+        await teardownPromptLine();
+        return;
+      }
+
+      await teardownPromptLine();
       statusBarItem.text = `$(sparkle) CodeSpark · edited`;
 
       // Keep non-edited lines dimmed; fade in only the changed lines

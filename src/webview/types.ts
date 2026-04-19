@@ -32,6 +32,14 @@ export interface SwitchSessionMessage {
   id: string;
   currentEntries: import("./state").Entry[];
 }
+export interface SelectStepMessage {
+  type: "select-step";
+  index: number | null;
+}
+export interface ApplyStepMessage {
+  type: "apply-step";
+  index: number;
+}
 
 export type WebviewToExtension =
   | SendMessage
@@ -41,7 +49,9 @@ export type WebviewToExtension =
   | OpenFileMessage
   | RunCommandMessage
   | NewSessionMessage
-  | SwitchSessionMessage;
+  | SwitchSessionMessage
+  | SelectStepMessage
+  | ApplyStepMessage;
 
 export interface SessionInfo {
   id: string;
@@ -127,6 +137,13 @@ export interface BreakdownMessage {
   steps: BreakdownStep[];
 }
 
+export interface StepStatusMessage {
+  type: "step-status";
+  index: number;
+  status: "applying" | "done" | "error";
+  text?: string;
+}
+
 export type ExtensionToWebview =
   | InitMessage
   | TurnStartMessage
@@ -141,7 +158,8 @@ export type ExtensionToWebview =
   | RestoreMessage
   | InjectUserMessage
   | SetFileContextMessage
-  | BreakdownMessage;
+  | BreakdownMessage
+  | StepStatusMessage;
 
 export interface ChatMessage {
   role: "user" | "assistant";

@@ -84,7 +84,6 @@ export function App({ vscode }: AppProps) {
       isStreaming: false,
       activeTool: null,
       fileContext: null,
-      totalCostUsd: 0,
     }));
     vscode.postMessage({ type: "new-session", currentEntries });
     setTimeout(() => {
@@ -165,15 +164,12 @@ export function App({ vscode }: AppProps) {
       return;
     }
 
-    const fileLabel = target.closest(".code-file-label") as HTMLElement | null;
-    if (fileLabel?.dataset.file) {
-      vscode.postMessage({ type: "open-file", path: fileLabel.dataset.file });
-      return;
-    }
   }
 
   function onSelectStep(index: number | null) {
     setState((prev) => ({ ...prev, selectedStepIndex: index }));
+
+    vscode.postMessage({ type: "select-step", index });
 
     if (index === null) {
       userScrolledUp.current = false;
@@ -196,6 +192,10 @@ export function App({ vscode }: AppProps) {
     });
   }
 
+  function onApplyStep(index: number) {
+    vscode.postMessage({ type: "apply-step", index });
+  }
+
   const isEmpty = state.entries.length === 0;
   const hasSessions = state.sessions.length > 0;
   const selectedStep =
@@ -209,7 +209,9 @@ export function App({ vscode }: AppProps) {
         <Breakdown
           steps={state.breakdownSteps}
           selectedIndex={state.selectedStepIndex}
+          stepStatuses={state.stepStatuses}
           onSelect={onSelectStep}
+          onApply={onApplyStep}
         />
       )}
       <div class="message-list-wrapper">
@@ -224,7 +226,12 @@ export function App({ vscode }: AppProps) {
             class="message-list"
             onClick={onMessageListClick}
           >
-            <StepDetail step={selectedStep} />
+            <StepDetail
+              step={selectedStep}
+              stepIndex={state.selectedStepIndex!}
+              stepStatus={state.stepStatuses.get(state.selectedStepIndex!)}
+              onApply={onApplyStep}
+            />
           </div>
         ) : (
           <div
@@ -268,7 +275,6 @@ export function App({ vscode }: AppProps) {
                 {!state.isStreaming && (
                   <StatsBar
                     numTurns={countTurns(state.entries)}
-                    totalCostUsd={state.totalCostUsd}
                     conversationText={serializeConversation(state.entries)}
                   />
                 )}

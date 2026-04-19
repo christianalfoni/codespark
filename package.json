@@ -2,7 +2,7 @@
   "name": "codespark-agent",
   "displayName": "CodeSpark",
   "description": "A coding agent where you still code",
-  "version": "0.22.4",
+  "version": "0.23.0",
   "publisher": "codespark",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -52,10 +52,6 @@
     },
     "commands": [
       {
-        "command": "codeSpark.invoke",
-        "title": "CodeSpark: Invoke"
-      },
-      {
         "command": "codeSpark.showStats",
         "title": "CodeSpark: Show Stats"
       },
@@ -74,67 +70,10 @@
     ],
     "keybindings": [
       {
-        "command": "codeSpark.invoke",
-        "mac": "cmd+i",
-        "win": "ctrl+i",
-        "linux": "ctrl+i",
-        "when": "editorTextFocus"
-      },
-      {
         "command": "codeSpark.openAssistant",
         "mac": "cmd+shift+i",
         "win": "ctrl+shift+i",
         "linux": "ctrl+shift+i"
-      },
-      {
-        "command": "codeSpark.inlinePrompt.submit",
-        "key": "enter",
-        "when": "codeSpark.inlinePromptActive"
-      },
-      {
-        "command": "codeSpark.inlinePrompt.cancel",
-        "key": "escape",
-        "when": "codeSpark.inlinePromptActive"
-      },
-      {
-        "command": "codeSpark.inlinePrompt.backspace",
-        "key": "backspace",
-        "when": "codeSpark.inlinePromptActive"
-      },
-      {
-        "command": "codeSpark.inlinePrompt.delete",
-        "key": "delete",
-        "when": "codeSpark.inlinePromptActive"
-      },
-      {
-        "command": "codeSpark.inlinePrompt.cursorLeft",
-        "key": "left",
-        "when": "codeSpark.inlinePromptActive"
-      },
-      {
-        "command": "codeSpark.inlinePrompt.cursorRight",
-        "key": "right",
-        "when": "codeSpark.inlinePromptActive"
-      },
-      {
-        "command": "codeSpark.inlinePrompt.cursorHome",
-        "key": "home",
-        "when": "codeSpark.inlinePromptActive"
-      },
-      {
-        "command": "codeSpark.inlinePrompt.cursorEnd",
-        "key": "end",
-        "when": "codeSpark.inlinePromptActive"
-      },
-      {
-        "command": "codeSpark.inlinePrompt.cursorUp",
-        "key": "up",
-        "when": "codeSpark.inlinePromptActive"
-      },
-      {
-        "command": "codeSpark.inlinePrompt.cursorDown",
-        "key": "down",
-        "when": "codeSpark.inlinePromptActive"
       }
     ],
     "colors": [],

@@ -38,9 +38,9 @@ export interface ChatState {
   sessions: SessionInfo[];
   activeSessionId: string | null;
   fileContext: { filePath: string; cursorLine: number; selection?: string } | null;
-  totalCostUsd: number;
   breakdownSteps: BreakdownStep[];
   selectedStepIndex: number | null;
+  stepStatuses: Map<number, { status: "applying" | "done" | "error"; text?: string }>;
 }
 
 export function createInitialState(saved: any): ChatState {
@@ -52,9 +52,9 @@ export function createInitialState(saved: any): ChatState {
     sessions: [],
     activeSessionId: null,
     fileContext: null,
-    totalCostUsd: 0,
     breakdownSteps: [],
     selectedStepIndex: null,
+    stepStatuses: new Map(),
   };
 
   if (saved?.entries) {

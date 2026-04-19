@@ -4,13 +4,11 @@ import { copyCodeWithFeedback } from "./utils";
 
 interface StatsBarProps {
   numTurns: number;
-  totalCostUsd: number;
   conversationText: string;
 }
 
 export function StatsBar({
   numTurns,
-  totalCostUsd,
   conversationText,
 }: StatsBarProps) {
   const btnRef = useRef<HTMLButtonElement>(null);
@@ -27,13 +25,11 @@ export function StatsBar({
   }
 
   const turnsLabel = `${numTurns} ${numTurns === 1 ? "turn" : "turns"}`;
-  const costLabel = totalCostUsd > 0 ? `$${totalCostUsd.toFixed(4)}` : null;
 
   return (
     <div class="stats-bar">
       <div class="stats-bar-left">
         <span>{turnsLabel}</span>
-        {costLabel && <span>{costLabel}</span>}
       </div>
       <button
         ref={btnRef}

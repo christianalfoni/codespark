@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 
 export interface InlinePrompt {
   showStatus(text: string): void;
+  showResponse(text: string): Promise<void>;
   dispose(): void;
 }
 
@@ -56,6 +57,11 @@ export function createInlinePrompt(
   });
 
   const statusDeco = vscode.window.createTextEditorDecorationType({
+    isWholeLine: true,
+    backgroundColor: "var(--vscode-input-background)",
+  });
+
+  const responseDeco = vscode.window.createTextEditorDecorationType({
     isWholeLine: true,
     backgroundColor: "var(--vscode-input-background)",
   });
@@ -230,6 +236,58 @@ export function createInlinePrompt(
     ]);
   }
 
+  // --- showResponse --------------------------------------------------------
+
+  function showResponse(text: string): Promise<void> {
+    if (disposed) return Promise.resolve();
+    editor.setDecorations(promptDeco, []);
+    editor.setDecorations(statusDeco, []);
+    editor.setDecorations(responseDeco, [
+      {
+        range: new vscode.Range(targetLine, 0, targetLine, 0),
+        renderOptions: {
+          before: {
+            contentText: `›\u00A0${text.replace(/ /g, "\u00A0")}`,
+            color: "var(--vscode-input-foreground)",
+          },
+        },
+      },
+    ]);
+
+    // Wait for user to dismiss (click away, Escape, or any key)
+    return new Promise<void>((resolveResponse) => {
+      const dismissOnSelection = vscode.window.onDidChangeTextEditorSelection(
+        (e) => {
+          if (e.textEditor !== editor) return;
+          if (e.selections[0].active.line !== targetLine) {
+            cleanup();
+          }
+        },
+      );
+
+      const dismissOnKey = vscode.commands.registerCommand("type", () => {
+        cleanup();
+      });
+
+      const dismissOnEscape = vscode.commands.registerCommand(
+        "codeSpark.inlinePrompt.cancel",
+        () => {
+          cleanup();
+        },
+      );
+
+      function cleanup() {
+        dismissOnSelection.dispose();
+        dismissOnKey.dispose();
+        dismissOnEscape.dispose();
+        vscode.commands.executeCommand("setContext", CONTEXT_KEY, false);
+        resolveResponse();
+      }
+
+      vscode.commands.executeCommand("setContext", CONTEXT_KEY, true);
+    });
+  }
+
   // --- Cleanup ------------------------------------------------------------
 
   function cleanupCommands() {
@@ -251,6 +309,7 @@ export function createInlinePrompt(
   return {
     prompt: {
       showStatus,
+      showResponse,
       dispose() {
         if (!finished) {
           finished = true;
@@ -260,6 +319,7 @@ export function createInlinePrompt(
           disposed = true;
           promptDeco.dispose();
           statusDeco.dispose();
+          responseDeco.dispose();
         }
       },
     },

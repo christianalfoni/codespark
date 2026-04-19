@@ -2,7 +2,6 @@ import * as net from "net";
 import * as fs from "fs";
 import * as vscode from "vscode";
 import { diffLines } from "diff";
-import { hasRead } from "./readTracker";
 
 // ---------------------------------------------------------------------------
 // Exported Types
@@ -30,6 +29,8 @@ export type BreakdownListener = (steps: BreakdownStepInput[]) => void;
 export interface IpcServer {
   socketPath: string;
   ready: Promise<void>;
+  /** When set, edit_file is restricted to this exact file path. */
+  allowedEditFile: string | null;
   onEdit: (listener: EditListener) => { dispose: () => void };
   onBeforeEdit: (listener: BeforeEditListener) => { dispose: () => void };
   onBreakdown: (listener: BreakdownListener) => { dispose: () => void };
@@ -45,13 +46,6 @@ interface EditRequest {
   type: "edit_file";
   file_path: string;
   edits: Array<{ old_string: string; new_string: string }>;
-}
-
-interface WriteRequest {
-  id: string;
-  type: "write_file";
-  file_path: string;
-  content: string;
 }
 
 interface IpcResponse {
@@ -74,6 +68,7 @@ export function startIpcServer(log: vscode.OutputChannel): IpcServer {
   const editListeners = new Set<EditListener>();
   const beforeEditListeners = new Set<BeforeEditListener>();
   const breakdownListeners = new Set<BreakdownListener>();
+  let allowedEditFile: string | null = null;
 
   // Clean up stale socket from prior crash
   try {
@@ -101,6 +96,7 @@ export function startIpcServer(log: vscode.OutputChannel): IpcServer {
         beforeEditListeners,
         breakdownListeners,
         conn,
+        () => allowedEditFile,
       );
     });
 
@@ -121,6 +117,12 @@ export function startIpcServer(log: vscode.OutputChannel): IpcServer {
   return {
     socketPath,
     ready,
+    get allowedEditFile() {
+      return allowedEditFile;
+    },
+    set allowedEditFile(value: string | null) {
+      allowedEditFile = value;
+    },
     onEdit(listener: EditListener) {
       editListeners.add(listener);
       return {
@@ -238,6 +240,7 @@ function handleConnectionData(
   beforeEditListeners: Set<BeforeEditListener>,
   breakdownListeners: Set<BreakdownListener>,
   conn: net.Socket,
+  getAllowedEditFile: () => string | null,
 ): string {
   buffer += chunk.toString();
 
@@ -277,33 +280,24 @@ function handleConnectionData(
 
     if (req.type === "edit_file") {
       const editReq = req as unknown as EditRequest;
-      log.appendLine(
-        `[ipc] edit_file: ${editReq.edits.length} edit(s) on ${editReq.file_path}`,
-      );
-      runBeforeEditListeners(beforeEditListeners, editReq.file_path)
-        .then(() => handleEditRequest(editReq))
-        .then(handleResult(editReq.file_path, editReq.edits.length))
-        .catch(handleError(editReq.id));
-    } else if (req.type === "write_file") {
-      const writeReq = req as unknown as WriteRequest;
-      runBeforeEditListeners(beforeEditListeners, writeReq.file_path)
-        .then(() => handleWriteRequest(writeReq, log))
-        .then(handleResult(writeReq.file_path, 1))
-        .catch(handleError(writeReq.id));
-    } else if (req.type === "move_file") {
-      const moveReq = req as unknown as {
-        id: string;
-        source: string;
-        destination: string;
-      };
-      handleMoveRequest(moveReq, log)
-        .then((res) => conn.write(JSON.stringify(res) + "\n"))
-        .catch(handleError(moveReq.id));
-    } else if (req.type === "delete_file") {
-      const deleteReq = req as unknown as { id: string; file_path: string };
-      handleDeleteRequest(deleteReq, log)
-        .then((res) => conn.write(JSON.stringify(res) + "\n"))
-        .catch(handleError(deleteReq.id));
+      const allowed = getAllowedEditFile();
+      if (allowed && editReq.file_path !== allowed) {
+        conn.write(
+          JSON.stringify({
+            id: editReq.id,
+            success: false,
+            error: `Editing restricted to the current file. Cannot edit ${editReq.file_path}`,
+          }) + "\n",
+        );
+      } else {
+        log.appendLine(
+          `[ipc] edit_file: ${editReq.edits.length} edit(s) on ${editReq.file_path}`,
+        );
+        runBeforeEditListeners(beforeEditListeners, editReq.file_path)
+          .then(() => handleEditRequest(editReq))
+          .then(handleResult(editReq.file_path, editReq.edits.length))
+          .catch(handleError(editReq.id));
+      }
     } else if (req.type === "update_breakdown") {
       const steps = (req as any).items as BreakdownStepInput[];
       log.appendLine(`[ipc] update_breakdown: ${steps.length} step(s)`);
@@ -378,115 +372,3 @@ async function handleEditRequest(req: EditRequest): Promise<IpcResponse> {
   };
 }
 
-async function handleWriteRequest(
-  req: WriteRequest,
-  log: vscode.OutputChannel,
-): Promise<IpcResponse> {
-  const uri = vscode.Uri.file(req.file_path);
-
-  // Mirror the native Write tool's contract: overwriting an existing file
-  // requires a prior Read in this session.
-  if (fs.existsSync(req.file_path) && !hasRead(req.file_path)) {
-    return {
-      id: req.id,
-      success: false,
-      error: `File exists but has not been read in this session. Use the Read tool to read ${req.file_path} before calling write_file, or use edit_file for partial edits.`,
-    };
-  }
-
-  const wsEdit = new vscode.WorkspaceEdit();
-
-  let doc: vscode.TextDocument | undefined;
-  try {
-    doc =
-      vscode.workspace.textDocuments.find((d) => d.uri.fsPath === uri.fsPath) ??
-      (await vscode.workspace.openTextDocument(uri));
-  } catch {
-    // File doesn't exist — create it
-  }
-
-  const before = doc?.getText() ?? "";
-
-  if (doc) {
-    const fullRange = new vscode.Range(
-      doc.positionAt(0),
-      doc.positionAt(before.length),
-    );
-    wsEdit.replace(uri, fullRange, req.content);
-  } else {
-    wsEdit.createFile(uri, { overwrite: true });
-    wsEdit.insert(uri, new vscode.Position(0, 0), req.content);
-  }
-
-  const applied = await vscode.workspace.applyEdit(wsEdit);
-  if (!applied) {
-    return {
-      id: req.id,
-      success: false,
-      error: "WorkspaceEdit failed to apply",
-    };
-  }
-
-  const editedRanges = computeDiffRanges(before, req.content);
-  const lineCount = req.content.split("\n").length;
-
-  return {
-    id: req.id,
-    success: true,
-    message: `Wrote ${lineCount} lines`,
-    editedRanges,
-  };
-}
-
-async function handleMoveRequest(
-  req: { id: string; source: string; destination: string },
-  log: vscode.OutputChannel,
-): Promise<IpcResponse> {
-  const sourceUri = vscode.Uri.file(req.source);
-  const destUri = vscode.Uri.file(req.destination);
-
-  const wsEdit = new vscode.WorkspaceEdit();
-  wsEdit.renameFile(sourceUri, destUri, { overwrite: false });
-
-  const applied = await vscode.workspace.applyEdit(wsEdit);
-  if (!applied) {
-    return {
-      id: req.id,
-      success: false,
-      error: `Failed to move ${req.source} to ${req.destination}`,
-    };
-  }
-
-  log.appendLine(`[ipc] Moved ${req.source} → ${req.destination}`);
-  return {
-    id: req.id,
-    success: true,
-    message: `Moved to ${req.destination}`,
-  };
-}
-
-async function handleDeleteRequest(
-  req: { id: string; file_path: string },
-  log: vscode.OutputChannel,
-): Promise<IpcResponse> {
-  const uri = vscode.Uri.file(req.file_path);
-
-  const wsEdit = new vscode.WorkspaceEdit();
-  wsEdit.deleteFile(uri, { ignoreIfNotExists: false });
-
-  const applied = await vscode.workspace.applyEdit(wsEdit);
-  if (!applied) {
-    return {
-      id: req.id,
-      success: false,
-      error: `Failed to delete ${req.file_path}`,
-    };
-  }
-
-  log.appendLine(`[ipc] Deleted ${req.file_path}`);
-  return {
-    id: req.id,
-    success: true,
-    message: `Deleted ${req.file_path}`,
-  };
-}

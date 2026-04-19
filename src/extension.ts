@@ -5,7 +5,6 @@ import * as path from "path";
 import * as vscode from "vscode";
 import { InstructionFileDecorationProvider } from "./instructionDecorations";
 import { initStats, showStats, resetStats } from "./stats";
-import { createInvokeCommand } from "./invoker";
 import { createUpdateActiveInstructions } from "./statusbar";
 import {
   initAssistantSummary,
@@ -140,22 +139,8 @@ export function activate(context: vscode.ExtensionContext) {
   watcher.onDidDelete(onInstructionsChanged("Deleted"));
   context.subscriptions.push(watcher);
 
-  // Assistant agent webview panel (created before invoke command so it can be passed)
-  const assistantView = new AssistantViewProvider(context.extensionUri, log, mcpConfigPath, ipcServer);
-
-  context.subscriptions.push(
-    vscode.commands.registerCommand(
-      "codeSpark.invoke",
-      createInvokeCommand(
-        log,
-        decorationProvider,
-        statusBarItem,
-        activeInstructions.update,
-        mcpConfigPath,
-        ipcServer,
-      ),
-    ),
-  );
+  // Assistant agent webview panel
+  const assistantView = new AssistantViewProvider(context.extensionUri, log, mcpConfigPath, ipcServer, decorationProvider);
 
   context.subscriptions.push(
     vscode.commands.registerCommand("codeSpark.showStats", () => {

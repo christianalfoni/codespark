@@ -6,18 +6,27 @@ import * as path from "path";
 import * as readline from "readline";
 import * as vscode from "vscode";
 
-import { ResolvedContext, LLMResult } from "./types";
-import { EditedRange, IpcServer } from "./ipc-server";
+import { InlineEditResult } from "./types";
+import { IpcServer } from "./ipc-server";
 import { buildSystemPrompt } from "./prompts";
-import { clearReads, markRead } from "./readTracker";
 
 // ---------------------------------------------------------------------------
 // Exported types
 // ---------------------------------------------------------------------------
 
-export interface PreparedInlineAgent {
+export interface PreparedInlineEdit {
   proc: childProcess.ChildProcess;
+  rl: readline.Interface;
   sessionFile: string;
+  filePath: string;
+  absFilePath: string;
+}
+
+export interface PrepareContext {
+  fileContent: string;
+  filePath: string;
+  instructionContent: string | undefined;
+  referenceFiles: { path: string; content: string }[];
 }
 
 // ---------------------------------------------------------------------------
@@ -25,33 +34,22 @@ export interface PreparedInlineAgent {
 // ---------------------------------------------------------------------------
 
 /**
- * Pre-spawns the CLI with session containing fake file reads + assistant prefill
- * to prime the model for tool-only responses.
+ * Pre-spawns the CLI and warms the prompt cache for a file.
+ * Call this when a breakdown step is selected so the agent is ready
+ * when the user clicks "Apply".
  */
-export async function prepareInlineAgent(
-  ctx: Pick<
-    ResolvedContext,
-    | "fileContent"
-    | "filePath"
-    | "referenceFiles"
-    | "instructionContent"
-    | "isInstructionFile"
-  >,
+export async function prepareInlineEdit(
+  ctx: PrepareContext,
   log: vscode.OutputChannel,
   mcpConfigPath: string,
-): Promise<PreparedInlineAgent> {
+): Promise<PreparedInlineEdit> {
   const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   if (!workspaceFolder) {
     throw new Error("No workspace folder open");
   }
 
   const t0 = Date.now();
-  const systemPrompt = buildSystemPrompt(ctx);
-
-  // Reset the read-tracker for this new inline session. Pre-loaded files
-  // below are counted as read since their content is injected into the
-  // session via fake Read tool results.
-  clearReads();
+  const systemPrompt = buildSystemPrompt(ctx.instructionContent);
 
   // Build session with fake Read results + assistant prefill
   const sessionId = crypto.randomUUID();
@@ -69,7 +67,6 @@ export async function prepareInlineAgent(
       content: ref.content,
     });
   }
-  for (const f of files) markRead(f.absPath);
 
   const sessionContent = buildSessionJSONL(sessionId, workspaceFolder, files);
   await fs.promises.mkdir(sessionDir, { recursive: true });
@@ -124,8 +121,7 @@ export async function prepareInlineAgent(
     fs.promises.unlink(sessionFile).catch(() => {});
   });
 
-  // System prompt is sized to always exceed the prompt cache threshold (~4096 tokens
-  // including CLI overhead), so we unconditionally pre-warm.
+  // Pre-warm the prompt cache
   const warmupMsg = JSON.stringify({
     type: "user",
     message: {
@@ -135,44 +131,8 @@ export async function prepareInlineAgent(
   });
   proc.stdin!.write(warmupMsg + "\n");
 
-  return { proc, sessionFile };
-}
-
-/**
- * Abort a prepared agent that was never executed (e.g. user cancelled the prompt).
- */
-export function abortInlineAgent(agent: PreparedInlineAgent): void {
-  agent.proc.stdin?.end();
-  agent.proc.kill();
-  fs.promises.unlink(agent.sessionFile).catch(() => {});
-}
-
-export async function executeInlineAgent(
-  agent: PreparedInlineAgent,
-  ctx: ResolvedContext,
-  log: vscode.OutputChannel,
-  ipcServer: IpcServer,
-  onAgentMode?: () => void,
-  onStatus?: (text: string) => void,
-): Promise<LLMResult> {
-  const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath!;
-  const { proc } = agent;
-
-  // File content is already in the session via fake Read results.
-  // User message only needs the instruction + cursor context.
-  const selectionPrefix = ctx.selection
-    ? `The user is referencing this code in the current file:\n\`\`\`\n${ctx.selection}\n\`\`\`\n\n`
-    : "";
-  const userInstruction = `I am currently looking at this area of the file ${ctx.filePath} (around line ${ctx.cursorLine}):\n\`\`\`\n${ctx.contextSnippet}\n\`\`\`\n\n${selectionPrefix}${ctx.instruction}`;
-
-  const tSend = Date.now();
-  log.appendLine(`[cli-inline] File: ${ctx.filePath}`);
-  log.appendLine(`[cli-inline:prompt] ${ctx.instruction}`);
-
-  // Set up readline first — must be before sending any messages
+  // Set up readline and wait for warmup result
   const rl = readline.createInterface({ input: proc.stdout! });
-
-  // Wait for the pre-warm result before sending the real instruction
   await new Promise<void>((resolve) => {
     const onLine = (line: string) => {
       if (!line.trim()) return;
@@ -187,25 +147,55 @@ export async function executeInlineAgent(
     rl.on("line", onLine);
   });
 
-  // Send instruction as stream-json user message
+  log.appendLine(
+    `[cli-inline:timing] Prepare + warm: ${Date.now() - t0}ms`,
+  );
+
+  return { proc, rl, sessionFile, filePath: ctx.filePath, absFilePath };
+}
+
+/**
+ * Abort a prepared agent that was never executed.
+ */
+export function abortPreparedEdit(prepared: PreparedInlineEdit): void {
+  prepared.proc.stdin?.end();
+  prepared.proc.kill();
+  prepared.rl.close();
+  fs.promises.unlink(prepared.sessionFile).catch(() => {});
+}
+
+/**
+ * Execute an already-prepared agent with a specific instruction.
+ */
+export async function executeInlineEdit(
+  prepared: PreparedInlineEdit,
+  instruction: string,
+  log: vscode.OutputChannel,
+  ipcServer: IpcServer,
+  onStatus?: (text: string) => void,
+): Promise<InlineEditResult> {
+  const { proc, rl, filePath, absFilePath } = prepared;
+
+  // Restrict IPC edits to this file only
+  ipcServer.allowedEditFile = absFilePath;
+
+  // Send instruction
+  const userInstruction = `Apply the following changes to ${filePath}:\n\n${instruction}`;
   const inputMsg = JSON.stringify({
     type: "user",
     message: { role: "user", content: userInstruction },
   });
   proc.stdin!.write(inputMsg + "\n");
 
+  const tSend = Date.now();
+  log.appendLine(`[cli-inline] File: ${filePath}`);
+  log.appendLine(`[cli-inline:prompt] ${instruction.slice(0, 200)}`);
+  onStatus?.("Thinking...");
+
   let hasEdits = false;
   let editToolSeen = false;
-  let retried = false;
-  let firstToolSeen = false;
   let ttftLogged = false;
-  // In-flight tool calls keyed by tool_use_id. Populated on content_block_start,
-  // drained on tool_result so we can log a single line per completed tool with
-  // its name, status, and duration.
   const toolsInFlight = new Map<string, { name: string; start: number }>();
-  // Buffer tool_use input JSON per stream block index. Populated by
-  // input_json_delta chunks between content_block_start and content_block_stop,
-  // then parsed to produce a richer status like "Reading src/foo.ts".
   const activeToolBlocks = new Map<number, { name: string; json: string }>();
   let textResponseContent = "";
   let inputTokens = 0;
@@ -215,15 +205,6 @@ export async function executeInlineAgent(
   let numTurns = 0;
   const editedLines: Array<{ startLine: number; endLine: number }> = [];
 
-  // The system prompt instructs the model to edit the current file LAST,
-  // so an IPC edit for this file means all edits are done.
-  const currentFileAbs = path.resolve(workspaceFolder, ctx.filePath);
-
-  let resolveOnCurrentFileEdit: (() => void) | undefined;
-  const currentFileEditPromise = new Promise<void>((resolve) => {
-    resolveOnCurrentFileEdit = resolve;
-  });
-
   let resolveOnDone: (() => void) | undefined;
   let rejectOnDone: ((err: Error) => void) | undefined;
   const donePromise = new Promise<void>((resolve, reject) => {
@@ -231,64 +212,18 @@ export async function executeInlineAgent(
     rejectOnDone = reject;
   });
 
-  // Save the pre-edit cursor position so it can be restored on undo
-  const preEditSelection = vscode.window.activeTextEditor?.selection;
-  const preEditVisibleRange = vscode.window.activeTextEditor?.visibleRanges[0];
+  // Resolves as soon as an edit is applied to the target file
+  let resolveOnEdit: (() => void) | undefined;
+  const editPromise = new Promise<void>((resolve) => {
+    resolveOnEdit = resolve;
+  });
 
   // Listen for edits applied via IPC
-  const ipcEditSub = ipcServer.onEdit((filePath, _count, editedRanges) => {
+  const ipcEditSub = ipcServer.onEdit((editFilePath, _count, editedRanges) => {
     hasEdits = true;
-
-    // Scope editedLines to the current file so the caller can trigger the
-    // post-edit diff/fade UI only when the focused file actually changed.
-    if (filePath !== currentFileAbs) {
-      return;
-    }
-
-    editedLines.push(...editedRanges);
-
-    // Current file edited = model is done (it edits the focused file last)
-    resolveOnCurrentFileEdit?.();
-
-    const editor = vscode.window.activeTextEditor;
-
-    if (!editor) {
-      return;
-    }
-
-    const cursorLine = editor.selection.active.line;
-
-    // Check if any edited range touches the cursor line
-    const editAtCursor = editedRanges.some(
-      (r) => cursorLine >= r.startLine && cursorLine <= r.endLine,
-    );
-
-    if (editAtCursor) {
-      return;
-    }
-
-    // Edit is away from cursor — find the largest range and smooth scroll to it
-    let largest: EditedRange | undefined;
-    for (const range of editedRanges) {
-      const size = range.endLine - range.startLine + 1;
-      if (!largest || size > largest.endLine - largest.startLine + 1) {
-        largest = range;
-      }
-    }
-
-    log.append(
-      `[edit]: Found largest ${Boolean(largest)}, ${JSON.stringify(editedRanges)}`,
-    );
-
-    if (largest) {
-      const range = new vscode.Range(largest.startLine, 0, largest.endLine, 0);
-
-      vscode.commands.executeCommand("revealLine", {
-        lineNumber: largest.startLine,
-        at: "center",
-      });
-
-      editor.selection = new vscode.Selection(range.start, range.start);
+    if (editFilePath === absFilePath) {
+      editedLines.push(...editedRanges);
+      resolveOnEdit?.();
     }
   });
 
@@ -306,7 +241,6 @@ export async function executeInlineAgent(
 
         const ms = Date.now() - tSend;
 
-        // Stream event handling
         if (msg.type === "stream_event") {
           const evt = msg.event;
 
@@ -334,28 +268,14 @@ export async function executeInlineAgent(
                 activeToolBlocks.set(evt.index, { name: toolName, json: "" });
               }
 
-              const isEditOrWrite =
-                toolName === "mcp__codespark__edit_file" ||
-                toolName === "mcp__codespark__write_file";
-
-              if (isEditOrWrite) {
+              if (toolName === "mcp__codespark__edit_file") {
                 editToolSeen = true;
-              }
-
-              if (!firstToolSeen) {
-                firstToolSeen = true;
-                if (!isEditOrWrite && onAgentMode) {
-                  onAgentMode();
-                }
               }
 
               onStatus?.(mapToolStatus(toolName));
             } else if (evt.content_block?.type === "text") {
               onStatus?.("Thinking...");
             }
-
-            // (text blocks after edits no longer trigger early exit —
-            // we wait for the full process to complete)
           }
 
           if (
@@ -390,7 +310,7 @@ export async function executeInlineAgent(
           }
         }
 
-        // Token counting + read-tracking
+        // Token counting
         if (msg.type === "assistant") {
           const usage = msg.message?.usage;
           if (usage) {
@@ -399,19 +319,9 @@ export async function executeInlineAgent(
             cacheCreationInputTokens += usage.cache_creation_input_tokens || 0;
             cacheReadInputTokens += usage.cache_read_input_tokens || 0;
           }
-
-          const content = msg.message?.content;
-          if (Array.isArray(content)) {
-            for (const block of content) {
-              if (block?.type === "tool_use" && block.name === "Read") {
-                const fp = block.input?.file_path;
-                if (typeof fp === "string") markRead(fp);
-              }
-            }
-          }
         }
 
-        // Tool result logging: one line per completed tool with status + duration.
+        // Tool result logging
         if (msg.type === "user") {
           const content = msg.message?.content;
           if (Array.isArray(content)) {
@@ -431,28 +341,6 @@ export async function executeInlineAgent(
 
         if (msg.type === "result") {
           if (msg.subtype === "success") {
-            // If the model responded with text instead of editing, retry once
-            // with a nudge to make it actually perform the edit.
-            if (!editToolSeen && !retried) {
-              retried = true;
-              log.appendLine(
-                `[cli-inline:no-edit] LLM responded with text instead of edits, retrying: ${textResponseContent.trim()}`,
-              );
-              textResponseContent = "";
-              ttftLogged = false;
-              onStatus?.("Retrying...");
-              const retryMsg = JSON.stringify({
-                type: "user",
-                message: {
-                  role: "user",
-                  content:
-                    "Do not respond with text. You must use the edit_file tool to make the changes to the file. Make your best judgment and edit the code now.",
-                },
-              });
-              proc.stdin!.write(retryMsg + "\n");
-              continue;
-            }
-
             if (!editToolSeen && textResponseContent.trim()) {
               log.appendLine(
                 `[cli-inline:no-edit] LLM responded with text instead of edits: ${textResponseContent.trim()}`,
@@ -487,11 +375,17 @@ export async function executeInlineAgent(
     rejectOnDone?.(err);
   });
 
-  // Current file is edited last (per system prompt), so we can return as soon
-  // as it lands. Fall back to waiting for full completion if no current-file
-  // edit arrives (e.g. model only edited other files or responded with text).
-  await Promise.race([currentFileEditPromise, donePromise]);
-  ipcEditSub.dispose();
+  // Return as soon as the edit lands — no need to wait for the LLM to finish.
+  // Fall back to donePromise if the agent responds with text only (no edit).
+  try {
+    await Promise.race([editPromise, donePromise]);
+  } finally {
+    ipcEditSub.dispose();
+    ipcServer.allowedEditFile = null;
+    // Close stdin so the CLI finishes gracefully in the background.
+    // Don't kill — let it complete the current tool call to avoid errors.
+    proc.stdin?.end();
+  }
 
   const latencyMs = Date.now() - tSend;
   log.appendLine(`[cli-inline:timing] Total (user-perceived): ${latencyMs}ms`);
@@ -499,29 +393,12 @@ export async function executeInlineAgent(
   return {
     hasEdits,
     editedLines,
-    preEditSelection: preEditSelection
-      ? {
-          anchor: {
-            line: preEditSelection.anchor.line,
-            character: preEditSelection.anchor.character,
-          },
-          active: {
-            line: preEditSelection.active.line,
-            character: preEditSelection.active.character,
-          },
-        }
-      : undefined,
-    preEditVisibleRange: preEditVisibleRange
-      ? {
-          startLine: preEditVisibleRange.start.line,
-          endLine: preEditVisibleRange.end.line,
-        }
+    textResponse: !editToolSeen && textResponseContent.trim()
+      ? textResponseContent.trim()
       : undefined,
     latencyMs,
     inputTokens,
     outputTokens,
-    provider: "anthropic",
-    model: "claude-haiku-4-5-20251001",
   };
 }
 
@@ -532,9 +409,6 @@ export async function executeInlineAgent(
 function mapToolStatus(name: string): string {
   if (name === "Read") return "Reading...";
   if (name === "mcp__codespark__edit_file") return "Editing...";
-  if (name === "mcp__codespark__write_file") return "Writing...";
-  if (name === "mcp__codespark__move_file") return "Moving...";
-  if (name === "mcp__codespark__delete_file") return "Deleting...";
   if (name === "Bash") return "Running...";
   if (name === "Grep") return "Searching...";
   if (name === "Glob") return "Finding...";
@@ -553,18 +427,6 @@ function describeTool(name: string, input: unknown): string {
   if (name === "mcp__codespark__edit_file") {
     const fp = str("file_path");
     return fp ? `Editing ${basename(fp)}` : mapToolStatus(name);
-  }
-  if (name === "mcp__codespark__write_file") {
-    const fp = str("file_path");
-    return fp ? `Writing ${basename(fp)}` : mapToolStatus(name);
-  }
-  if (name === "mcp__codespark__move_file") {
-    const src = str("source");
-    return src ? `Moving ${basename(src)}` : mapToolStatus(name);
-  }
-  if (name === "mcp__codespark__delete_file") {
-    const fp = str("file_path");
-    return fp ? `Deleting ${basename(fp)}` : mapToolStatus(name);
   }
   if (name === "Grep") {
     const pattern = str("pattern");

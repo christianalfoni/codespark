@@ -59,7 +59,6 @@ export function useMessageHandling(
             : ("none" as ContextState),
           sessions: msg.sessions,
           activeSessionId: msg.activeSessionId,
-          totalCostUsd: 0,
         };
       }
       case "sessions-updated": {
@@ -153,7 +152,13 @@ export function useMessageHandling(
           ...prev,
           breakdownSteps: msg.steps,
           selectedStepIndex: null,
+          stepStatuses: new Map(),
         };
+      }
+      case "step-status": {
+        const newStatuses = new Map(prev.stepStatuses);
+        newStatuses.set(msg.index, { status: msg.status, text: msg.text });
+        return { ...prev, stepStatuses: newStatuses };
       }
       case "done": {
         return {
@@ -161,10 +166,6 @@ export function useMessageHandling(
           entries,
           isStreaming: false,
           activeTool: null,
-          totalCostUsd:
-            typeof msg.totalCostUsd === "number"
-              ? msg.totalCostUsd
-              : prev.totalCostUsd,
         };
       }
       case "error": {

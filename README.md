@@ -11,52 +11,24 @@
 1. Install and authenticate the [Claude Code CLI](https://code.claude.com/docs/en/quickstart)
 2. Install the CodeSpark extension: [Install in VS Code](https://marketplace.visualstudio.com/items?itemName=codespark.codespark-agent)
 
-## The tools
+## How it works
 
-### Assistant agent (`Cmd+Shift+I` / `Ctrl+Shift+I`)
+### Assistant (`Cmd+Shift+I` / `Ctrl+Shift+I`)
 
-Your thinking partner. Powered by Claude Code CLI running default models. It can read files, grep through your codebase, search the web, and fetch documentation. It helps you understand and break down the work into guided steps.
+Your thinking partner. Lives in the sidebar. Powered by Claude Code CLI running default models. It can read files, grep through your codebase, search the web, and fetch documentation. It helps you understand code and break down work into guided steps.
 
-**Dynamic context:**
+- Use `Cmd+Shift+I` / `Ctrl+Shift+I` from a file to open the assistant with that file as context
+- Ask questions, explore approaches, and gather context
+- When you want to implement something, the assistant creates a **breakdown** — a list of focused steps, each targeting a specific file
 
-- Searches the codebase and the web
-- Use `Cmd+Shift+I` / `Ctrl+Shift+I` from a file and it is added as context
-- Generates a breakdown of steps you can focus
+### Breakdown
 
-### Inline agent (`Cmd+I` / `Ctrl+I`)
+The breakdown appears at the top of the assistant panel. Each step describes what needs to be done in a specific file, with hints and guidance rather than the full solution. Click a step to see its details and open the target file.
 
-Code with natural language. Powered by Claude Code CLI running Haiku, optimized for speed. When the task demands it, it reads and writes additional files — but it always stays within the code, never running commands or reaching outside the project.
+Each step has a ⚡ **apply button** that triggers a fast editing agent (Haiku) to implement that step automatically.
 
-**Deterministic context:**
+You can also make the changes yourself — the breakdown is there to guide you either way.
 
-- The current file content and focus area
-- The closest `CLAUDE.md` in the directory hierarchy
-- Any files and directories linked from those `CLAUDE.md` files
-- The latest assistant summary and breakdown
+### Context
 
-## Shortcuts
-
-| Mac           | Windows / Linux | What it does                                         |
-| ------------- | --------------- | ---------------------------------------------------- |
-| `Cmd+I`       | `Ctrl+I`        | Open the inline agent — edit the file at your cursor |
-| `Cmd+Shift+I` | `Ctrl+Shift+I`  | Open the assistant — explore and break down work     |
-
-These shortcuts may conflict with other extensions (e.g. GitHub Copilot uses the same bindings). To rebind them, open the command palette and search for "Preferences: Open Keyboard Shortcuts (JSON)", then add your preferred bindings:
-
-**Mac** — `Cmd+Shift+P` > "Preferences: Open Keyboard Shortcuts (JSON)"
-
-```json
-[
-  { "key": "cmd+i", "command": "codeSpark.invoke", "when": "editorTextFocus" },
-  { "key": "cmd+shift+i", "command": "codeSpark.openAssistant" }
-]
-```
-
-**Windows / Linux** — `Ctrl+Shift+P` > "Preferences: Open Keyboard Shortcuts (JSON)"
-
-```json
-[
-  { "key": "ctrl+i", "command": "codeSpark.invoke", "when": "editorTextFocus" },
-  { "key": "ctrl+shift+i", "command": "codeSpark.openAssistant" }
-]
-```
+The assistant's findings are automatically shared with the editing agent. Additionally, `CLAUDE.md` files in your project hierarchy provide persistent instructions and can reference files that get included as context.

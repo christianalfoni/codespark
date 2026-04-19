@@ -10,9 +10,6 @@ const TOOL_DISPLAY_NAMES: Record<string, string> = {
   mcp__codespark__git_diff: "Git Diff",
   mcp__codespark__git_blame: "Git Blame",
   mcp__codespark__edit_file: "Edit File",
-  mcp__codespark__write_file: "Write File",
-  mcp__codespark__move_file: "Move File",
-  mcp__codespark__delete_file: "Delete File",
   mcp__codespark__update_breakdown: "Updating Breakdown",
 };
 
