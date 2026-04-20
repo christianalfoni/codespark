@@ -5,4 +5,6 @@ export interface InlineEditResult {
   latencyMs: number;
   inputTokens: number;
   outputTokens: number;
+  cacheReadInputTokens: number;
+  cacheCreationInputTokens: number;
 }

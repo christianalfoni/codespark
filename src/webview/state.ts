@@ -30,6 +30,13 @@ export type Entry = UserEntry | AssistantEntry;
 
 export type ContextState = "none" | "pending" | "ready";
 
+export interface TokenUsage {
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalCacheReadTokens: number;
+  totalCacheCreationTokens: number;
+}
+
 export interface ChatState {
   entries: Entry[];
   isStreaming: boolean;
@@ -41,6 +48,7 @@ export interface ChatState {
   breakdownSteps: BreakdownStep[];
   selectedStepIndex: number | null;
   stepStatuses: Map<number, { status: "applying" | "done" | "error"; text?: string }>;
+  usage: TokenUsage;
 }
 
 export function createInitialState(saved: any): ChatState {
@@ -55,6 +63,12 @@ export function createInitialState(saved: any): ChatState {
     breakdownSteps: [],
     selectedStepIndex: null,
     stepStatuses: new Map(),
+    usage: {
+      totalInputTokens: 0,
+      totalOutputTokens: 0,
+      totalCacheReadTokens: 0,
+      totalCacheCreationTokens: 0,
+    },
   };
 
   if (saved?.entries) {

@@ -59,6 +59,12 @@ export function useMessageHandling(
             : ("none" as ContextState),
           sessions: msg.sessions,
           activeSessionId: msg.activeSessionId,
+          usage: {
+            totalInputTokens: 0,
+            totalOutputTokens: 0,
+            totalCacheReadTokens: 0,
+            totalCacheCreationTokens: 0,
+          },
         };
       }
       case "sessions-updated": {
@@ -159,6 +165,17 @@ export function useMessageHandling(
         const newStatuses = new Map(prev.stepStatuses);
         newStatuses.set(msg.index, { status: msg.status, text: msg.text });
         return { ...prev, stepStatuses: newStatuses };
+      }
+      case "usage": {
+        return {
+          ...prev,
+          usage: {
+            totalInputTokens: prev.usage.totalInputTokens + msg.inputTokens,
+            totalOutputTokens: prev.usage.totalOutputTokens + msg.outputTokens,
+            totalCacheReadTokens: prev.usage.totalCacheReadTokens + msg.cacheReadInputTokens,
+            totalCacheCreationTokens: prev.usage.totalCacheCreationTokens + msg.cacheCreationInputTokens,
+          },
+        };
       }
       case "done": {
         return {

@@ -431,6 +431,13 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
       pulse?.dispose();
       pulse = null;
 
+      this.reportInlineUsage({
+        inputTokens: result.inputTokens + result.cacheReadInputTokens + result.cacheCreationInputTokens,
+        outputTokens: result.outputTokens,
+        cacheReadInputTokens: result.cacheReadInputTokens,
+        cacheCreationInputTokens: result.cacheCreationInputTokens,
+      });
+
       if (result.hasEdits) {
         this._post({ type: "step-status", index, status: "done" });
 
@@ -696,6 +703,22 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
 
   public focusInput(): void {
     this._post({ type: "focus" });
+  }
+
+  public reportInlineUsage(usage: {
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadInputTokens: number;
+    cacheCreationInputTokens: number;
+  }): void {
+    this._post({
+      type: "usage",
+      source: "inline",
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+      cacheReadInputTokens: usage.cacheReadInputTokens,
+      cacheCreationInputTokens: usage.cacheCreationInputTokens,
+    });
   }
 
   private async _handleSendWithContext(text: string): Promise<void> {

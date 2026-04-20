@@ -733,6 +733,10 @@ body {
   gap: 10px;
 }
 
+.stats-bar-tokens {
+  opacity: 0.7;
+}
+
 .stats-bar-copy {
   display: flex;
   align-items: center;

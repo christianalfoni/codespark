@@ -276,6 +276,7 @@ export function App({ vscode }: AppProps) {
                   <StatsBar
                     numTurns={countTurns(state.entries)}
                     conversationText={serializeConversation(state.entries)}
+                    usage={state.usage}
                   />
                 )}
                 <div class="message-list-spacer" />

@@ -130,6 +130,10 @@ export async function* iterateAssistantEvents(
   const toolUseIdMap = new Map<string, { tool: string; toolId: number }>();
   let lastAssistantText = "";
 
+  // Track whether we already emitted usage for the current turn (avoids
+  // double-counting from duplicate assistant messages with --include-partial-messages)
+  let usageEmittedForTurn = false;
+
   const rl = readline.createInterface({ input: handle.process.stdout! });
 
   try {
@@ -149,6 +153,7 @@ export async function* iterateAssistantEvents(
         if (evt?.type === "message_start") {
           yield { type: "turn-start" };
           lastAssistantText = "";
+          usageEmittedForTurn = false;
         }
 
         if (evt?.type === "content_block_start") {
@@ -184,6 +189,19 @@ export async function* iterateAssistantEvents(
         // causing IPC edit highlighting to be skipped (editedLines still empty).
         // Tools are properly ended by tool_result handling (user message) and
         // safety-flushed at the result message and end-of-stream.
+
+        const usage = msg.message?.usage;
+        if (usage && !usageEmittedForTurn) {
+          usageEmittedForTurn = true;
+          yield {
+            type: "usage",
+            source: "assistant" as const,
+            inputTokens: (usage.input_tokens || 0) + (usage.cache_read_input_tokens || 0) + (usage.cache_creation_input_tokens || 0),
+            outputTokens: usage.output_tokens || 0,
+            cacheReadInputTokens: usage.cache_read_input_tokens || 0,
+            cacheCreationInputTokens: usage.cache_creation_input_tokens || 0,
+          };
+        }
 
         const content = msg.message?.content;
         if (Array.isArray(content)) {

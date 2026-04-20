@@ -93,6 +93,14 @@ export interface DoneMessage {
   numTurns?: number;
   totalCostUsd?: number;
 }
+export interface UsageMessage {
+  type: "usage";
+  source: "assistant" | "inline";
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadInputTokens: number;
+  cacheCreationInputTokens: number;
+}
 export interface FocusMessage {
   type: "focus";
 }
@@ -152,6 +160,7 @@ export type ExtensionToWebview =
   | ToolEndMessage
   | ContextUpdatedMessage
   | DoneMessage
+  | UsageMessage
   | FocusMessage
   | ErrorMessage
   | SessionsUpdatedMessage

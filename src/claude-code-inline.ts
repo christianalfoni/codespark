@@ -399,6 +399,8 @@ export async function executeInlineEdit(
     latencyMs,
     inputTokens,
     outputTokens,
+    cacheReadInputTokens,
+    cacheCreationInputTokens,
   };
 }
 
