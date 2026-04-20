@@ -404,10 +404,28 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
     let prepared: PreparedInlineEdit;
     const cached = this._warmCache.get(step.filePath);
     if (cached) {
-      this._warmCache.delete(step.filePath);
+      // Re-check file hash — if the user edited the file since prewarm, discard stale cache
+      let cacheValid = false;
       try {
-        prepared = await cached.promise;
+        const currentContent = await fs.promises.readFile(absolute, "utf-8");
+        const currentHash = crypto.createHash("sha256").update(currentContent).digest("hex");
+        cacheValid = currentHash === cached.hash;
       } catch {
+        // File unreadable — cache is stale
+      }
+
+      this._warmCache.delete(step.filePath);
+      if (cacheValid) {
+        try {
+          prepared = await cached.promise;
+        } catch {
+          prepared = await this._prepareFreshEdit(step);
+        }
+      } else {
+        this._log.appendLine(`[assistant-view] Cache stale (file changed): ${step.filePath}`);
+        cached.promise
+          .then((p) => abortPreparedEdit(p))
+          .catch(() => {});
         prepared = await this._prepareFreshEdit(step);
       }
     } else {
