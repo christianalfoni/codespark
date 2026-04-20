@@ -132,15 +132,17 @@ Example: to update an import AND change code, pass both edits in one call:
         if (res.success) {
           return { content: [{ type: "text" as const, text: res.message }] };
         } else {
+          const input = JSON.stringify({ file_path, edits }, null, 2);
           return {
-            content: [{ type: "text" as const, text: `Error: ${res.error}` }],
+            content: [{ type: "text" as const, text: `Error: ${res.error}\n\nInput:\n${input}` }],
             isError: true,
           };
         }
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
+        const input = JSON.stringify({ file_path, edits }, null, 2);
         return {
-          content: [{ type: "text" as const, text: `IPC error: ${msg}` }],
+          content: [{ type: "text" as const, text: `IPC error: ${msg}\n\nInput:\n${input}` }],
           isError: true,
         };
       }
