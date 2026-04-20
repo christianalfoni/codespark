@@ -149,6 +149,39 @@ Example: to update an import AND change code, pass both edits in one call:
     },
   );
 
+  // @ts-ignore — MCP SDK's deep type instantiation exceeds TS limit
+  server.tool(
+    "write_file",
+    `Write content to a file. Creates the file (and any missing parent directories) if it
+does not exist, or replaces the entire content of an existing file.
+
+Use this for new or empty files where edit_file cannot work (there is no old_string to match).
+For files that already have content, prefer edit_file instead.`,
+    {
+      file_path: z.string().describe("Absolute path to the file to write"),
+      content: z.string().describe("The full file content to write"),
+    },
+    async ({ file_path, content }) => {
+      try {
+        const res = await sendIpcRequest("write_file", { file_path, content });
+        if (res.success) {
+          return { content: [{ type: "text" as const, text: res.message }] };
+        } else {
+          return {
+            content: [{ type: "text" as const, text: `Error: ${res.error}` }],
+            isError: true,
+          };
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return {
+          content: [{ type: "text" as const, text: `IPC error: ${msg}` }],
+          isError: true,
+        };
+      }
+    },
+  );
+
   // -------------------------------------------------------------------------
   // Breakdown
   // -------------------------------------------------------------------------

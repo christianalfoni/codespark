@@ -386,18 +386,23 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
 
     this._post({ type: "step-status", index, status: "applying" });
 
-    // Open the file in the editor so the user can see the edits
+    // Open the file in the editor so the user can see the edits.
+    // If the file is already the active editor, don't jump — the user may have scrolled.
     const absolute = path.resolve(workspaceFolder, step.filePath);
-    try {
-      const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(absolute));
-      const options: vscode.TextDocumentShowOptions = {};
-      if (step.lineHint && step.lineHint > 0) {
-        const pos = new vscode.Position(step.lineHint - 1, 0);
-        options.selection = new vscode.Range(pos, pos);
+    const alreadyActive =
+      vscode.window.activeTextEditor?.document.uri.fsPath === absolute;
+    if (!alreadyActive) {
+      try {
+        const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(absolute));
+        const options: vscode.TextDocumentShowOptions = {};
+        if (step.lineHint && step.lineHint > 0) {
+          const pos = new vscode.Position(step.lineHint - 1, 0);
+          options.selection = new vscode.Range(pos, pos);
+        }
+        await vscode.window.showTextDocument(doc, options);
+      } catch {
+        // Non-fatal — edits can still apply
       }
-      await vscode.window.showTextDocument(doc, options);
-    } catch {
-      // Non-fatal — edits can still apply
     }
 
     // Use pre-warmed agent from cache if available, otherwise prepare fresh

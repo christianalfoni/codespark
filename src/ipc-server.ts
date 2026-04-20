@@ -48,6 +48,13 @@ interface EditRequest {
   edits: Array<{ old_string: string; new_string: string }>;
 }
 
+interface WriteRequest {
+  id: string;
+  type: "write_file";
+  file_path: string;
+  content: string;
+}
+
 interface IpcResponse {
   id: string;
   success: boolean;
@@ -298,6 +305,24 @@ function handleConnectionData(
           .then(handleResult(editReq.file_path, editReq.edits.length))
           .catch(handleError(editReq.id));
       }
+    } else if (req.type === "write_file") {
+      const writeReq = req as unknown as WriteRequest;
+      const allowed = getAllowedEditFile();
+      if (allowed && writeReq.file_path !== allowed) {
+        conn.write(
+          JSON.stringify({
+            id: writeReq.id,
+            success: false,
+            error: `Editing restricted to the current file. Cannot write ${writeReq.file_path}`,
+          }) + "\n",
+        );
+      } else {
+        log.appendLine(`[ipc] write_file: ${writeReq.file_path}`);
+        runBeforeEditListeners(beforeEditListeners, writeReq.file_path)
+          .then(() => handleWriteRequest(writeReq))
+          .then(handleResult(writeReq.file_path, 1))
+          .catch(handleError(writeReq.id));
+      }
     } else if (req.type === "update_breakdown") {
       const steps = (req as any).items as BreakdownStepInput[];
       log.appendLine(`[ipc] update_breakdown: ${steps.length} step(s)`);
@@ -368,6 +393,45 @@ async function handleEditRequest(req: EditRequest): Promise<IpcResponse> {
     id: req.id,
     success: true,
     message: `Applied ${textEdits.length} edit(s)`,
+    editedRanges,
+  };
+}
+
+async function handleWriteRequest(req: WriteRequest): Promise<IpcResponse> {
+  const uri = vscode.Uri.file(req.file_path);
+
+  // Create parent directories + file via VS Code workspace API
+  const wsEdit = new vscode.WorkspaceEdit();
+  wsEdit.createFile(uri, { ignoreIfExists: true });
+  await vscode.workspace.applyEdit(wsEdit);
+
+  const doc = await vscode.workspace.openTextDocument(uri);
+  const before = doc.getText();
+
+  // Replace entire content
+  const fullRange = new vscode.Range(
+    doc.positionAt(0),
+    doc.positionAt(before.length),
+  );
+  const replaceEdit = new vscode.WorkspaceEdit();
+  replaceEdit.replace(uri, fullRange, req.content);
+
+  const applied = await vscode.workspace.applyEdit(replaceEdit);
+  if (!applied) {
+    return {
+      id: req.id,
+      success: false,
+      error: "WorkspaceEdit failed to apply",
+    };
+  }
+
+  const after = doc.getText();
+  const editedRanges = computeDiffRanges(before, after);
+
+  return {
+    id: req.id,
+    success: true,
+    message: `Wrote ${req.file_path}`,
     editedRanges,
   };
 }
