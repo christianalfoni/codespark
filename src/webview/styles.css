@@ -857,8 +857,6 @@ body {
   display: flex;
   flex-direction: column;
   gap: 1px;
-  max-height: 150px;
-  overflow-y: auto;
   padding-bottom: 8px;
 }
 

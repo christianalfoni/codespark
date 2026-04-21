@@ -241,7 +241,7 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  private async _openFile(filePath: string, line?: number): Promise<void> {
+  private async _openFile(filePath: string, line?: number, preserveFocus = false): Promise<void> {
     const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     if (!workspaceFolder) return;
 
@@ -250,7 +250,7 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
 
     try {
       const doc = await vscode.workspace.openTextDocument(uri);
-      const options: vscode.TextDocumentShowOptions = {};
+      const options: vscode.TextDocumentShowOptions = { preserveFocus };
       if (line && line > 0) {
         const pos = new vscode.Position(line - 1, 0);
         options.selection = new vscode.Range(pos, pos);
@@ -332,10 +332,15 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
     if (index === null) return;
 
     const step = this._steps[index];
-    if (!step || !this._mcpConfigPath) return;
+    if (!step) return;
 
     const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     if (!workspaceFolder) return;
+
+    // Open the file and scroll to the line without stealing focus
+    await this._openFile(step.filePath, step.lineHint, true);
+
+    if (!this._mcpConfigPath) return;
 
     const absolute = path.resolve(workspaceFolder, step.filePath);
 
@@ -462,7 +467,7 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
       pulse = null;
 
       this.reportInlineUsage({
-        inputTokens: result.inputTokens + result.cacheReadInputTokens + result.cacheCreationInputTokens,
+        inputTokens: result.inputTokens,
         outputTokens: result.outputTokens,
         cacheReadInputTokens: result.cacheReadInputTokens,
         cacheCreationInputTokens: result.cacheCreationInputTokens,

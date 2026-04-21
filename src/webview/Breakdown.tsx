@@ -21,6 +21,19 @@ export function Breakdown({ steps, selectedIndex, onSelect }: BreakdownProps) {
   return (
     <div class="breakdown-panel">
       <div class="breakdown-list">
+        {[...steps].reverse().map((step, ri) => {
+          const i = steps.length - 1 - ri;
+          return (
+            <button
+              key={i}
+              class={`step${selectedIndex === i ? " step-selected" : ""}`}
+              onClick={() => onSelect(i)}
+            >
+              <span class="step-number">{i + 1}</span>
+              <span class="step-title">{step.title}</span>
+            </button>
+          );
+        })}
         <button
           class={`step step-conversation${selectedIndex === null ? " step-selected" : ""}`}
           onClick={() => onSelect(null)}
@@ -28,16 +41,6 @@ export function Breakdown({ steps, selectedIndex, onSelect }: BreakdownProps) {
           <span class="step-icon" dangerouslySetInnerHTML={{ __html: CONVERSATION_ICON }} />
           <span class="step-title">Conversation</span>
         </button>
-        {steps.map((step, i) => (
-          <button
-            key={i}
-            class={`step${selectedIndex === i ? " step-selected" : ""}`}
-            onClick={() => onSelect(i)}
-          >
-            <span class="step-number">{i + 1}</span>
-            <span class="step-title">{step.title}</span>
-          </button>
-        ))}
       </div>
     </div>
   );

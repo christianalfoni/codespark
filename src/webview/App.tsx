@@ -210,13 +210,6 @@ export function App({ vscode }: AppProps) {
         stepListRef.current.scrollTop = 0;
       }
     });
-
-    const step = state.breakdownSteps[index];
-    vscode.postMessage({
-      type: "open-file",
-      path: step.filePath,
-      line: step.lineHint,
-    });
   }
 
   function onApplyStep(index: number) {

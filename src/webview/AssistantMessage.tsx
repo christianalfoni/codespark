@@ -22,14 +22,15 @@ interface ToolGroup {
 
 function groupTools(tools: ToolEntry[]): ToolGroup[] {
   const groups: ToolGroup[] = [];
+  const errorCounts = new Map<string, number>();
   for (const t of tools) {
     const existing = groups.find((g) => g.name === t.name);
     if (existing) {
       existing.count++;
-      // Aggregate status: pending > error > success
       if (t.status === "pending") existing.status = "pending";
-      else if (t.status === "error" && existing.status !== "pending")
-        existing.status = "error";
+      if (t.status === "error") {
+        errorCounts.set(t.name, (errorCounts.get(t.name) ?? 0) + 1);
+      }
       // Drop description when grouped
       existing.description = undefined;
     } else {
@@ -39,6 +40,15 @@ function groupTools(tools: ToolEntry[]): ToolGroup[] {
         status: t.status,
         description: t.description,
       });
+      if (t.status === "error") {
+        errorCounts.set(t.name, 1);
+      }
+    }
+  }
+  // Only show error when ALL tools in the group errored
+  for (const g of groups) {
+    if (g.status !== "pending" && (errorCounts.get(g.name) ?? 0) > 0) {
+      g.status = errorCounts.get(g.name) === g.count ? "error" : "success";
     }
   }
   return groups;

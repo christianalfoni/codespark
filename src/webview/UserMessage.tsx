@@ -52,7 +52,6 @@ export function UserMessage({
       {stepRef && (
         <div class="step-ref-badge">
           <span class="step-ref-title">{stepRef.title}</span>
-          <span class="step-ref-file">{stepRef.filePath}</span>
         </div>
       )}
       <div

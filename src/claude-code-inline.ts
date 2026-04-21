@@ -198,10 +198,19 @@ export async function executeInlineEdit(
   const toolsInFlight = new Map<string, { name: string; start: number }>();
   const activeToolBlocks = new Map<number, { name: string; json: string }>();
   let textResponseContent = "";
-  let inputTokens = 0;
-  let outputTokens = 0;
-  let cacheCreationInputTokens = 0;
-  let cacheReadInputTokens = 0;
+  // Accumulated deltas: input_tokens from the API is cumulative (full context),
+  // so we subtract the previous turn's input to get "added input". output_tokens
+  // is already per-turn, so we add it as-is.
+  let addedInputTokens = 0;
+  let addedOutputTokens = 0;
+  let addedCacheCreationInputTokens = 0;
+  let addedCacheReadInputTokens = 0;
+  // Track raw API values for delta computation
+  let lastRawInput = 0;
+  let lastTurnRawInput = 0;
+  let lastTurnOutputTokens = 0;
+  let lastTurnCacheCreation = 0;
+  let lastTurnCacheRead = 0;
   let numTurns = 0;
   const editedLines: Array<{ startLine: number; endLine: number }> = [];
 
@@ -246,6 +255,11 @@ export async function executeInlineEdit(
 
           if (evt?.type === "message_start") {
             numTurns++;
+          }
+
+          // message_delta arrives at end of streaming with final output_tokens
+          if (evt?.type === "message_delta" && evt.usage && typeof evt.usage.output_tokens === "number") {
+            lastTurnOutputTokens = evt.usage.output_tokens;
           }
 
           if (evt?.type === "content_block_delta" && !ttftLogged) {
@@ -310,15 +324,30 @@ export async function executeInlineEdit(
           }
         }
 
-        // Token counting
+        // Token counting — keep overwriting per-turn values; the last partial
+        // assistant message has the most accurate counts.
         if (msg.type === "assistant") {
           const usage = msg.message?.usage;
           if (usage) {
-            inputTokens += usage.input_tokens || 0;
-            outputTokens += usage.output_tokens || 0;
-            cacheCreationInputTokens += usage.cache_creation_input_tokens || 0;
-            cacheReadInputTokens += usage.cache_read_input_tokens || 0;
+            const rawInput = (usage.input_tokens || 0) + (usage.cache_read_input_tokens || 0) + (usage.cache_creation_input_tokens || 0);
+            lastTurnRawInput = rawInput;
+            lastTurnOutputTokens = usage.output_tokens || 0;
+            lastTurnCacheCreation = usage.cache_creation_input_tokens || 0;
+            lastTurnCacheRead = usage.cache_read_input_tokens || 0;
           }
+        }
+
+        // On new turn, flush the previous turn's delta
+        if (msg.type === "stream_event" && msg.event?.type === "message_start" && lastTurnRawInput > 0) {
+          addedInputTokens += lastTurnRawInput - lastRawInput;
+          addedOutputTokens += lastTurnOutputTokens;
+          addedCacheCreationInputTokens += lastTurnCacheCreation;
+          addedCacheReadInputTokens += lastTurnCacheRead;
+          lastRawInput = lastTurnRawInput;
+          lastTurnRawInput = 0;
+          lastTurnOutputTokens = 0;
+          lastTurnCacheCreation = 0;
+          lastTurnCacheRead = 0;
         }
 
         // Tool result logging
@@ -340,6 +369,16 @@ export async function executeInlineEdit(
         }
 
         if (msg.type === "result") {
+          // Flush the final turn's delta
+          if (lastTurnRawInput > 0) {
+            addedInputTokens += lastTurnRawInput - lastRawInput;
+            addedOutputTokens += lastTurnOutputTokens;
+            addedCacheCreationInputTokens += lastTurnCacheCreation;
+            addedCacheReadInputTokens += lastTurnCacheRead;
+            lastRawInput = lastTurnRawInput;
+            lastTurnRawInput = 0;
+          }
+
           if (msg.subtype === "success") {
             if (!editToolSeen && textResponseContent.trim()) {
               log.appendLine(
@@ -350,7 +389,7 @@ export async function executeInlineEdit(
               `[cli-inline] Done (${msg.num_turns ?? numTurns} turns, $${msg.total_cost_usd?.toFixed(4) ?? "?"})`,
             );
             log.appendLine(
-              `[cli-inline:cache] creation=${cacheCreationInputTokens}, read=${cacheReadInputTokens}, input=${inputTokens}, output=${outputTokens}`,
+              `[cli-inline:cache] creation=${addedCacheCreationInputTokens}, read=${addedCacheReadInputTokens}, input=${addedInputTokens}, output=${addedOutputTokens}`,
             );
           } else {
             const errors = msg.errors?.join("; ") ?? "Unknown error";
@@ -390,6 +429,16 @@ export async function executeInlineEdit(
   const latencyMs = Date.now() - tSend;
   log.appendLine(`[cli-inline:timing] Total (user-perceived): ${latencyMs}ms`);
 
+  // If we exited early (edit landed before result), flush whatever we have
+  if (lastTurnRawInput > 0) {
+    addedInputTokens += lastTurnRawInput - lastRawInput;
+    addedOutputTokens += lastTurnOutputTokens;
+    addedCacheCreationInputTokens += lastTurnCacheCreation;
+    addedCacheReadInputTokens += lastTurnCacheRead;
+    lastRawInput = lastTurnRawInput;
+    lastTurnRawInput = 0;
+  }
+
   return {
     hasEdits,
     editedLines,
@@ -397,10 +446,10 @@ export async function executeInlineEdit(
       ? textResponseContent.trim()
       : undefined,
     latencyMs,
-    inputTokens,
-    outputTokens,
-    cacheReadInputTokens,
-    cacheCreationInputTokens,
+    inputTokens: addedInputTokens,
+    outputTokens: addedOutputTokens,
+    cacheReadInputTokens: addedCacheReadInputTokens,
+    cacheCreationInputTokens: addedCacheCreationInputTokens,
   };
 }
 
