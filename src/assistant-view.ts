@@ -100,6 +100,8 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
         case "send":
           if (this._pendingFileContext) {
             this._handleSendWithContext(msg.text);
+          } else if (msg.stepIndex !== undefined && msg.stepIndex !== null) {
+            this._handleSendWithStep(msg.text, msg.stepIndex);
           } else {
             this._handlePrompt(msg.text);
           }
@@ -255,7 +257,7 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
       }
       await vscode.window.showTextDocument(doc, options);
     } catch {
-      this._log.appendLine(`[assistant-view] Could not open file: ${absolute}`);
+      // File may not exist yet — that's fine, it will be created on apply
     }
   }
 
@@ -341,7 +343,8 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
     try {
       fileContent = await fs.promises.readFile(absolute, "utf-8");
     } catch {
-      return;
+      // File doesn't exist yet — prewarm with empty content
+      fileContent = "";
     }
 
     const hash = crypto.createHash("sha256").update(fileContent).digest("hex");
@@ -393,6 +396,10 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
       vscode.window.activeTextEditor?.document.uri.fsPath === absolute;
     if (!alreadyActive) {
       try {
+        await fs.promises.mkdir(path.dirname(absolute), { recursive: true });
+        if (!fs.existsSync(absolute)) {
+          await fs.promises.writeFile(absolute, "", "utf-8");
+        }
         const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(absolute));
         const options: vscode.TextDocumentShowOptions = {};
         if (step.lineHint && step.lineHint > 0) {
@@ -788,6 +795,20 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
       cursorLine: ctx.cursorLine,
       contextSnippet: "",
     });
+  }
+
+  private async _handleSendWithStep(
+    text: string,
+    stepIndex: number,
+  ): Promise<void> {
+    const step = this._steps[stepIndex];
+    if (!step) {
+      this._handlePrompt(text);
+      return;
+    }
+
+    const stepContext = `[Regarding breakdown step ${stepIndex + 1}: "${step.title}" in \`${step.filePath}${step.lineHint ? `:${step.lineHint}` : ""}\`]\n\n${text}`;
+    await this._handlePrompt(stepContext);
   }
 
   private async _handlePromptWithContext(opts: {

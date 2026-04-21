@@ -21,9 +21,15 @@ export interface AssistantEntry {
   turns: Turn[];
 }
 
+export interface StepRef {
+  title: string;
+  filePath: string;
+}
+
 export interface UserEntry {
   role: "user";
   content: string;
+  stepRef?: StepRef;
 }
 
 export type Entry = UserEntry | AssistantEntry;

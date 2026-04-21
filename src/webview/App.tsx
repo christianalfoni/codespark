@@ -39,6 +39,7 @@ export function App({ vscode }: AppProps) {
   const messageListRef = useRef<HTMLDivElement>(null);
   const stepListRef = useRef<HTMLDivElement>(null);
   const pinnedQueryRef = useRef<HTMLDivElement>(null);
+  const inputAreaRef = useRef<HTMLDivElement>(null);
 
   useMessageHandling(setState, textareaRef, vscode);
   const { userScrolledUp, onScroll } = useMessageListScroll(messageListRef);
@@ -48,6 +49,21 @@ export function App({ vscode }: AppProps) {
   );
   const autoResize = useTextareaAutoResize(textareaRef);
   useCodeActions(messageListRef, pinnedQueryRef, state.isStreaming);
+
+  // Keep message list bottom padding in sync with the input area height
+  useEffect(() => {
+    const inputEl = inputAreaRef.current;
+    if (!inputEl) return;
+    const observer = new ResizeObserver(([entry]) => {
+      const height = entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height;
+      document.documentElement.style.setProperty(
+        "--input-area-height",
+        `${height}px`,
+      );
+    });
+    observer.observe(inputEl);
+    return () => observer.disconnect();
+  }, []);
 
   const wasStreaming = useRef(false);
   useEffect(() => {
@@ -59,9 +75,16 @@ export function App({ vscode }: AppProps) {
   }, [state.isStreaming]);
 
   function send(text: string) {
+    const step =
+      state.selectedStepIndex !== null
+        ? state.breakdownSteps[state.selectedStepIndex]
+        : null;
+    const userEntry: Entry = step
+      ? { role: "user", content: text, stepRef: { title: step.title, filePath: step.filePath } }
+      : { role: "user", content: text };
     const newEntries: Entry[] = [
       ...state.entries,
-      { role: "user", content: text },
+      userEntry,
       { role: "assistant", turns: [] },
     ];
     setState({
@@ -73,7 +96,11 @@ export function App({ vscode }: AppProps) {
       selectedStepIndex: null,
     });
     userScrolledUp.current = false;
-    vscode.postMessage({ type: "send", text });
+    const msg: any = { type: "send", text };
+    if (state.selectedStepIndex !== null) {
+      msg.stepIndex = state.selectedStepIndex;
+    }
+    vscode.postMessage(msg);
   }
 
   function newSession() {
@@ -205,15 +232,6 @@ export function App({ vscode }: AppProps) {
 
   return (
     <>
-      {state.breakdownSteps.length > 0 && (
-        <Breakdown
-          steps={state.breakdownSteps}
-          selectedIndex={state.selectedStepIndex}
-          stepStatuses={state.stepStatuses}
-          onSelect={onSelectStep}
-          onApply={onApplyStep}
-        />
-      )}
       <div class="message-list-wrapper">
         <div
           ref={pinnedQueryRef}
@@ -259,6 +277,7 @@ export function App({ vscode }: AppProps) {
                         key={i}
                         index={i}
                         content={entry.content}
+                        stepRef={entry.stepRef}
                         registerRef={registerUserMessage}
                       />
                     );
@@ -286,9 +305,18 @@ export function App({ vscode }: AppProps) {
         )}
       </div>
 
-      <div class="input-area">
+      <div ref={inputAreaRef} class="input-area">
         <div class="input-area-inner">
           <div class="input-wrapper">
+            {state.breakdownSteps.length > 0 && (
+              <Breakdown
+                steps={state.breakdownSteps}
+                selectedIndex={state.selectedStepIndex}
+                stepStatuses={state.stepStatuses}
+                onSelect={onSelectStep}
+                onApply={onApplyStep}
+              />
+            )}
             {state.fileContext && (
               <div class="file-context-badge">
                 <span

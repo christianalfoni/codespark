@@ -1,6 +1,7 @@
 import { useRef, useEffect, useState } from "preact/hooks";
 import { renderMarkdown } from "./markdown";
 import { prepareForRender } from "./prepareForRender";
+import type { StepRef } from "./state";
 
 const MAX_LINES = 3;
 const MAX_CHARS = 200;
@@ -23,10 +24,12 @@ function truncateContent(text: string): {
 export function UserMessage({
   content,
   index,
+  stepRef,
   registerRef,
 }: {
   content: string;
   index: number;
+  stepRef?: StepRef;
   registerRef: (index: number, el: HTMLElement | null) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -46,6 +49,12 @@ export function UserMessage({
       onClick={isTruncated ? () => setExpanded((e) => !e) : undefined}
       style={isTruncated ? { cursor: "pointer" } : undefined}
     >
+      {stepRef && (
+        <div class="step-ref-badge">
+          <span class="step-ref-title">{stepRef.title}</span>
+          <span class="step-ref-file">{stepRef.filePath}</span>
+        </div>
+      )}
       <div
         dangerouslySetInnerHTML={{
           __html: renderMarkdown(prepareForRender(display)),

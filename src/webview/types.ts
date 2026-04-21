@@ -3,6 +3,7 @@
 export interface SendMessage {
   type: "send";
   text: string;
+  stepIndex?: number;
 }
 export interface CancelMessage {
   type: "cancel";
