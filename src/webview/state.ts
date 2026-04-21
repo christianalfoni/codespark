@@ -22,6 +22,7 @@ export interface AssistantEntry {
 }
 
 export interface StepRef {
+  stepIndex: number;
   title: string;
   filePath: string;
 }

@@ -1,11 +1,12 @@
-import { useRef, useEffect } from "preact/hooks";
 import type { BreakdownStep } from "./types";
+import type { Entry } from "./state";
 import { renderMarkdown } from "./markdown";
 import { prepareForRender } from "./prepareForRender";
-import { FILE_ICON, BOLT_ICON } from "./utils";
+import { AssistantMessage } from "./AssistantMessage";
+import { UserMessage } from "./UserMessage";
+import { FILE_ICON } from "./utils";
 
 const CONVERSATION_ICON = `<svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14"><path d="M1 3.5A1.5 1.5 0 0 1 2.5 2h11A1.5 1.5 0 0 1 15 3.5v7A1.5 1.5 0 0 1 13.5 12H9l-3.5 3v-3H2.5A1.5 1.5 0 0 1 1 10.5v-7zM2.5 3a.5.5 0 0 0-.5.5v7a.5.5 0 0 0 .5.5H6v2l2.5-2h5a.5.5 0 0 0 .5-.5v-7a.5.5 0 0 0-.5-.5h-11z"/></svg>`;
-const SPINNER_ICON = `<svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14" class="step-apply-spin"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zm0 1.5a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11z" opacity="0.25"/><path d="M8 1a7 7 0 0 1 7 7h-1.5A5.5 5.5 0 0 0 8 2.5V1z"/></svg>`;
 
 interface BreakdownProps {
   steps: BreakdownStep[];
@@ -46,61 +47,66 @@ export function Breakdown({ steps, selectedIndex, onSelect }: BreakdownProps) {
   );
 }
 
-export function StepDetail({ step, stepIndex, stepStatus, onApply }: {
+export function StepDetail({ step, stepIndex, stepStatus, entries, isStreaming, activeTool, registerUserMessage }: {
   step: BreakdownStep;
   stepIndex: number;
   stepStatus?: { status: "applying" | "done" | "error"; text?: string };
-  onApply: (index: number) => void;
+  entries: Entry[];
+  isStreaming: boolean;
+  activeTool: string | null;
+  registerUserMessage: (index: number, el: HTMLElement | null) => void;
 }) {
-  const headerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const header = headerRef.current;
-    if (!header) return;
-    const scrollParent = header.closest(".message-list") as HTMLElement | null;
-    if (!scrollParent) return;
-
-    function onScroll() {
-      header!.classList.toggle(
-        "step-detail-header--stuck",
-        scrollParent!.scrollTop > 0,
-      );
+  // Collect entry pairs (user + following assistant) tagged to this step
+  const relatedEntries: Entry[] = [];
+  for (let i = 0; i < entries.length; i++) {
+    const entry = entries[i];
+    if (entry.role === "user" && entry.stepRef?.stepIndex === stepIndex) {
+      relatedEntries.push(entry);
+      // Include the assistant response that follows
+      if (i + 1 < entries.length && entries[i + 1].role === "assistant") {
+        relatedEntries.push(entries[i + 1]);
+      }
     }
+  }
 
-    scrollParent.addEventListener("scroll", onScroll, { passive: true });
-    onScroll();
-    return () => scrollParent.removeEventListener("scroll", onScroll);
-  }, [step]);
-
-  const isApplying = stepStatus?.status === "applying";
+  const lastEntryIndex = entries.length - 1;
 
   return (
     <div class="step-detail">
-      <div ref={headerRef} class="step-detail-header message-user">
-        <span class="step-detail-icon" dangerouslySetInnerHTML={{ __html: FILE_ICON }} />
-        <span>{step.filePath}{step.lineHint ? `:${step.lineHint}` : ""}</span>
-        <button
-          class="send-btn step-apply-btn"
-          title={isApplying ? "Applying..." : "Apply this step"}
-          disabled={isApplying}
-          onClick={(e) => {
-            e.stopPropagation();
-            onApply(stepIndex);
-          }}
-        >
-          <span dangerouslySetInnerHTML={{ __html: isApplying ? SPINNER_ICON : BOLT_ICON }} />
-          {isApplying ? "Applying..." : "Apply"}
-        </button>
-      </div>
       {stepStatus?.status === "error" && stepStatus.text && (
         <div class="step-error-message">{stepStatus.text}</div>
       )}
+      <div class="step-detail-file">
+        <span class="step-detail-file-icon" dangerouslySetInnerHTML={{ __html: FILE_ICON }} />
+        <span>{step.filePath}{step.lineHint ? `:${step.lineHint}` : ""}</span>
+      </div>
       <div
         class="step-detail-content message"
         dangerouslySetInnerHTML={{
           __html: renderMarkdown(prepareForRender(step.description)),
         }}
       />
+      {relatedEntries.map((entry, i) => {
+        const isLastGlobal = entries.indexOf(entry) === lastEntryIndex;
+        if (entry.role === "user") {
+          return (
+            <UserMessage
+              key={i}
+              index={i}
+              content={entry.content}
+              registerRef={registerUserMessage}
+            />
+          );
+        }
+        return (
+          <AssistantMessage
+            key={i}
+            entry={entry}
+            isStreaming={isLastGlobal && isStreaming}
+            activeTool={isLastGlobal ? activeTool : null}
+          />
+        );
+      })}
     </div>
   );
 }

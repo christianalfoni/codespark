@@ -24,7 +24,16 @@ export interface BreakdownStepInput {
   lineHint?: number;
 }
 
+export interface BreakdownStepUpdateInput {
+  index: number;
+  title?: string;
+  description?: string;
+  filePath?: string;
+  lineHint?: number;
+}
+
 export type BreakdownListener = (steps: BreakdownStepInput[]) => void;
+export type BreakdownStepUpdateListener = (update: BreakdownStepUpdateInput) => void;
 
 export interface IpcServer {
   socketPath: string;
@@ -34,6 +43,7 @@ export interface IpcServer {
   onEdit: (listener: EditListener) => { dispose: () => void };
   onBeforeEdit: (listener: BeforeEditListener) => { dispose: () => void };
   onBreakdown: (listener: BreakdownListener) => { dispose: () => void };
+  onBreakdownStepUpdate: (listener: BreakdownStepUpdateListener) => { dispose: () => void };
   dispose: () => void;
 }
 
@@ -75,6 +85,7 @@ export function startIpcServer(log: vscode.OutputChannel): IpcServer {
   const editListeners = new Set<EditListener>();
   const beforeEditListeners = new Set<BeforeEditListener>();
   const breakdownListeners = new Set<BreakdownListener>();
+  const breakdownStepUpdateListeners = new Set<BreakdownStepUpdateListener>();
   let allowedEditFile: string | null = null;
 
   // Clean up stale socket from prior crash
@@ -102,6 +113,7 @@ export function startIpcServer(log: vscode.OutputChannel): IpcServer {
         editListeners,
         beforeEditListeners,
         breakdownListeners,
+        breakdownStepUpdateListeners,
         conn,
         () => allowedEditFile,
       );
@@ -151,6 +163,14 @@ export function startIpcServer(log: vscode.OutputChannel): IpcServer {
       return {
         dispose: () => {
           breakdownListeners.delete(listener);
+        },
+      };
+    },
+    onBreakdownStepUpdate(listener: BreakdownStepUpdateListener) {
+      breakdownStepUpdateListeners.add(listener);
+      return {
+        dispose: () => {
+          breakdownStepUpdateListeners.delete(listener);
         },
       };
     },
@@ -246,6 +266,7 @@ function handleConnectionData(
   editListeners: Set<EditListener>,
   beforeEditListeners: Set<BeforeEditListener>,
   breakdownListeners: Set<BreakdownListener>,
+  breakdownStepUpdateListeners: Set<BreakdownStepUpdateListener>,
   conn: net.Socket,
   getAllowedEditFile: () => string | null,
 ): string {
@@ -323,13 +344,21 @@ function handleConnectionData(
           .then(handleResult(writeReq.file_path, 1))
           .catch(handleError(writeReq.id));
       }
-    } else if (req.type === "update_breakdown") {
+    } else if (req.type === "write_breakdown") {
       const steps = (req as any).items as BreakdownStepInput[];
-      log.appendLine(`[ipc] update_breakdown: ${steps.length} step(s)`);
+      log.appendLine(`[ipc] write_breakdown: ${steps.length} step(s)`);
       for (const listener of breakdownListeners) {
         listener(steps);
       }
       const res = { id: req.id, success: true, message: `Created ${steps.length} step(s)` };
+      conn.write(JSON.stringify(res) + "\n");
+    } else if (req.type === "update_breakdown_step") {
+      const update = req as unknown as { id: string; type: string } & BreakdownStepUpdateInput;
+      log.appendLine(`[ipc] update_breakdown_step: index ${update.index}`);
+      for (const listener of breakdownStepUpdateListeners) {
+        listener(update);
+      }
+      const res = { id: req.id, success: true, message: `Updated step ${update.index}` };
       conn.write(JSON.stringify(res) + "\n");
     } else {
       conn.write(

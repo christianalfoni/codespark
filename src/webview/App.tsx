@@ -17,10 +17,13 @@ import {
   STOP_ICON,
   NEW_SESSION_ICON,
   FILE_ICON,
+  BOLT_ICON,
   copyCodeWithFeedback,
   handleCommandClick,
   REVIEW_ICON,
 } from "./utils";
+
+const SPINNER_ICON = `<svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14" class="step-apply-spin"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zm0 1.5a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11z" opacity="0.25"/><path d="M8 1a7 7 0 0 1 7 7h-1.5A5.5 5.5 0 0 0 8 2.5V1z"/></svg>`;
 
 interface VsCodeApi {
   postMessage(msg: unknown): void;
@@ -39,13 +42,20 @@ export function App({ vscode }: AppProps) {
   const messageListRef = useRef<HTMLDivElement>(null);
   const stepListRef = useRef<HTMLDivElement>(null);
   const pinnedQueryRef = useRef<HTMLDivElement>(null);
+  const stepPinnedQueryRef = useRef<HTMLDivElement>(null);
   const inputAreaRef = useRef<HTMLDivElement>(null);
 
   useMessageHandling(setState, textareaRef, vscode);
-  const { userScrolledUp, onScroll } = useMessageListScroll(messageListRef);
+  const { userScrolledUp, onScroll } = useMessageListScroll(messageListRef, stepListRef);
   const { registerUserMessage } = useStickyUserMessage(
     messageListRef,
     pinnedQueryRef,
+    state.selectedStepIndex,
+  );
+  const { registerUserMessage: registerStepUserMessage } = useStickyUserMessage(
+    stepListRef,
+    stepPinnedQueryRef,
+    state.selectedStepIndex,
   );
   const autoResize = useTextareaAutoResize(textareaRef);
   useCodeActions(messageListRef, pinnedQueryRef, state.isStreaming);
@@ -74,13 +84,13 @@ export function App({ vscode }: AppProps) {
     wasStreaming.current = state.isStreaming;
   }, [state.isStreaming]);
 
-  function send(text: string) {
+  function send(text: string, opts?: { skipStepRef?: boolean }) {
     const step =
-      state.selectedStepIndex !== null
+      !opts?.skipStepRef && state.selectedStepIndex !== null
         ? state.breakdownSteps[state.selectedStepIndex]
         : null;
     const userEntry: Entry = step
-      ? { role: "user", content: text, stepRef: { title: step.title, filePath: step.filePath } }
+      ? { role: "user", content: text, stepRef: { stepIndex: state.selectedStepIndex!, title: step.title, filePath: step.filePath } }
       : { role: "user", content: text };
     const newEntries: Entry[] = [
       ...state.entries,
@@ -93,11 +103,11 @@ export function App({ vscode }: AppProps) {
       isStreaming: true,
       activeTool: null,
       contextState: "pending",
-      selectedStepIndex: null,
+      ...(opts?.skipStepRef ? { selectedStepIndex: null } : {}),
     });
     userScrolledUp.current = false;
     const msg: any = { type: "send", text };
-    if (state.selectedStepIndex !== null) {
+    if (!opts?.skipStepRef && state.selectedStepIndex !== null) {
       msg.stepIndex = state.selectedStepIndex;
     }
     vscode.postMessage(msg);
@@ -197,10 +207,10 @@ export function App({ vscode }: AppProps) {
     setState((prev) => ({ ...prev, selectedStepIndex: index }));
 
     vscode.postMessage({ type: "select-step", index });
+    textareaRef.current?.focus();
 
     if (index === null) {
       userScrolledUp.current = false;
-      textareaRef.current?.focus();
       return;
     }
 
@@ -232,18 +242,29 @@ export function App({ vscode }: AppProps) {
           style={{ display: "none" }}
         />
         {selectedStep ? (
-          <div
-            ref={stepListRef}
-            class="message-list"
-            onClick={onMessageListClick}
-          >
-            <StepDetail
-              step={selectedStep}
-              stepIndex={state.selectedStepIndex!}
-              stepStatus={state.stepStatuses.get(state.selectedStepIndex!)}
-              onApply={onApplyStep}
+          <>
+            <div
+              ref={stepPinnedQueryRef}
+              class="pinned-query message message-user"
+              style={{ display: "none" }}
             />
-          </div>
+            <div
+              ref={stepListRef}
+              class="message-list"
+              onScroll={onScroll}
+              onClick={onMessageListClick}
+            >
+              <StepDetail
+                step={selectedStep}
+                stepIndex={state.selectedStepIndex!}
+                stepStatus={state.stepStatuses.get(state.selectedStepIndex!)}
+                entries={state.entries}
+                isStreaming={state.isStreaming}
+                activeTool={state.activeTool}
+                registerUserMessage={registerStepUserMessage}
+              />
+            </div>
+          </>
         ) : (
           <div
             class="message-list"
@@ -353,17 +374,28 @@ export function App({ vscode }: AppProps) {
                 />
               )}
               {state.breakdownSteps.length > 0 && (
-                <button
-                  class="reset-btn review-btn"
-                  title="Review Breakdown"
-                  disabled={state.isStreaming}
-                  onClick={() =>
-                    send(
-                      "Review the changes I made for the current breakdown steps. Check if I followed the guidance correctly and suggest any improvements.",
-                    )
-                  }
-                  dangerouslySetInnerHTML={{ __html: REVIEW_ICON }}
-                />
+                state.selectedStepIndex !== null ? (
+                  <button
+                    class="reset-btn review-btn"
+                    title={state.stepStatuses.get(state.selectedStepIndex)?.status === "applying" ? "Applying..." : "Apply this step"}
+                    disabled={state.isStreaming || state.stepStatuses.get(state.selectedStepIndex)?.status === "applying"}
+                    onClick={() => onApplyStep(state.selectedStepIndex!)}
+                    dangerouslySetInnerHTML={{ __html: state.stepStatuses.get(state.selectedStepIndex)?.status === "applying" ? SPINNER_ICON : BOLT_ICON }}
+                  />
+                ) : (
+                  <button
+                    class="reset-btn review-btn"
+                    title="Review Breakdown"
+                    disabled={state.isStreaming}
+                    onClick={() =>
+                      send(
+                        "Review the changes I made for the current breakdown steps. Check if I followed the guidance correctly and suggest any improvements.",
+                        { skipStepRef: true },
+                      )
+                    }
+                    dangerouslySetInnerHTML={{ __html: REVIEW_ICON }}
+                  />
+                )
               )}
               <div style={{ flex: 1 }} />
               {state.isStreaming && (

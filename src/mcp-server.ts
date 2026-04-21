@@ -188,7 +188,7 @@ For files that already have content, prefer edit_file instead.`,
 
   // @ts-ignore
   server.tool(
-    "update_breakdown",
+    "write_breakdown",
     `Set the breakdown steps for the user. Each step describes a focused piece of work
 in a specific file. The user will see these in the sidebar and can click each one to see
 its details.
@@ -198,7 +198,8 @@ Describe WHAT needs to be done and WHERE, but do not write the full solution —
 context for the user to attempt it themselves. The breakdown is also shared with the inline
 editing agent (Cmd+I) so it has context about the overall approach.
 
-Calling this tool replaces any existing breakdown. Before updating, read the relevant files to check what has already been implemented — then adjust all steps to reflect the current code state.`,
+Calling this tool replaces any existing breakdown. Prefer update_breakdown_step when only
+one or a few steps need changes.`,
     {
       items: z
         .array(
@@ -213,7 +214,47 @@ Calling this tool replaces any existing breakdown. Before updating, read the rel
     },
     async ({ items }) => {
       try {
-        const res = await sendIpcRequest("update_breakdown", { items });
+        const res = await sendIpcRequest("write_breakdown", { items });
+        if (res.success) {
+          return { content: [{ type: "text" as const, text: res.message }] };
+        } else {
+          return {
+            content: [{ type: "text" as const, text: `Error: ${res.error}` }],
+            isError: true,
+          };
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return {
+          content: [{ type: "text" as const, text: `IPC error: ${msg}` }],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  // @ts-ignore
+  server.tool(
+    "update_breakdown_step",
+    `Update a single step in the existing breakdown by its index (0-based). Only the fields
+you provide will be updated — omit fields to keep their current values. Use this for small
+adjustments instead of rewriting the entire breakdown with write_breakdown.`,
+    {
+      index: z.number().describe("0-based index of the step to update"),
+      title: z.string().optional().describe("New title for the step"),
+      description: z.string().optional().describe("New description for the step"),
+      filePath: z.string().optional().describe("New file path for the step"),
+      lineHint: z.number().optional().describe("New line hint for the step"),
+    },
+    async ({ index, title, description, filePath, lineHint }) => {
+      try {
+        const res = await sendIpcRequest("update_breakdown_step", {
+          index,
+          ...(title !== undefined && { title }),
+          ...(description !== undefined && { description }),
+          ...(filePath !== undefined && { filePath }),
+          ...(lineHint !== undefined && { lineHint }),
+        });
         if (res.success) {
           return { content: [{ type: "text" as const, text: res.message }] };
         } else {

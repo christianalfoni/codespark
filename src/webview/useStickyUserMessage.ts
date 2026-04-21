@@ -12,6 +12,7 @@ import { RefObject } from "preact";
 export function useStickyUserMessage(
   messageListRef: RefObject<HTMLDivElement>,
   pinnedRef: RefObject<HTMLDivElement>,
+  key?: unknown,
 ) {
   const elementsRef = useRef<Map<number, HTMLElement>>(new Map());
   const rafRef = useRef(0);
@@ -51,22 +52,43 @@ export function useStickyUserMessage(
         }
       }
 
-      if (lastIndex === currentIndexRef.current) return;
+      if (lastIndex !== currentIndexRef.current) {
+        // Unhide the previously mirrored message
+        const prev = elementsRef.current.get(currentIndexRef.current);
+        if (prev) prev.classList.remove(MIRRORED_CLASS);
 
-      // Unhide the previously mirrored message
-      const prev = elementsRef.current.get(currentIndexRef.current);
-      if (prev) prev.classList.remove(MIRRORED_CLASS);
+        currentIndexRef.current = lastIndex;
 
-      currentIndexRef.current = lastIndex;
+        if (lastIndex === -1) {
+          pinned!.style.display = "none";
+          pinned!.style.opacity = "";
+        } else {
+          const source = elementsRef.current.get(lastIndex)!;
+          pinned!.innerHTML = source.innerHTML;
+          pinned!.style.display = "";
+          syncDimensions();
+          source.classList.add(MIRRORED_CLASS);
+        }
+      }
 
-      if (lastIndex === -1) {
-        pinned!.style.display = "none";
-      } else {
-        const source = elementsRef.current.get(lastIndex)!;
-        pinned!.innerHTML = source.innerHTML;
-        pinned!.style.display = "";
-        syncDimensions();
-        source.classList.add(MIRRORED_CLASS);
+      // Fade out as the next user message approaches the top
+      if (currentIndexRef.current !== -1) {
+        const pinnedHeight = pinned!.offsetHeight;
+        const FADE_ZONE = pinnedHeight;
+        let nextTop = Infinity;
+        for (const [index, el] of elementsRef.current) {
+          if (index > currentIndexRef.current) {
+            const top = el.offsetTop - root!.scrollTop;
+            if (top < nextTop) nextTop = top;
+          }
+        }
+        if (nextTop <= pinnedHeight) {
+          pinned!.style.opacity = "0";
+        } else if (nextTop < pinnedHeight + FADE_ZONE) {
+          pinned!.style.opacity = String((nextTop - pinnedHeight) / FADE_ZONE);
+        } else {
+          pinned!.style.opacity = "1";
+        }
       }
     }
 
@@ -96,11 +118,14 @@ export function useStickyUserMessage(
       pinned.removeEventListener("click", onClick);
       cancelAnimationFrame(rafRef.current);
       resizeObserver.disconnect();
-      // Clean up: remove mirrored class from the currently mirrored message
+      // Clean up: remove mirrored class and hide the overlay
       const current = elementsRef.current.get(currentIndexRef.current);
       if (current) current.classList.remove(MIRRORED_CLASS);
+      pinned.style.display = "none";
+      pinned.style.opacity = "";
+      currentIndexRef.current = -1;
     };
-  }, [messageListRef, pinnedRef]);
+  }, [messageListRef, pinnedRef, key]);
 
   const registerUserMessage = useCallback(
     (index: number, el: HTMLElement | null) => {

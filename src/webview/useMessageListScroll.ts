@@ -3,22 +3,23 @@ import { useRef, useEffect, useCallback } from "preact/hooks";
 
 export function useMessageListScroll(
   messageListRef: preact.RefObject<HTMLDivElement>,
+  stepListRef: preact.RefObject<HTMLDivElement>,
 ) {
   const userScrolledUp = useRef(false);
 
   useEffect(() => {
-    if (messageListRef.current && !userScrolledUp.current) {
-      requestAnimationFrame(() => {
-        if (messageListRef.current) {
-          messageListRef.current.scrollTop =
-            messageListRef.current.scrollHeight;
-        }
-      });
-    }
+    if (userScrolledUp.current) return;
+    const el = messageListRef.current ?? stepListRef.current;
+    if (!el) return;
+    requestAnimationFrame(() => {
+      if (el.isConnected) {
+        el.scrollTop = el.scrollHeight;
+      }
+    });
   });
 
   const onScroll = useCallback(() => {
-    const el = messageListRef.current;
+    const el = messageListRef.current ?? stepListRef.current;
     if (!el) return;
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
     userScrolledUp.current = !atBottom;
