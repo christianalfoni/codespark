@@ -59,6 +59,7 @@ export function App({ vscode }: AppProps) {
   );
   const autoResize = useTextareaAutoResize(textareaRef);
   useCodeActions(messageListRef, pinnedQueryRef, state.isStreaming);
+  useCodeActions(stepListRef, stepPinnedQueryRef, state.isStreaming, state.selectedStepIndex);
 
   // Keep message list bottom padding in sync with the input area height
   useEffect(() => {
@@ -277,8 +278,7 @@ export function App({ vscode }: AppProps) {
                 <Logo />
                 <div class="empty-state-text">
                   Your thinking partner — explore code, break down work, get
-                  your changes reviewed. Context is shared with the inline
-                  agent.
+                  your changes reviewed.
                 </div>
               </div>
             ) : (

@@ -10,6 +10,7 @@ export function useCodeActions(
   messageListRef: preact.RefObject<HTMLDivElement>,
   pinnedQueryRef: preact.RefObject<HTMLDivElement>,
   isStreaming: boolean,
+  key?: unknown,
 ) {
   const isStreamingRef = useRef(isStreaming);
   isStreamingRef.current = isStreaming;
@@ -108,7 +109,7 @@ export function useCodeActions(
       list.removeEventListener("mouseleave", onMouseLeave);
       list.removeEventListener("scroll", onScroll);
     };
-  }, []);
+  }, [key]);
 
   // When streaming starts, hide any currently visible code-action buttons so
   // they don't linger on screen until the next pointer event.

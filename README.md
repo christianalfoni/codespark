@@ -21,14 +21,16 @@ Your thinking partner. Lives in the sidebar. Powered by Claude Code CLI running 
 - Ask questions, explore approaches, and gather context
 - When you want to implement something, the assistant creates a **breakdown** — a list of focused steps, each targeting a specific file
 
-### Breakdown
+## Breakdowns, not plans
 
-The breakdown appears at the top of the assistant panel. Each step describes what needs to be done in a specific file, with hints and guidance rather than the full solution. Click a step to see its details and open the target file.
+Coding agents like Claude Code use **plan mode** — the AI creates a plan and then the AI implements it. You review the result. This works, but it comes with a cost: you stop building the mental model of your own codebase. You review diffs instead of writing code, and review is not the same as implementation. Reading a diff tells you _what_ changed. Writing the code teaches you _why_ it works, _how_ it connects, and _where_ the fragile parts are.
 
-Each step has a ⚡ **apply button** that triggers a fast editing agent (Haiku) to implement that step automatically.
+CodeSpark takes a different approach. The assistant creates a **breakdown** — a list of focused steps, each targeting a specific file — but _you_ implement them. The AI helps you understand the problem, explores the codebase, and generates the context you need to move fast. Then you write the code, or let the fast editing agent handle the mechanical parts while you stay in control.
 
-You can also make the changes yourself — the breakdown is there to guide you either way.
+This matters because **you are responsible for your codebase**. Your understanding of it is not a nice-to-have — it is what makes you effective. That understanding evolves through implementation, not through review. Every time you write code, you reinforce your mental model. Every time you skip implementation and only review, that model atrophies.
 
-### Context
+The breakdown makes this practical:
 
-The assistant's findings are automatically shared with the editing agent. Additionally, `CLAUDE.md` files in your project hierarchy provide persistent instructions and can reference files that get included as context.
+- **Context generation is fast** — the assistant reads files, searches the codebase, and synthesizes what you need to know.
+- **Context is sticky** — because you implement the steps, what you learn stays with you. It becomes part of how you think about the codebase.
+- **Token cost drops dramatically** — a breakdown is a fraction of the tokens an agent spends implementing a full plan. The AI does the exploration and guidance; you do the thinking and typing. The expensive part (iterating on implementation with an LLM) is replaced by the cheap part (you, writing code with guidance).

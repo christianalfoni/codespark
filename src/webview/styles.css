@@ -71,12 +71,11 @@ body {
 }
 
 .logo-bracket {
-  fill: var(--vscode-panelTitle-activeBorder);
+  fill: #ee81c3;
 }
 
 .logo-bolt {
-  fill: var(--vscode-panelTitle-activeBorder);
-  opacity: 0.7;
+  fill: #b16496;
 }
 
 .logo-text {
@@ -88,7 +87,7 @@ body {
 }
 
 .logo-text-accent {
-  fill: var(--vscode-panelTitle-activeBorder);
+  fill: #ee81c3;
 }
 
 .empty-state-text {
@@ -107,6 +106,7 @@ body {
 }
 
 .message-user {
+  position: relative;
   padding: 10px 12px;
   border-radius: 6px;
   background: var(--vscode-input-background);
