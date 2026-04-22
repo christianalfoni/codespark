@@ -1,6 +1,4 @@
-<p align="center">
-  <img src="./media/logo.png" alt="CodeSpark" width="480" />
-</p>
+<h1 align="center"><span style="color:#b16496">Code</span><span style="color:#ee81c3">Spark</span></h1>
 
 <p align="center"><em>A coding agent where you still code</em></p>
 
