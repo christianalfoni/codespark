@@ -58,7 +58,7 @@ export function App({ vscode }: AppProps) {
     state.selectedStepIndex,
   );
   const autoResize = useTextareaAutoResize(textareaRef);
-  useCodeActions(messageListRef, pinnedQueryRef, state.isStreaming);
+  useCodeActions(messageListRef, pinnedQueryRef, state.isStreaming, state.selectedStepIndex === null ? "conversation" : null);
   useCodeActions(stepListRef, stepPinnedQueryRef, state.isStreaming, state.selectedStepIndex);
 
   // Keep message list bottom padding in sync with the input area height
@@ -374,28 +374,30 @@ export function App({ vscode }: AppProps) {
                 />
               )}
               {state.breakdownSteps.length > 0 && (
-                state.selectedStepIndex !== null ? (
-                  <button
-                    class="reset-btn review-btn"
-                    title={state.stepStatuses.get(state.selectedStepIndex)?.status === "applying" ? "Applying..." : "Apply this step"}
-                    disabled={state.isStreaming || state.stepStatuses.get(state.selectedStepIndex)?.status === "applying"}
-                    onClick={() => onApplyStep(state.selectedStepIndex!)}
-                    dangerouslySetInnerHTML={{ __html: state.stepStatuses.get(state.selectedStepIndex)?.status === "applying" ? SPINNER_ICON : BOLT_ICON }}
-                  />
-                ) : (
+                <>
                   <button
                     class="reset-btn review-btn"
                     title="Review Breakdown"
                     disabled={state.isStreaming}
-                    onClick={() =>
+                    onClick={() => {
+                      onSelectStep(null);
                       send(
                         "Review the changes I made for the current breakdown steps. Check if I followed the guidance correctly and suggest any improvements.",
                         { skipStepRef: true },
-                      )
-                    }
+                      );
+                    }}
                     dangerouslySetInnerHTML={{ __html: REVIEW_ICON }}
                   />
-                )
+                  {state.selectedStepIndex !== null && (
+                    <button
+                      class="reset-btn review-btn"
+                      title={state.stepStatuses.get(state.selectedStepIndex)?.status === "applying" ? "Applying..." : "Apply this step"}
+                      disabled={state.isStreaming || state.stepStatuses.get(state.selectedStepIndex)?.status === "applying"}
+                      onClick={() => onApplyStep(state.selectedStepIndex!)}
+                      dangerouslySetInnerHTML={{ __html: state.stepStatuses.get(state.selectedStepIndex)?.status === "applying" ? SPINNER_ICON : BOLT_ICON }}
+                    />
+                  )}
+                </>
               )}
               <div style={{ flex: 1 }} />
               {state.isStreaming && (

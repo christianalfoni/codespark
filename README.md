@@ -23,9 +23,7 @@ Your thinking partner. Lives in the sidebar. Powered by Claude Code CLI running 
 
 ## Breakdowns, not plans
 
-Coding agents like Claude Code use **plan mode** — the AI creates a plan and then the AI implements it. You review the result. This works, but it comes with a cost: you stop building the mental model of your own codebase. You review diffs instead of writing code, and review is not the same as implementation. Reading a diff tells you _what_ changed. Writing the code teaches you _why_ it works, _how_ it connects, and _where_ the fragile parts are.
-
-CodeSpark takes a different approach. The assistant creates a **breakdown** — a list of focused steps, each targeting a specific file — but _you_ implement them. The AI helps you understand the problem, explores the codebase, and generates the context you need to move fast. Then you write the code, or let the fast editing agent handle the mechanical parts while you stay in control.
+CodeSpark replaces **plans** with **breakdowns**. The assistant creates a list of focused steps, each targeting a specific file — but _you_ implement them. The AI helps you understand the problem, explores the codebase, and generates the context you need to move fast. Then you write the code, or let the fast editing agent handle the mechanical parts while you stay in control.
 
 This matters because **you are responsible for your codebase**. Your understanding of it is not a nice-to-have — it is what makes you effective. That understanding evolves through implementation, not through review. Every time you write code, you reinforce your mental model. Every time you skip implementation and only review, that model atrophies.
 

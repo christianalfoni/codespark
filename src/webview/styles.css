@@ -71,11 +71,11 @@ body {
 }
 
 .logo-bracket {
-  fill: #ee81c3;
+  fill: var(--vscode-panelTitle-activeBorder);
 }
 
 .logo-bolt {
-  fill: #b16496;
+  fill: color-mix(in srgb, var(--vscode-panelTitle-activeBorder) 60%, transparent);
 }
 
 .logo-text {
@@ -87,7 +87,7 @@ body {
 }
 
 .logo-text-accent {
-  fill: #ee81c3;
+  fill: var(--vscode-panelTitle-activeBorder);
 }
 
 .empty-state-text {
@@ -957,6 +957,7 @@ body {
   align-items: center;
   gap: 6px;
   padding: 10px 16px 0;
+  margin-bottom: 12px;
   font-size: 12px;
   font-family: var(--vscode-editor-font-family, monospace);
   color: var(--vscode-descriptionForeground);
