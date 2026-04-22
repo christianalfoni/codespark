@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./media/logo.png" alt="CodeSpark" width="240" />
+  <img src="./media/logo.png" alt="CodeSpark" width="480" />
 </p>
 
 <p align="center"><em>A coding agent where you still code</em></p>
