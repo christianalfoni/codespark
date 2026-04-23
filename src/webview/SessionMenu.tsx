@@ -49,7 +49,7 @@ export function SessionMenu({
     <div class="session-menu-anchor" ref={menuRef}>
       <button
         class="reset-btn"
-        title="Switch session"
+        data-tooltip="Sessions"
         disabled={disabled}
         onClick={() => setOpen(!open)}
         dangerouslySetInnerHTML={{ __html: HISTORY_ICON }}

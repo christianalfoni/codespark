@@ -21,9 +21,39 @@ Your thinking partner. Lives in the sidebar. Powered by Claude Code CLI running 
 - Ask questions, explore approaches, and gather context
 - When you want to implement something, the assistant creates a **breakdown** — a list of focused steps, each targeting a specific file
 
-## Breakdowns, not plans
+### Prompt states
 
-CodeSpark replaces **plans** with **breakdowns**. The assistant creates a list of focused steps, each targeting a specific file — but _you_ implement them. The AI helps you understand the problem, explores the codebase, and generates the context you need to move fast. Then you write the code, or let the fast editing agent handle the mechanical parts while you stay in control.
+The prompt's toolbar adapts to where you are in the flow.
+
+**1. Empty conversation** — just the prompt.
+
+<p align="center">
+  <img src="./media/prompt-state-1.png" alt="Empty prompt" width="480" />
+</p>
+
+- **New session** resets the conversation
+- **Sessions** opens the history of previous sessions
+
+**2. Conversation view with a breakdown** — the assistant has produced steps, and you're viewing the full conversation. Selecting _Conversation_ keeps the chat focused on the whole breakdown rather than one step.
+
+<p align="center">
+  <img src="./media/prompt-state-2.png" alt="Prompt with breakdown, conversation selected" width="480" />
+</p>
+
+- **Review** asks the assistant to review the changes you've made against the breakdown and suggest improvements
+
+**3. Step selected** — you've picked a specific step to work on. The prompt now references that step, and a new button appears.
+
+<p align="center">
+  <img src="./media/prompt-state-3.png" alt="Prompt with a step selected" width="480" />
+</p>
+
+- **Fast Edit** hands the selected step to the fast editing agent to apply mechanically
+- Any follow-up you send is scoped to the selected step — steps act like **threads**. The exchange is also visible inline in the main conversation, so you never lose the wider context
+
+## Breakdowns
+
+A **breakdown** is a list of focused steps, each targeting a specific file — but _you_ implement them. The assistant helps you understand the problem, explores the codebase, and generates the context you need to move fast. Then you write the code, or let the fast editing agent handle the mechanical parts while you stay in control.
 
 This matters because **you are responsible for your codebase**. Your understanding of it is not a nice-to-have — it is what makes you effective. That understanding evolves through implementation, not through review. Every time you write code, you reinforce your mental model. Every time you skip implementation and only review, that model atrophies.
 
@@ -31,4 +61,4 @@ The breakdown makes this practical:
 
 - **Context generation is fast** — the assistant reads files, searches the codebase, and synthesizes what you need to know.
 - **Context is sticky** — because you implement the steps, what you learn stays with you. It becomes part of how you think about the codebase.
-- **Token cost drops dramatically** — a breakdown is a fraction of the tokens an agent spends implementing a full plan. The AI does the exploration and guidance; you do the thinking and typing. The expensive part (iterating on implementation with an LLM) is replaced by the cheap part (you, writing code with guidance).
+- **Token cost drops dramatically** — a breakdown is a fraction of the tokens an agent spends implementing changes end-to-end.

@@ -46,6 +46,26 @@ export function App({ vscode }: AppProps) {
   const inputAreaRef = useRef<HTMLDivElement>(null);
 
   useMessageHandling(setState, textareaRef, vscode);
+
+  useEffect(() => {
+    function onMouseDown(e: MouseEvent) {
+      const el = (e.target as HTMLElement)?.closest?.("[data-tooltip]");
+      if (el) el.classList.add("tooltip-suppressed");
+    }
+    function onMouseOut(e: MouseEvent) {
+      const el = (e.target as HTMLElement)?.closest?.("[data-tooltip]");
+      if (el && !el.contains(e.relatedTarget as Node)) {
+        el.classList.remove("tooltip-suppressed");
+      }
+    }
+    document.addEventListener("mousedown", onMouseDown);
+    document.addEventListener("mouseout", onMouseOut);
+    return () => {
+      document.removeEventListener("mousedown", onMouseDown);
+      document.removeEventListener("mouseout", onMouseOut);
+    };
+  }, []);
+
   const { userScrolledUp, onScroll } = useMessageListScroll(messageListRef, stepListRef);
 
   const lastEntry = state.entries[state.entries.length - 1];
@@ -371,7 +391,7 @@ export function App({ vscode }: AppProps) {
             <div class="input-toolbar">
               <button
                 class="reset-btn"
-                title="New session"
+                data-tooltip="New session"
                 disabled={state.isStreaming}
                 onClick={newSession}
                 dangerouslySetInnerHTML={{ __html: NEW_SESSION_ICON }}
@@ -388,7 +408,7 @@ export function App({ vscode }: AppProps) {
                 <>
                   <button
                     class="reset-btn review-btn"
-                    title="Review Breakdown"
+                    data-tooltip="Review breakdown"
                     disabled={state.isStreaming}
                     onClick={() => {
                       onSelectStep(null);
@@ -402,7 +422,7 @@ export function App({ vscode }: AppProps) {
                   {state.selectedStepIndex !== null && (
                     <button
                       class="reset-btn review-btn"
-                      title={state.stepStatuses.get(state.selectedStepIndex)?.status === "applying" ? "Applying..." : "Apply this step"}
+                      data-tooltip={state.stepStatuses.get(state.selectedStepIndex)?.status === "applying" ? "Applying…" : "Fast Edit — apply this step"}
                       disabled={state.isStreaming || state.stepStatuses.get(state.selectedStepIndex)?.status === "applying"}
                       onClick={() => onApplyStep(state.selectedStepIndex!)}
                       dangerouslySetInnerHTML={{ __html: state.stepStatuses.get(state.selectedStepIndex)?.status === "applying" ? SPINNER_ICON : BOLT_ICON }}
