@@ -47,15 +47,24 @@ export function App({ vscode }: AppProps) {
 
   useMessageHandling(setState, textareaRef, vscode);
   const { userScrolledUp, onScroll } = useMessageListScroll(messageListRef, stepListRef);
+
+  const lastEntry = state.entries[state.entries.length - 1];
+  const activeUserIndex =
+    state.isStreaming && lastEntry?.role === "assistant"
+      ? state.entries.length - 2
+      : -1;
+
   const { registerUserMessage } = useStickyUserMessage(
     messageListRef,
     pinnedQueryRef,
     state.selectedStepIndex,
+    activeUserIndex,
   );
   const { registerUserMessage: registerStepUserMessage } = useStickyUserMessage(
     stepListRef,
     stepPinnedQueryRef,
     state.selectedStepIndex,
+    activeUserIndex,
   );
   const autoResize = useTextareaAutoResize(textareaRef);
   useCodeActions(messageListRef, pinnedQueryRef, state.isStreaming, state.selectedStepIndex === null ? "conversation" : null);
@@ -263,6 +272,7 @@ export function App({ vscode }: AppProps) {
                 isStreaming={state.isStreaming}
                 activeTool={state.activeTool}
                 registerUserMessage={registerStepUserMessage}
+                activeUserIndex={activeUserIndex}
               />
             </div>
           </>
@@ -293,6 +303,7 @@ export function App({ vscode }: AppProps) {
                         content={entry.content}
                         stepRef={entry.stepRef}
                         registerRef={registerUserMessage}
+                        isActive={i === activeUserIndex}
                       />
                     );
                   }

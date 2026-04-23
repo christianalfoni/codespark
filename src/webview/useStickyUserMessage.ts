@@ -13,11 +13,25 @@ export function useStickyUserMessage(
   messageListRef: RefObject<HTMLDivElement>,
   pinnedRef: RefObject<HTMLDivElement>,
   key?: unknown,
+  activeUserIndex: number = -1,
 ) {
   const elementsRef = useRef<Map<number, HTMLElement>>(new Map());
   const rafRef = useRef(0);
   const currentIndexRef = useRef(-1);
+  const activeIndexRef = useRef(activeUserIndex);
+  activeIndexRef.current = activeUserIndex;
   const MIRRORED_CLASS = "message-user--mirrored";
+  const ACTIVE_CLASS = "message-user--active";
+
+  useEffect(() => {
+    const pinned = pinnedRef.current;
+    if (!pinned) return;
+    pinned.classList.toggle(
+      ACTIVE_CLASS,
+      currentIndexRef.current !== -1 &&
+        currentIndexRef.current === activeUserIndex,
+    );
+  }, [pinnedRef, activeUserIndex]);
 
   useEffect(() => {
     const root = messageListRef.current;
@@ -62,12 +76,17 @@ export function useStickyUserMessage(
         if (lastIndex === -1) {
           pinned!.style.display = "none";
           pinned!.style.opacity = "";
+          pinned!.classList.remove(ACTIVE_CLASS);
         } else {
           const source = elementsRef.current.get(lastIndex)!;
           pinned!.innerHTML = source.innerHTML;
           pinned!.style.display = "";
           syncDimensions();
           source.classList.add(MIRRORED_CLASS);
+          pinned!.classList.toggle(
+            ACTIVE_CLASS,
+            lastIndex === activeIndexRef.current,
+          );
         }
       }
 
@@ -123,6 +142,7 @@ export function useStickyUserMessage(
       if (current) current.classList.remove(MIRRORED_CLASS);
       pinned.style.display = "none";
       pinned.style.opacity = "";
+      pinned.classList.remove(ACTIVE_CLASS);
       currentIndexRef.current = -1;
     };
   }, [messageListRef, pinnedRef, key]);

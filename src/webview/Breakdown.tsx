@@ -47,7 +47,7 @@ export function Breakdown({ steps, selectedIndex, onSelect }: BreakdownProps) {
   );
 }
 
-export function StepDetail({ step, stepIndex, stepStatus, entries, isStreaming, activeTool, registerUserMessage }: {
+export function StepDetail({ step, stepIndex, stepStatus, entries, isStreaming, activeTool, registerUserMessage, activeUserIndex }: {
   step: BreakdownStep;
   stepIndex: number;
   stepStatus?: { status: "applying" | "done" | "error"; text?: string };
@@ -55,6 +55,7 @@ export function StepDetail({ step, stepIndex, stepStatus, entries, isStreaming, 
   isStreaming: boolean;
   activeTool: string | null;
   registerUserMessage: (index: number, el: HTMLElement | null) => void;
+  activeUserIndex: number;
 }) {
   // Collect entry pairs (user + following assistant) tagged to this step
   const relatedEntries: Entry[] = [];
@@ -87,14 +88,16 @@ export function StepDetail({ step, stepIndex, stepStatus, entries, isStreaming, 
         }}
       />
       {relatedEntries.map((entry, i) => {
-        const isLastGlobal = entries.indexOf(entry) === lastEntryIndex;
+        const globalIndex = entries.indexOf(entry);
+        const isLastGlobal = globalIndex === lastEntryIndex;
         if (entry.role === "user") {
           return (
             <UserMessage
               key={i}
-              index={i}
+              index={globalIndex}
               content={entry.content}
               registerRef={registerUserMessage}
+              isActive={globalIndex === activeUserIndex}
             />
           );
         }

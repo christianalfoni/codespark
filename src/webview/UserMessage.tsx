@@ -26,11 +26,13 @@ export function UserMessage({
   index,
   stepRef,
   registerRef,
+  isActive,
 }: {
   content: string;
   index: number;
   stepRef?: StepRef;
   registerRef: (index: number, el: HTMLElement | null) => void;
+  isActive?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const { truncated, isTruncated } = truncateContent(content);
@@ -45,7 +47,7 @@ export function UserMessage({
   return (
     <div
       ref={elRef}
-      class="message message-user"
+      class={`message message-user${isActive ? " message-user--active" : ""}`}
       onClick={isTruncated ? () => setExpanded((e) => !e) : undefined}
       style={isTruncated ? { cursor: "pointer" } : undefined}
     >

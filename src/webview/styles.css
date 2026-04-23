@@ -116,6 +116,29 @@ body {
   opacity: 0;
 }
 
+.message-user--active {
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    transparent 35%,
+    var(--vscode-list-hoverBackground) 50%,
+    transparent 65%,
+    transparent 100%
+  );
+  background-size: 250% 100%;
+  background-repeat: no-repeat;
+  animation: user-message-shimmer 2.4s ease-in-out infinite;
+}
+
+@keyframes user-message-shimmer {
+  0% {
+    background-position: 130% 0;
+  }
+  100% {
+    background-position: -130% 0;
+  }
+}
+
 .pinned-query {
   position: absolute;
   top: 0;
