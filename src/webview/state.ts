@@ -31,6 +31,7 @@ export interface UserEntry {
   role: "user";
   content: string;
   stepRef?: StepRef;
+  actionLabel?: string;
 }
 
 export type Entry = UserEntry | AssistantEntry;
@@ -42,6 +43,10 @@ export interface TokenUsage {
   totalOutputTokens: number;
   totalCacheReadTokens: number;
   totalCacheCreationTokens: number;
+}
+
+export interface Features {
+  stackedCommitsEnabled: boolean;
 }
 
 export interface ChatState {
@@ -56,6 +61,7 @@ export interface ChatState {
   selectedStepIndex: number | null;
   stepStatuses: Map<number, { status: "applying" | "done" | "error"; text?: string }>;
   usage: TokenUsage;
+  features: Features;
 }
 
 export function createInitialState(saved: any): ChatState {
@@ -76,6 +82,7 @@ export function createInitialState(saved: any): ChatState {
       totalCacheReadTokens: 0,
       totalCacheCreationTokens: 0,
     },
+    features: { stackedCommitsEnabled: false },
   };
 
   if (saved?.entries) {

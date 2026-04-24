@@ -21,6 +21,7 @@ import {
   copyCodeWithFeedback,
   handleCommandClick,
   REVIEW_ICON,
+  STACK_ICON,
 } from "./utils";
 
 const SPINNER_ICON = `<svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14" class="step-apply-spin"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zm0 1.5a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11z" opacity="0.25"/><path d="M8 1a7 7 0 0 1 7 7h-1.5A5.5 5.5 0 0 0 8 2.5V1z"/></svg>`;
@@ -114,14 +115,14 @@ export function App({ vscode }: AppProps) {
     wasStreaming.current = state.isStreaming;
   }, [state.isStreaming]);
 
-  function send(text: string, opts?: { skipStepRef?: boolean }) {
+  function send(text: string, opts?: { skipStepRef?: boolean; actionLabel?: string }) {
     const step =
       !opts?.skipStepRef && state.selectedStepIndex !== null
         ? state.breakdownSteps[state.selectedStepIndex]
         : null;
     const userEntry: Entry = step
-      ? { role: "user", content: text, stepRef: { stepIndex: state.selectedStepIndex!, title: step.title, filePath: step.filePath } }
-      : { role: "user", content: text };
+      ? { role: "user", content: text, stepRef: { stepIndex: state.selectedStepIndex!, title: step.title, filePath: step.filePath }, ...(opts?.actionLabel ? { actionLabel: opts.actionLabel } : {}) }
+      : { role: "user", content: text, ...(opts?.actionLabel ? { actionLabel: opts.actionLabel } : {}) };
     const newEntries: Entry[] = [
       ...state.entries,
       userEntry,
@@ -322,6 +323,7 @@ export function App({ vscode }: AppProps) {
                         index={i}
                         content={entry.content}
                         stepRef={entry.stepRef}
+                        actionLabel={entry.actionLabel}
                         registerRef={registerUserMessage}
                         isActive={i === activeUserIndex}
                       />
@@ -387,6 +389,8 @@ export function App({ vscode }: AppProps) {
               rows={1}
               onInput={autoResize}
               onKeyDown={onKeyDown}
+              onFocus={() => vscode.postMessage({ type: "input-focus", focused: true })}
+              onBlur={() => vscode.postMessage({ type: "input-focus", focused: false })}
             />
             <div class="input-toolbar">
               <button
@@ -406,6 +410,21 @@ export function App({ vscode }: AppProps) {
               )}
               {state.breakdownSteps.length > 0 && (
                 <>
+                  {state.features.stackedCommitsEnabled && (
+                    <button
+                      class="reset-btn review-btn"
+                      data-tooltip="Create stacked commits from breakdown"
+                      disabled={state.isStreaming}
+                      onClick={() => {
+                        onSelectStep(null);
+                        send(
+                          "Create stacked commits for my current breakdown. First call git_diff (no args) to see all uncommitted changes, then split them into one commit per breakdown step and call create_stacked_commits with the ordered list. Each patch must apply on top of the previous one — be careful with hunk ordering if steps touch the same file. If a patch fails, re-slice and retry. Commit messages should be in the form 'step-title: short summary'.",
+                          { skipStepRef: true, actionLabel: "Stack commits" },
+                        );
+                      }}
+                      dangerouslySetInnerHTML={{ __html: STACK_ICON }}
+                    />
+                  )}
                   <button
                     class="reset-btn review-btn"
                     data-tooltip="Review breakdown"
@@ -414,7 +433,7 @@ export function App({ vscode }: AppProps) {
                       onSelectStep(null);
                       send(
                         "Review the changes I made for the current breakdown steps. Check if I followed the guidance correctly and suggest any improvements.",
-                        { skipStepRef: true },
+                        { skipStepRef: true, actionLabel: "Review breakdown" },
                       );
                     }}
                     dangerouslySetInnerHTML={{ __html: REVIEW_ICON }}

@@ -2,7 +2,7 @@
   "name": "codespark-agent",
   "displayName": "CodeSpark",
   "description": "A coding agent where you still code",
-  "version": "0.24.7",
+  "version": "0.25.0",
   "publisher": "codespark",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -79,7 +79,13 @@
     "colors": [],
     "configuration": {
       "title": "CodeSpark",
-      "properties": {}
+      "properties": {
+        "codeSpark.experiments.stackedCommits": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable the 'Stack commits' action that splits uncommitted changes into one commit per breakdown step. Requires a window reload to take effect."
+        }
+      }
     }
   },
   "scripts": {

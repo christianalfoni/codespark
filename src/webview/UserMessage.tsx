@@ -25,12 +25,14 @@ export function UserMessage({
   content,
   index,
   stepRef,
+  actionLabel,
   registerRef,
   isActive,
 }: {
   content: string;
   index: number;
   stepRef?: StepRef;
+  actionLabel?: string;
   registerRef: (index: number, el: HTMLElement | null) => void;
   isActive?: boolean;
 }) {
@@ -43,6 +45,17 @@ export function UserMessage({
     registerRef(index, elRef.current);
     return () => registerRef(index, null);
   }, [index, registerRef]);
+
+  if (actionLabel) {
+    return (
+      <div
+        ref={elRef}
+        class={`message message-user message-user--action${isActive ? " message-user--active" : ""}`}
+      >
+        <span class="message-user__action-label">{actionLabel}</span>
+      </div>
+    );
+  }
 
   return (
     <div

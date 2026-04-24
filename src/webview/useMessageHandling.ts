@@ -46,6 +46,7 @@ export function useMessageHandling(
             : prev.contextState,
           sessions: msg.sessions,
           activeSessionId: msg.activeSessionId,
+          features: msg.features ?? prev.features,
         };
       }
       case "restore": {
@@ -59,6 +60,7 @@ export function useMessageHandling(
             : ("none" as ContextState),
           sessions: msg.sessions,
           activeSessionId: msg.activeSessionId,
+          features: msg.features ?? prev.features,
           usage: {
             totalInputTokens: 0,
             totalOutputTokens: 0,

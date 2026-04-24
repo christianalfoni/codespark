@@ -14,6 +14,9 @@ import { z } from "zod";
 import * as net from "net";
 import * as http from "http";
 import * as childProcess from "child_process";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
 
 // ---------------------------------------------------------------------------
 // IPC client — connects to the extension's Unix socket
@@ -395,6 +398,176 @@ or provide a ref (e.g. "main", "HEAD~3") to diff against.`,
       }
     },
   );
+
+  // -------------------------------------------------------------------------
+  // Stacked commits (experimental — gated on CODESPARK_STACKED_COMMITS env)
+  // -------------------------------------------------------------------------
+
+  if (!process.env.CODESPARK_STACKED_COMMITS) {
+    return;
+  }
+
+  // @ts-ignore
+  server.tool(
+    "create_stacked_commits",
+    `Split the current working-tree changes into a sequence of commits.
+
+Use this to turn breakdown steps into stacked commits: one commit per logical step.
+You supply an ordered list of { message, patch } entries. Each patch is a unified
+diff (git-format) that will be applied on top of the previous commit.
+
+Workflow:
+  1. Call git_diff (no args) to see all unstaged changes vs HEAD.
+  2. Decide how to split those changes into ordered patches — one per breakdown step.
+     Patches apply sequentially, so patch N's line numbers must match the tree state
+     AFTER patches 1..N-1 have been applied.
+  3. Call this tool with the commits.
+
+The tool does the following, atomically:
+  - Captures a safety snapshot of current tracked changes (git diff HEAD).
+  - Resets the working tree to HEAD (untracked files are preserved).
+  - For each commit in order: git apply --index <patch>, then git commit -m <message>.
+  - If any patch fails to apply or any commit fails, everything is rolled back:
+    the original HEAD is restored and the safety snapshot is reapplied, so your
+    working tree is exactly as it was before the call.
+
+Preconditions:
+  - There must be tracked changes vs HEAD (otherwise there is nothing to split).
+  - No merge, rebase, or cherry-pick in progress.
+
+On failure, the error message tells you which patch failed and what git said.
+Re-slice the diff and try again.
+
+On success, returns the short SHAs and messages of the new commits, plus a note
+if any tracked changes were left uncommitted (i.e. your patches did not cover the
+full diff).`,
+    {
+      commits: z
+        .array(
+          z.object({
+            message: z.string().describe("Commit message (first line is the subject)"),
+            patch: z
+              .string()
+              .describe(
+                "Unified diff (git-format) to apply for this commit. Must be applicable on top of all previous patches in the list.",
+              ),
+          }),
+        )
+        .min(1)
+        .describe("Ordered list of commits to create"),
+    },
+    async ({ commits }) => {
+      try {
+        const result = await createStackedCommits(commits, runGit, gitCwd);
+        return { content: [{ type: "text" as const, text: result }] };
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return {
+          content: [{ type: "text" as const, text: `Error: ${msg}` }],
+          isError: true,
+        };
+      }
+    },
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Stacked-commit helpers
+// ---------------------------------------------------------------------------
+
+async function createStackedCommits(
+  commits: Array<{ message: string; patch: string }>,
+  runGit: (args: string[]) => Promise<string>,
+  gitCwd: string,
+): Promise<string> {
+  // Reject if a merge/rebase/cherry-pick is in progress — recovery is non-trivial.
+  const gitDir = (await runGit(["rev-parse", "--git-dir"])).trim();
+  const gitDirAbs = path.resolve(gitCwd, gitDir);
+  const inProgressMarkers = ["MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "rebase-apply", "rebase-merge"];
+  for (const marker of inProgressMarkers) {
+    if (fs.existsSync(path.join(gitDirAbs, marker))) {
+      throw new Error(`Cannot create stacked commits while '${marker}' is in progress. Finish or abort it first.`);
+    }
+  }
+
+  const originalHead = (await runGit(["rev-parse", "HEAD"])).trim();
+  const safetyPatch = await runGit(["diff", "HEAD"]);
+  if (!safetyPatch.trim()) {
+    throw new Error("No tracked changes vs HEAD — nothing to split into commits.");
+  }
+
+  const stamp = Date.now();
+  const safetyPath = path.join(os.tmpdir(), `codespark-safety-${stamp}.patch`);
+  fs.writeFileSync(safetyPath, safetyPatch);
+
+  // Reset tracked changes (keeps untracked files). After this, the safety patch
+  // in safetyPath is the only record of the user's in-flight work.
+  await runGit(["reset", "--hard", "HEAD"]);
+
+  const created: Array<{ sha: string; message: string }> = [];
+  const tempFiles: string[] = [safetyPath];
+
+  try {
+    for (let i = 0; i < commits.length; i++) {
+      const { message, patch } = commits[i];
+      const patchPath = path.join(os.tmpdir(), `codespark-commit-${stamp}-${i}.patch`);
+      // git apply is strict about trailing newlines
+      const normalized = patch.endsWith("\n") ? patch : patch + "\n";
+      fs.writeFileSync(patchPath, normalized);
+      tempFiles.push(patchPath);
+
+      try {
+        await runGit(["apply", "--check", "--index", patchPath]);
+      } catch (err: unknown) {
+        const gitMsg = err instanceof Error ? err.message : String(err);
+        throw new Error(
+          `Patch ${i + 1} of ${commits.length} ("${firstLine(message)}") does not apply cleanly:\n${gitMsg}`,
+        );
+      }
+
+      await runGit(["apply", "--index", patchPath]);
+      await runGit(["commit", "-m", message]);
+      const sha = (await runGit(["rev-parse", "--short", "HEAD"])).trim();
+      created.push({ sha, message });
+    }
+
+    const leftover = (await runGit(["diff", "HEAD"])).trim();
+
+    let report = `Created ${created.length} commit(s):\n`;
+    for (const c of created) {
+      report += `  ${c.sha}  ${firstLine(c.message)}\n`;
+    }
+    if (leftover) {
+      report += `\nNote: tracked changes remain in the working tree (your patches did not cover the full diff). Review with git_diff.`;
+    }
+    return report;
+  } catch (err: unknown) {
+    // Roll back: restore HEAD + replay the safety snapshot.
+    try {
+      await runGit(["reset", "--hard", originalHead]);
+      await runGit(["apply", safetyPath]);
+    } catch (rollbackErr: unknown) {
+      const rbMsg = rollbackErr instanceof Error ? rollbackErr.message : String(rollbackErr);
+      const origMsg = err instanceof Error ? err.message : String(err);
+      throw new Error(
+        `${origMsg}\n\nRollback also failed (${rbMsg}). Your original changes are saved at ${safetyPath} — apply manually with: git apply "${safetyPath}"`,
+      );
+    }
+    throw err;
+  } finally {
+    for (const f of tempFiles) {
+      try {
+        fs.unlinkSync(f);
+      } catch {
+        // best effort
+      }
+    }
+  }
+}
+
+function firstLine(s: string): string {
+  const idx = s.indexOf("\n");
+  return idx === -1 ? s : s.slice(0, idx);
 }
 
 // ---------------------------------------------------------------------------

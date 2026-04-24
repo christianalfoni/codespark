@@ -25,6 +25,7 @@ function isClaudeCliAvailable(): boolean {
   }
 }
 
+
 export function activate(context: vscode.ExtensionContext) {
   const log = vscode.window.createOutputChannel("CodeSpark");
   context.subscriptions.push(log);
@@ -57,6 +58,9 @@ export function activate(context: vscode.ExtensionContext) {
   const mcpPort = 30000 + (process.pid % 10000);
   const mcpServerScript = path.join(context.extensionPath, "out", "mcp-server.js");
   const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? "";
+  const stackedCommitsEnabled = vscode.workspace
+    .getConfiguration("codeSpark.experiments")
+    .get<boolean>("stackedCommits", false);
 
   // Wait for IPC socket to be ready before spawning MCP server
   ipcServer.ready.then(() => {
@@ -66,6 +70,7 @@ export function activate(context: vscode.ExtensionContext) {
         CODESPARK_SOCKET: ipcServer.socketPath,
         CODESPARK_MCP_PORT: String(mcpPort),
         CODESPARK_WORKSPACE: workspaceFolder,
+        CODESPARK_STACKED_COMMITS: stackedCommitsEnabled ? "1" : "",
       },
       stdio: ["pipe", "pipe", "pipe"],
     });
@@ -140,7 +145,7 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(watcher);
 
   // Assistant agent webview panel
-  const assistantView = new AssistantViewProvider(context.extensionUri, log, mcpConfigPath, ipcServer, decorationProvider);
+  const assistantView = new AssistantViewProvider(context.extensionUri, log, mcpConfigPath, ipcServer, decorationProvider, { stackedCommitsEnabled });
 
   context.subscriptions.push(
     vscode.commands.registerCommand("codeSpark.showStats", () => {
@@ -157,15 +162,15 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(
     vscode.commands.registerCommand("codeSpark.openAssistant", async () => {
+      const wholeFile = assistantView.isInputFocused;
       const editor = vscode.window.activeTextEditor;
       if (editor) {
-        const filePath = vscode.workspace.asRelativePath(
-          editor.document.uri.fsPath,
-        );
-        const cursorLine = editor.selection.active.line + 1;
-        const selection = editor.selection.isEmpty
-          ? undefined
-          : editor.document.getText(editor.selection);
+        const filePath = vscode.workspace.asRelativePath(editor.document.uri.fsPath);
+        const cursorLine = wholeFile ? 1 : editor.selection.active.line + 1;
+        const selection =
+          wholeFile || editor.selection.isEmpty
+            ? undefined
+            : editor.document.getText(editor.selection);
         assistantView.startFileSession({ filePath, cursorLine, selection });
       }
       await vscode.commands.executeCommand("codeSpark.assistant.focus");

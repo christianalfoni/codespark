@@ -42,6 +42,11 @@ export interface ApplyStepMessage {
   index: number;
 }
 
+export interface InputFocusMessage {
+  type: "input-focus";
+  focused: boolean;
+}
+
 export type WebviewToExtension =
   | SendMessage
   | CancelMessage
@@ -52,7 +57,8 @@ export type WebviewToExtension =
   | NewSessionMessage
   | SwitchSessionMessage
   | SelectStepMessage
-  | ApplyStepMessage;
+  | ApplyStepMessage
+  | InputFocusMessage;
 
 export interface SessionInfo {
   id: string;
@@ -65,6 +71,7 @@ export interface InitMessage {
   hasContext: boolean;
   sessions: SessionInfo[];
   activeSessionId: string | null;
+  features?: import("./state").Features;
 }
 export interface TurnStartMessage {
   type: "turn-start";
@@ -120,6 +127,7 @@ export interface RestoreMessage {
   sessions: SessionInfo[];
   activeSessionId: string | null;
   hasContext: boolean;
+  features?: import("./state").Features;
 }
 
 export interface InjectUserMessage {

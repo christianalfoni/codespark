@@ -60,6 +60,12 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
   private _steps: BreakdownStepInput[] = [];
   /** Pre-warmed inline agents keyed by relative file path + content hash */
   private _warmCache = new Map<string, { hash: string; promise: Promise<PreparedInlineEdit> }>();
+  /** Whether the webview's prompt input currently holds focus */
+  private _isInputFocused = false;
+
+  public get isInputFocused(): boolean {
+    return this._isInputFocused;
+  }
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
@@ -67,6 +73,7 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
     private readonly _mcpConfigPath: string | undefined,
     private readonly _ipcServer: IpcServer,
     private readonly _decorationProvider: InstructionFileDecorationProvider,
+    private readonly _features: { stackedCommitsEnabled: boolean },
   ) {
     this._ipcServer.onBreakdown((steps) => {
       this._steps = steps;
@@ -154,18 +161,24 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
         case "apply-step":
           this._handleApplyStep(msg.index);
           break;
+        case "input-focus":
+          this._isInputFocused = !!msg.focused;
+          break;
       }
     });
 
     webviewView.onDidChangeVisibility(() => {
       if (webviewView.visible) {
         this._sendInit();
+      } else {
+        this._isInputFocused = false;
       }
     });
 
     webviewView.onDidDispose(() => {
       this._cancelCurrent();
       this._view = undefined;
+      this._isInputFocused = false;
     });
   }
 
@@ -183,6 +196,7 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
         sessions: getSessionInfos(),
         activeSessionId: getActiveSessionId(),
         hasContext: !!session.summary,
+        features: this._features,
       });
     } else {
       this._steps = session?.breakdownSteps ?? [];
@@ -191,6 +205,7 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
         hasContext: !!getAssistantSummary(),
         sessions: getSessionInfos(),
         activeSessionId: getActiveSessionId(),
+        features: this._features,
       });
     }
     this._postBreakdown();

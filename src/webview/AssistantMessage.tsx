@@ -12,6 +12,7 @@ const TOOL_DISPLAY_NAMES: Record<string, string> = {
   mcp__codespark__edit_file: "Edit File",
   mcp__codespark__write_breakdown: "Writing Breakdown",
   mcp__codespark__update_breakdown_step: "Updating Breakdown",
+  mcp__codespark__create_stacked_commits: "Creating Stacked Commits",
 };
 
 interface ToolGroup {
