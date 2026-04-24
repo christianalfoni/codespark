@@ -291,6 +291,19 @@ adjustments instead of rewriting the entire breakdown with write_breakdown.`,
     });
   }
 
+  async function matchingRemote(ref: string): Promise<string | null> {
+    const stripped = ref.startsWith("refs/remotes/") ? ref.slice("refs/remotes/".length) : ref;
+    const slash = stripped.indexOf("/");
+    if (slash <= 0) return null;
+    const candidate = stripped.slice(0, slash);
+    try {
+      const remotes = (await runGit(["remote"])).split("\n").map((r) => r.trim()).filter(Boolean);
+      return remotes.includes(candidate) ? candidate : null;
+    } catch {
+      return null;
+    }
+  }
+
   // @ts-ignore
   server.tool(
     "git_status",
@@ -342,6 +355,16 @@ or provide a ref (e.g. "main", "HEAD~3") to diff against.`,
     },
     async ({ staged, ref, file }) => {
       try {
+        if (ref) {
+          const remote = await matchingRemote(ref);
+          if (remote) {
+            try {
+              await runGit(["fetch", "--quiet", remote]);
+            } catch {
+              // Swallow fetch errors (offline, auth, etc.) and fall through to the diff.
+            }
+          }
+        }
         const args = ["diff"];
         if (staged) args.push("--cached");
         if (ref) args.push(ref);
