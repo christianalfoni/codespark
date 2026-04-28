@@ -75,6 +75,8 @@ export async function prepareInlineEdit(
     `[cli-inline:timing] Session prep: ${Date.now() - t0}ms (${files.length} file(s))`,
   );
 
+  const tSpawn = Date.now();
+
   const args = [
     "--print",
     "--input-format",
@@ -121,34 +123,10 @@ export async function prepareInlineEdit(
     fs.promises.unlink(sessionFile).catch(() => {});
   });
 
-  // Pre-warm the prompt cache
-  const warmupMsg = JSON.stringify({
-    type: "user",
-    message: {
-      role: "user",
-      content: "Ok, hold on. I'll tell you what to do next.",
-    },
-  });
-  proc.stdin!.write(warmupMsg + "\n");
-
-  // Set up readline and wait for warmup result
   const rl = readline.createInterface({ input: proc.stdout! });
-  await new Promise<void>((resolve) => {
-    const onLine = (line: string) => {
-      if (!line.trim()) return;
-      try {
-        const msg = JSON.parse(line);
-        if (msg.type === "result") {
-          rl.removeListener("line", onLine);
-          resolve();
-        }
-      } catch {}
-    };
-    rl.on("line", onLine);
-  });
 
   log.appendLine(
-    `[cli-inline:timing] Prepare + warm: ${Date.now() - t0}ms`,
+    `[cli-inline:timing] Spawn: ${Date.now() - tSpawn}ms`,
   );
 
   return { proc, rl, sessionFile, filePath: ctx.filePath, absFilePath };
@@ -198,20 +176,7 @@ export async function executeInlineEdit(
   const toolsInFlight = new Map<string, { name: string; start: number }>();
   const activeToolBlocks = new Map<number, { name: string; json: string }>();
   let textResponseContent = "";
-  // Accumulated deltas: input_tokens from the API is cumulative (full context),
-  // so we subtract the previous turn's input to get "added input". output_tokens
-  // is already per-turn, so we add it as-is.
-  let addedInputTokens = 0;
-  let addedOutputTokens = 0;
-  let addedCacheCreationInputTokens = 0;
-  let addedCacheReadInputTokens = 0;
-  // Track raw API values for delta computation
-  let lastRawInput = 0;
-  let lastTurnRawInput = 0;
-  let lastTurnOutputTokens = 0;
-  let lastTurnCacheCreation = 0;
-  let lastTurnCacheRead = 0;
-  let numTurns = 0;
+  let resultUsage: { inputTokens: number; outputTokens: number; cacheReadInputTokens: number; cacheCreationInputTokens: number } | null = null;
   const editedLines: Array<{ startLine: number; endLine: number }> = [];
 
   let resolveOnDone: (() => void) | undefined;
@@ -252,15 +217,6 @@ export async function executeInlineEdit(
 
         if (msg.type === "stream_event") {
           const evt = msg.event;
-
-          if (evt?.type === "message_start") {
-            numTurns++;
-          }
-
-          // message_delta arrives at end of streaming with final output_tokens
-          if (evt?.type === "message_delta" && evt.usage && typeof evt.usage.output_tokens === "number") {
-            lastTurnOutputTokens = evt.usage.output_tokens;
-          }
 
           if (evt?.type === "content_block_delta" && !ttftLogged) {
             ttftLogged = true;
@@ -324,32 +280,6 @@ export async function executeInlineEdit(
           }
         }
 
-        // Token counting — keep overwriting per-turn values; the last partial
-        // assistant message has the most accurate counts.
-        if (msg.type === "assistant") {
-          const usage = msg.message?.usage;
-          if (usage) {
-            const rawInput = (usage.input_tokens || 0) + (usage.cache_read_input_tokens || 0) + (usage.cache_creation_input_tokens || 0);
-            lastTurnRawInput = rawInput;
-            lastTurnOutputTokens = usage.output_tokens || 0;
-            lastTurnCacheCreation = usage.cache_creation_input_tokens || 0;
-            lastTurnCacheRead = usage.cache_read_input_tokens || 0;
-          }
-        }
-
-        // On new turn, flush the previous turn's delta
-        if (msg.type === "stream_event" && msg.event?.type === "message_start" && lastTurnRawInput > 0) {
-          addedInputTokens += lastTurnRawInput - lastRawInput;
-          addedOutputTokens += lastTurnOutputTokens;
-          addedCacheCreationInputTokens += lastTurnCacheCreation;
-          addedCacheReadInputTokens += lastTurnCacheRead;
-          lastRawInput = lastTurnRawInput;
-          lastTurnRawInput = 0;
-          lastTurnOutputTokens = 0;
-          lastTurnCacheCreation = 0;
-          lastTurnCacheRead = 0;
-        }
-
         // Tool result logging
         if (msg.type === "user") {
           const content = msg.message?.content;
@@ -369,28 +299,29 @@ export async function executeInlineEdit(
         }
 
         if (msg.type === "result") {
-          // Flush the final turn's delta
-          if (lastTurnRawInput > 0) {
-            addedInputTokens += lastTurnRawInput - lastRawInput;
-            addedOutputTokens += lastTurnOutputTokens;
-            addedCacheCreationInputTokens += lastTurnCacheCreation;
-            addedCacheReadInputTokens += lastTurnCacheRead;
-            lastRawInput = lastTurnRawInput;
-            lastTurnRawInput = 0;
-          }
-
           if (msg.subtype === "success") {
             if (!editToolSeen && textResponseContent.trim()) {
               log.appendLine(
                 `[cli-inline:no-edit] LLM responded with text instead of edits: ${textResponseContent.trim()}`,
               );
             }
+            const u = msg.usage;
+            if (u) {
+              resultUsage = {
+                inputTokens: u.input_tokens || 0,
+                outputTokens: u.output_tokens || 0,
+                cacheReadInputTokens: u.cache_read_input_tokens || 0,
+                cacheCreationInputTokens: u.cache_creation_input_tokens || 0,
+              };
+            }
             log.appendLine(
-              `[cli-inline] Done (${msg.num_turns ?? numTurns} turns, $${msg.total_cost_usd?.toFixed(4) ?? "?"})`,
+              `[cli-inline] Done (${msg.num_turns} turns, $${msg.total_cost_usd?.toFixed(4) ?? "?"})`,
             );
-            log.appendLine(
-              `[cli-inline:cache] creation=${addedCacheCreationInputTokens}, read=${addedCacheReadInputTokens}, input=${addedInputTokens}, output=${addedOutputTokens}`,
-            );
+            if (resultUsage) {
+              log.appendLine(
+                `[cli-inline:tokens] in=${resultUsage.inputTokens}, cr=${resultUsage.cacheReadInputTokens}, cc=${resultUsage.cacheCreationInputTokens}, out=${resultUsage.outputTokens}`,
+              );
+            }
           } else {
             const errors = msg.errors?.join("; ") ?? "Unknown error";
             log.appendLine(`[cli-inline] Error: ${errors}`);
@@ -414,30 +345,18 @@ export async function executeInlineEdit(
     rejectOnDone?.(err);
   });
 
-  // Return as soon as the edit lands — no need to wait for the LLM to finish.
-  // Fall back to donePromise if the agent responds with text only (no edit).
+  // Always wait for the result message so we can capture accurate cumulative
+  // token counts from result.usage. The edit is applied by the MCP server
+  // independently, so the user sees the change in the editor before this returns.
   try {
-    await Promise.race([editPromise, donePromise]);
+    await donePromise;
   } finally {
     ipcEditSub.dispose();
     ipcServer.allowedEditFile = null;
-    // Close stdin so the CLI finishes gracefully in the background.
-    // Don't kill — let it complete the current tool call to avoid errors.
-    proc.stdin?.end();
   }
 
   const latencyMs = Date.now() - tSend;
   log.appendLine(`[cli-inline:timing] Total (user-perceived): ${latencyMs}ms`);
-
-  // If we exited early (edit landed before result), flush whatever we have
-  if (lastTurnRawInput > 0) {
-    addedInputTokens += lastTurnRawInput - lastRawInput;
-    addedOutputTokens += lastTurnOutputTokens;
-    addedCacheCreationInputTokens += lastTurnCacheCreation;
-    addedCacheReadInputTokens += lastTurnCacheRead;
-    lastRawInput = lastTurnRawInput;
-    lastTurnRawInput = 0;
-  }
 
   return {
     hasEdits,
@@ -446,10 +365,10 @@ export async function executeInlineEdit(
       ? textResponseContent.trim()
       : undefined,
     latencyMs,
-    inputTokens: addedInputTokens,
-    outputTokens: addedOutputTokens,
-    cacheReadInputTokens: addedCacheReadInputTokens,
-    cacheCreationInputTokens: addedCacheCreationInputTokens,
+    inputTokens: resultUsage?.inputTokens ?? 0,
+    outputTokens: resultUsage?.outputTokens ?? 0,
+    cacheReadInputTokens: resultUsage?.cacheReadInputTokens ?? 0,
+    cacheCreationInputTokens: resultUsage?.cacheCreationInputTokens ?? 0,
   };
 }
 

@@ -166,13 +166,22 @@ export function appendAssistantContext(
   const parts: string[] = [];
   if (existing) parts.push(existing);
 
-  let entry = `### Q: ${userPrompt}\n\n${response}`;
+  let entry = `### Q: ${userPrompt.slice(0, 500)}\n\n${response.slice(0, 2000)}`;
   if (filesRead.length > 0) {
     entry += `\n\nFiles referenced: ${filesRead.join(", ")}`;
   }
   parts.push(entry);
 
-  const newContext = parts.join("\n\n---\n\n");
+  // Keep only the last ~8k chars so the injected context doesn't grow unbounded.
+  // This is only used when a fresh process is needed (extension restart etc.);
+  // live sessions carry full history in-process.
+  let newContext = parts.join("\n\n---\n\n");
+  const MAX_CHARS = 8_000;
+  if (newContext.length > MAX_CHARS) {
+    const truncated = newContext.slice(newContext.length - MAX_CHARS);
+    const firstSep = truncated.indexOf("---\n\n");
+    newContext = firstSep >= 0 ? truncated.slice(firstSep + 5) : truncated;
+  }
   session.summary = newContext;
 
   persistSessions();

@@ -130,21 +130,6 @@ export async function* iterateAssistantEvents(
   const toolUseIdMap = new Map<string, { tool: string; toolId: number }>();
   let lastAssistantText = "";
 
-  // With --include-partial-messages, multiple assistant messages arrive per turn;
-  // only the last one has accurate output_tokens, so we defer emitting until the
-  // turn is complete (next message_start or result).
-  //
-  // We also compute deltas: input_tokens from the API is cumulative (full context),
-  // so we subtract the previous turn's input to get "added input". output_tokens
-  // is already per-turn, so we emit it as-is.
-  let lastInput = 0;
-  let pendingUsage: {
-    rawInput: number;
-    outputTokens: number;
-    cacheReadInputTokens: number;
-    cacheCreationInputTokens: number;
-  } | null = null;
-
   const rl = readline.createInterface({ input: handle.process.stdout! });
 
   try {
@@ -162,20 +147,6 @@ export async function* iterateAssistantEvents(
         const evt = msg.event;
 
         if (evt?.type === "message_start") {
-          // Emit usage delta from the previous turn before starting a new one
-          if (pendingUsage) {
-            const addedInput = pendingUsage.rawInput - lastInput;
-            lastInput = pendingUsage.rawInput;
-            yield {
-              type: "usage",
-              source: "assistant" as const,
-              inputTokens: addedInput,
-              outputTokens: pendingUsage.outputTokens,
-              cacheReadInputTokens: pendingUsage.cacheReadInputTokens,
-              cacheCreationInputTokens: pendingUsage.cacheCreationInputTokens,
-            };
-            pendingUsage = null;
-          }
           yield { type: "turn-start" };
           lastAssistantText = "";
         }
@@ -206,12 +177,6 @@ export async function* iterateAssistantEvents(
           yield { type: "token", text: evt.delta.text };
         }
 
-        // message_delta arrives at end of streaming with final output_tokens
-        if (evt?.type === "message_delta" && evt.usage) {
-          if (pendingUsage && typeof evt.usage.output_tokens === "number") {
-            pendingUsage.outputTokens = evt.usage.output_tokens;
-          }
-        }
       }
 
       if (msg.type === "assistant") {
@@ -220,16 +185,6 @@ export async function* iterateAssistantEvents(
         // causing IPC edit highlighting to be skipped (editedLines still empty).
         // Tools are properly ended by tool_result handling (user message) and
         // safety-flushed at the result message and end-of-stream.
-
-        const usage = msg.message?.usage;
-        if (usage) {
-          pendingUsage = {
-            rawInput: (usage.input_tokens || 0) + (usage.cache_read_input_tokens || 0) + (usage.cache_creation_input_tokens || 0),
-            outputTokens: usage.output_tokens || 0,
-            cacheReadInputTokens: usage.cache_read_input_tokens || 0,
-            cacheCreationInputTokens: usage.cache_creation_input_tokens || 0,
-          };
-        }
 
         const content = msg.message?.content;
         if (Array.isArray(content)) {
@@ -283,19 +238,19 @@ export async function* iterateAssistantEvents(
       }
 
       if (msg.type === "result") {
-        // Emit usage delta from the final turn
-        if (pendingUsage) {
-          const addedInput = pendingUsage.rawInput - lastInput;
-          lastInput = pendingUsage.rawInput;
+        // Emit cumulative usage for the whole invocation from the result message.
+        // result.usage sums all turns and has accurate output_tokens (unlike
+        // partial assistant messages which arrive mid-stream).
+        const usage = msg.usage;
+        if (usage) {
           yield {
             type: "usage",
             source: "assistant" as const,
-            inputTokens: addedInput,
-            outputTokens: pendingUsage.outputTokens,
-            cacheReadInputTokens: pendingUsage.cacheReadInputTokens,
-            cacheCreationInputTokens: pendingUsage.cacheCreationInputTokens,
+            inputTokens: usage.input_tokens || 0,
+            outputTokens: usage.output_tokens || 0,
+            cacheReadInputTokens: usage.cache_read_input_tokens || 0,
+            cacheCreationInputTokens: usage.cache_creation_input_tokens || 0,
           };
-          pendingUsage = null;
         }
         yield* flushPendingTools(pendingTools, toolUseIdMap);
 

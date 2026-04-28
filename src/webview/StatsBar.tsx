@@ -4,9 +4,9 @@ import { copyCodeWithFeedback } from "./utils";
 import type { TokenUsage } from "./state";
 
 interface StatsBarProps {
-  numTurns: number;
   conversationText: string;
   usage: TokenUsage;
+  inlineUsage: TokenUsage;
 }
 
 function formatTokens(n: number): string {
@@ -15,10 +15,25 @@ function formatTokens(n: number): string {
   return String(n);
 }
 
+function totalIn(u: TokenUsage): number {
+  return u.totalInputTokens + u.totalCacheReadTokens + u.totalCacheCreationTokens;
+}
+
+function usageTooltip(u: TokenUsage): string {
+  const tin = totalIn(u);
+  return (
+    `Context: ${tin.toLocaleString()}\n` +
+    `  uncached:     ${u.totalInputTokens.toLocaleString()}\n` +
+    `  cache read:   ${u.totalCacheReadTokens.toLocaleString()}\n` +
+    `  cache create: ${u.totalCacheCreationTokens.toLocaleString()}\n` +
+    `Output: ${u.totalOutputTokens.toLocaleString()}`
+  );
+}
+
 export function StatsBar({
-  numTurns,
   conversationText,
   usage,
+  inlineUsage,
 }: StatsBarProps) {
   const btnRef = useRef<HTMLButtonElement>(null);
 
@@ -33,19 +48,23 @@ export function StatsBar({
     }
   }
 
-  const turnsLabel = `${numTurns} ${numTurns === 1 ? "turn" : "turns"}`;
-  const hasUsage = usage.totalInputTokens > 0 || usage.totalOutputTokens > 0;
+  const assistantIn = totalIn(usage);
+  const hasAssistantUsage = assistantIn > 0 || usage.totalOutputTokens > 0;
+  const inlineIn = totalIn(inlineUsage);
+  const hasInlineUsage = inlineIn > 0 || inlineUsage.totalOutputTokens > 0;
 
   return (
     <div class="stats-bar">
       <div class="stats-bar-left">
-        <span>{turnsLabel}</span>
-        {hasUsage && (
-          <span
-            class="stats-bar-tokens"
-            title={`Input: ${usage.totalInputTokens.toLocaleString()} (cache read: ${usage.totalCacheReadTokens.toLocaleString()}, cache create: ${usage.totalCacheCreationTokens.toLocaleString()})\nOutput: ${usage.totalOutputTokens.toLocaleString()}`}
-          >
-            {formatTokens(usage.totalInputTokens)} in · {formatTokens(usage.totalOutputTokens)} out
+        {hasAssistantUsage && (
+          <span class="stats-bar-tokens" title={usageTooltip(usage)}>
+            {formatTokens(assistantIn)} tokens
+          </span>
+        )}
+        {hasAssistantUsage && hasInlineUsage && <span class="stats-bar-tokens">/</span>}
+        {hasInlineUsage && (
+          <span class="stats-bar-tokens" title={usageTooltip(inlineUsage)}>
+            {formatTokens(inlineIn)} tokens fast edit
           </span>
         )}
       </div>

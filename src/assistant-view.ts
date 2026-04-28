@@ -1,4 +1,3 @@
-import * as crypto from "crypto";
 import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
@@ -24,7 +23,6 @@ import {
   PreparedInlineEdit,
   prepareInlineEdit,
   executeInlineEdit,
-  abortPreparedEdit,
 } from "./claude-code-inline";
 import { InstructionFileDecorationProvider } from "./instructionDecorations";
 import { startFileScan } from "./editor-effects";
@@ -58,8 +56,6 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
   });
   /** Current breakdown steps for the active session */
   private _steps: BreakdownStepInput[] = [];
-  /** Pre-warmed inline agents keyed by relative file path + content hash */
-  private _warmCache = new Map<string, { hash: string; promise: Promise<PreparedInlineEdit> }>();
   /** Whether the webview's prompt input currently holds focus */
   private _isInputFocused = false;
 
@@ -231,7 +227,6 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
   private _handleNewSession(currentEntries: any[]): void {
     this._saveCurrentSession(currentEntries);
     this._cancelCurrent();
-    this._clearWarmCache();
     this._pendingFileContext = undefined;
     this._steps = [];
     createSession();
@@ -242,7 +237,6 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
   private _handleSwitchSession(id: string, currentEntries: any[]): void {
     this._saveCurrentSession(currentEntries);
     this._cancelCurrent();
-    this._clearWarmCache();
     const session = switchSession(id);
     if (session) {
       // Restore breakdown steps from session
@@ -354,70 +348,14 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
     saveBreakdownSteps(sessionId, this._steps);
   }
 
-  private _clearWarmCache(): void {
-    for (const entry of this._warmCache.values()) {
-      entry.promise
-        .then((prepared) => abortPreparedEdit(prepared))
-        .catch(() => {});
-    }
-    this._warmCache.clear();
-  }
-
   private async _handleSelectStep(index: number | null): Promise<void> {
     if (index === null) return;
 
     const step = this._steps[index];
     if (!step) return;
 
-    const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-    if (!workspaceFolder) return;
-
     // Open the file and scroll to the line without stealing focus
     await this._openFile(step.filePath, step.lineHint, true);
-
-    if (!this._mcpConfigPath) return;
-
-    const absolute = path.resolve(workspaceFolder, step.filePath);
-
-    let fileContent: string;
-    try {
-      fileContent = await fs.promises.readFile(absolute, "utf-8");
-    } catch {
-      // File doesn't exist yet — prewarm with empty content
-      fileContent = "";
-    }
-
-    const hash = crypto.createHash("sha256").update(fileContent).digest("hex");
-
-    // Check if we already have a warm agent for this file with the same hash
-    const cached = this._warmCache.get(step.filePath);
-    if (cached && cached.hash === hash) {
-      this._log.appendLine(`[assistant-view] Warm cache hit: ${step.filePath}`);
-      return;
-    }
-
-    // Hash changed or no cache — abort old entry if present and prepare fresh
-    if (cached) {
-      cached.promise
-        .then((prepared) => abortPreparedEdit(prepared))
-        .catch(() => {});
-    }
-
-    const promise = this._prepareEdit(step.filePath, fileContent);
-    this._log.appendLine(`[assistant-view] Warming cache: ${step.filePath}`);
-
-    this._warmCache.set(step.filePath, { hash, promise });
-
-    promise.catch((err) => {
-      this._log.appendLine(
-        `[assistant-view] Prepare step failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
-      // Only remove if this is still the same entry
-      const current = this._warmCache.get(step.filePath);
-      if (current?.promise === promise) {
-        this._warmCache.delete(step.filePath);
-      }
-    });
   }
 
   private async _handleApplyStep(index: number): Promise<void> {
@@ -452,43 +390,13 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
       }
     }
 
-    // Use pre-warmed agent from cache if available, otherwise prepare fresh
-    let prepared: PreparedInlineEdit;
-    const cached = this._warmCache.get(step.filePath);
-    if (cached) {
-      // Re-check file hash — if the user edited the file since prewarm, discard stale cache
-      let cacheValid = false;
-      try {
-        const currentContent = await fs.promises.readFile(absolute, "utf-8");
-        const currentHash = crypto.createHash("sha256").update(currentContent).digest("hex");
-        cacheValid = currentHash === cached.hash;
-      } catch {
-        // File unreadable — cache is stale
-      }
-
-      this._warmCache.delete(step.filePath);
-      if (cacheValid) {
-        try {
-          prepared = await cached.promise;
-        } catch {
-          prepared = await this._prepareFreshEdit(step);
-        }
-      } else {
-        this._log.appendLine(`[assistant-view] Cache stale (file changed): ${step.filePath}`);
-        cached.promise
-          .then((p) => abortPreparedEdit(p))
-          .catch(() => {});
-        prepared = await this._prepareFreshEdit(step);
-      }
-    } else {
-      prepared = await this._prepareFreshEdit(step);
-    }
-
-    // Start scanning effect on the visible editor
+    // Start scanning immediately — prepare runs concurrently
     const activeEditor = vscode.window.activeTextEditor;
     const isEmpty = activeEditor ? activeEditor.document.getText().trim().length === 0 : true;
     let pulse: { dispose: () => void } | null =
       activeEditor && !isEmpty ? startFileScan(activeEditor) : null;
+
+    const prepared = await this._prepareFreshEdit(step);
 
     try {
       const result = await executeInlineEdit(
@@ -699,6 +607,11 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
           });
           // Don't break — keep listening for follow-up turns
         } else {
+          if (evt.type === "usage") {
+            this._log.appendLine(
+              `[assistant:usage] source=${evt.source} in=${evt.inputTokens} cr=${evt.cacheReadInputTokens} cc=${evt.cacheCreationInputTokens} out=${evt.outputTokens}`,
+            );
+          }
           this._post(evt);
         }
       }
@@ -729,32 +642,13 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
     );
   }
 
-  /** Create a new session with file context (SHIFT+CMD+I) */
+  /** Attach file context to the current session (SHIFT+CMD+I) */
   public startFileSession(ctx: {
     filePath: string;
     cursorLine: number;
     selection?: string;
   }): void {
-    // If there's already a pending file context for this file, just update it
-    if (this._pendingFileContext?.filePath === ctx.filePath) {
-      this._pendingFileContext = ctx;
-      this._post({
-        type: "set-file-context",
-        filePath: ctx.filePath,
-        cursorLine: ctx.cursorLine,
-        selection: ctx.selection ?? null,
-      });
-      this._log.appendLine(
-        `[assistant-view] Continuing file session: ${ctx.filePath}`,
-      );
-      return;
-    }
-
-    this._cancelCurrent();
-
-    createSession();
-    this._sendSessionsUpdate();
-
+    const isSameFile = this._pendingFileContext?.filePath === ctx.filePath;
     this._pendingFileContext = ctx;
     this._post({
       type: "set-file-context",
@@ -763,7 +657,9 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
       selection: ctx.selection ?? null,
     });
     this._log.appendLine(
-      `[assistant-view] File session started: ${ctx.filePath}`,
+      isSameFile
+        ? `[assistant-view] Continuing file session: ${ctx.filePath}`
+        : `[assistant-view] File context set: ${ctx.filePath}`,
     );
   }
 

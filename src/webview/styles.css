@@ -811,6 +811,12 @@ body {
   opacity: 0.7;
 }
 
+.stats-bar-tokens-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
 .stats-bar-copy {
   display: flex;
   align-items: center;

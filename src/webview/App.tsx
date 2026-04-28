@@ -1,6 +1,6 @@
 import { useRef, useEffect } from "preact/hooks";
 import { Logo } from "./Logo";
-import { type Entry, countTurns, serializeConversation } from "./state";
+import { type Entry, serializeConversation } from "./state";
 import { CLIPBOARD_ICON, CHECK_ICON } from "./markdown";
 import { AssistantMessage } from "./AssistantMessage";
 import { SessionMenu } from "./SessionMenu";
@@ -340,9 +340,9 @@ export function App({ vscode }: AppProps) {
                 })}
                 {!state.isStreaming && (
                   <StatsBar
-                    numTurns={countTurns(state.entries)}
                     conversationText={serializeConversation(state.entries)}
                     usage={state.usage}
+                    inlineUsage={state.inlineUsage}
                   />
                 )}
                 <div class="message-list-spacer" />

@@ -169,13 +169,29 @@ export function useMessageHandling(
         return { ...prev, stepStatuses: newStatuses };
       }
       case "usage": {
+        console.log(`[usage] source=${msg.source} in=${msg.inputTokens} cr=${msg.cacheReadInputTokens} cc=${msg.cacheCreationInputTokens} out=${msg.outputTokens} | prev_totalIn=${prev.usage.totalInputTokens + prev.usage.totalCacheReadTokens + prev.usage.totalCacheCreationTokens}`);
+        if (msg.source === "inline") {
+          // Inline edits are independent invocations — accumulate everything.
+          return {
+            ...prev,
+            inlineUsage: {
+              totalInputTokens: prev.inlineUsage.totalInputTokens + msg.inputTokens,
+              totalCacheReadTokens: prev.inlineUsage.totalCacheReadTokens + msg.cacheReadInputTokens,
+              totalCacheCreationTokens: prev.inlineUsage.totalCacheCreationTokens + msg.cacheCreationInputTokens,
+              totalOutputTokens: prev.inlineUsage.totalOutputTokens + msg.outputTokens,
+            },
+          };
+        }
+        // Assistant uses --resume so each result.usage already reflects the full
+        // growing context window. Replace input/cache (the last value IS the total)
+        // but accumulate output (each invocation only reports its own output).
         return {
           ...prev,
           usage: {
-            totalInputTokens: prev.usage.totalInputTokens + msg.inputTokens,
+            totalInputTokens: msg.inputTokens,
+            totalCacheReadTokens: msg.cacheReadInputTokens,
+            totalCacheCreationTokens: msg.cacheCreationInputTokens,
             totalOutputTokens: prev.usage.totalOutputTokens + msg.outputTokens,
-            totalCacheReadTokens: prev.usage.totalCacheReadTokens + msg.cacheReadInputTokens,
-            totalCacheCreationTokens: prev.usage.totalCacheCreationTokens + msg.cacheCreationInputTokens,
           },
         };
       }
