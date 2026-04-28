@@ -1,5 +1,3 @@
-import { getAssistantSummary } from "./assistant-agent";
-
 export const SYSTEM_PROMPT = `You are an inline code editing agent. Your ONLY job is to edit the file using the edit_file tool.
 
 CRITICAL RULES:
@@ -19,11 +17,6 @@ export function buildSystemPrompt(instructionContent?: string): string {
 
   if (instructionContent) {
     prompt += `\n\n# CLAUDE.md\n\n${instructionContent}`;
-  }
-
-  const summary = getAssistantSummary();
-  if (summary) {
-    prompt += `\n\n# Assistant Summary\n\n${summary}`;
   }
 
   return prompt;

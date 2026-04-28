@@ -50,6 +50,8 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
   private _promptQueue: { text: string; files: string[] }[] = [];
   /** Whether an event loop is already running for the active session */
   private _eventLoopRunning = false;
+  /** File path already sent to the current live process — skip re-sending content */
+  private _liveProcessFilePath: string | null = null;
   private _readyResolve?: () => void;
   private _readyPromise: Promise<void> = new Promise((resolve) => {
     this._readyResolve = resolve;
@@ -579,6 +581,9 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
     // If this is a follow-up, the event loop is already running — just return
     if (isFollowUp) return;
 
+    // New process — file context must be re-sent
+    this._liveProcessFilePath = null;
+
     // Start the long-lived event loop for this process
     this._eventLoopRunning = true;
     try {
@@ -710,27 +715,25 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
       return;
     }
 
-    // Show file context indicator in tool list
-    this._post({ type: "tool-start", tool: "read_reference", toolId: -1 });
-    this._post({
-      type: "tool-end",
-      tool: "read_reference",
-      toolId: -1,
-      isError: false,
-    });
-
     const query = ctx.selection
       ? `\`\`\`\n${ctx.selection}\n\`\`\`\n\n${text}`
       : text;
     this._log.appendLine(`[assistant-view:prompt] ${query}`);
 
-    await this._handlePromptWithContext({
-      query,
-      filePath: ctx.filePath,
-      fileContent,
-      cursorLine: ctx.cursorLine,
-      contextSnippet: "",
-    });
+    // If the live process already has this file's content in context, skip re-sending it.
+    const fileAlreadyInContext = this._liveProcessFilePath === ctx.filePath;
+    if (fileAlreadyInContext) {
+      this._log.appendLine(`[assistant-view] Skipping file content (already in process context): ${ctx.filePath}`);
+      await this._handlePrompt(query, [ctx.filePath]);
+    } else {
+      await this._handlePromptWithContext({
+        query,
+        filePath: ctx.filePath,
+        fileContent,
+        cursorLine: ctx.cursorLine,
+        contextSnippet: "",
+      });
+    }
   }
 
   private async _handleSendWithStep(
@@ -757,6 +760,7 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
     // Prepend file content to the prompt so the agent has context
     const contextPrompt = `Currently viewing \`${opts.filePath}\` (line ${opts.cursorLine}):\n\`\`\`\n${opts.fileContent}\n\`\`\`\n\n${opts.query}`;
 
+    this._liveProcessFilePath = opts.filePath;
     await this._handlePrompt(contextPrompt, [opts.filePath]);
   }
 
