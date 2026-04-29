@@ -59,7 +59,7 @@ export function StatsBar({
       <div class="stats-bar-left">
         {hasAssistantUsage && (
           <span class="stats-bar-tokens stats-bar-tokens--hoverable">
-            {formatTokens(assistantContext)} tokens
+            {formatTokens(assistantContext)} tokens{usage.hadThinking ? " · thinking" : ""}
             <span class="stats-bar-tokens__detail">
               (in: {formatTokens(assistantContext - assistantOut)}, out: {formatTokens(assistantOut)})
             </span>

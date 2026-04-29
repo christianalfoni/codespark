@@ -111,6 +111,7 @@ export interface UsageMessage {
   contextOutputTokens: number;
   cacheReadInputTokens: number;
   cacheCreationInputTokens: number;
+  hasThinking?: boolean;
 }
 export interface FocusMessage {
   type: "focus";

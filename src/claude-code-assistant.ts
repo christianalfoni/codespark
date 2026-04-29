@@ -160,6 +160,7 @@ export async function* iterateAssistantEvents(
   // ---------------------------------------------------------------------------
   let lastMsgStart = { input: 0, cacheRead: 0, cacheCreation: 0 };
   let lastMsgDeltaOutput = 0;
+  let hasThinking = false;
 
   const rl = readline.createInterface({ input: handle.process.stdout! });
 
@@ -198,6 +199,9 @@ export async function* iterateAssistantEvents(
         }
 
         if (evt?.type === "content_block_start") {
+          if (evt.content_block?.type === "thinking") {
+            hasThinking = true;
+          }
           if (evt.content_block?.type === "tool_use") {
             const toolId = ++toolIdCounter;
             const toolName = evt.content_block.name ?? "unknown";
@@ -298,9 +302,11 @@ export async function* iterateAssistantEvents(
           contextOutputTokens: lastMsgDeltaOutput,
           cacheReadInputTokens: lastMsgStart.cacheRead,
           cacheCreationInputTokens: lastMsgStart.cacheCreation,
+          hasThinking,
         };
         lastMsgStart = { input: 0, cacheRead: 0, cacheCreation: 0 };
         lastMsgDeltaOutput = 0;
+        hasThinking = false;
 
         yield* flushPendingTools(pendingTools, toolUseIdMap);
 

@@ -223,6 +223,7 @@ export function useMessageHandling(
             totalCacheCreationTokens: msg.cacheCreationInputTokens,
             totalOutputTokens: prev.usage.totalOutputTokens + msg.outputTokens,
             lastOutputTokens: msg.contextOutputTokens,
+            hadThinking: prev.usage.hadThinking || !!msg.hasThinking,
           },
         };
       }

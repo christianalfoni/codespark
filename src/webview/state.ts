@@ -52,6 +52,8 @@ export interface TokenUsage {
   // totalIn fields above it gives the true post-turn context window size:
   //   context = totalIn + lastOutputTokens
   lastOutputTokens: number;
+  // True if any turn in this session used extended thinking.
+  hadThinking: boolean;
 }
 
 export interface Features {
@@ -92,6 +94,7 @@ export function createInitialState(saved: any): ChatState {
       totalCacheReadTokens: 0,
       totalCacheCreationTokens: 0,
       lastOutputTokens: 0,
+      hadThinking: false,
     },
     inlineUsage: {
       totalInputTokens: 0,
@@ -99,6 +102,7 @@ export function createInitialState(saved: any): ChatState {
       totalCacheReadTokens: 0,
       totalCacheCreationTokens: 0,
       lastOutputTokens: 0,
+      hadThinking: false,
     },
     features: { stackedCommitsEnabled: false },
   };
