@@ -2,7 +2,7 @@
   "name": "codespark-agent",
   "displayName": "CodeSpark",
   "description": "A coding agent where you still code",
-  "version": "0.25.6",
+  "version": "0.25.7",
   "publisher": "codespark",
   "license": "MIT",
   "icon": "media/icon.png",
