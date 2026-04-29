@@ -50,8 +50,6 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
   private _promptQueue: { text: string; files: string[] }[] = [];
   /** Whether an event loop is already running for the active session */
   private _eventLoopRunning = false;
-  /** File path already sent to the current live process — skip re-sending content */
-  private _liveProcessFilePath: string | null = null;
   private _readyResolve?: () => void;
   private _readyPromise: Promise<void> = new Promise((resolve) => {
     this._readyResolve = resolve;
@@ -581,9 +579,6 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
     // If this is a follow-up, the event loop is already running — just return
     if (isFollowUp) return;
 
-    // New process — file context must be re-sent
-    this._liveProcessFilePath = null;
-
     // Start the long-lived event loop for this process
     this._eventLoopRunning = true;
     try {
@@ -695,44 +690,34 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
   private async _handleSendWithContext(text: string): Promise<void> {
     const ctx = this._pendingFileContext!;
 
-    const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-    if (!workspaceFolder) {
-      this._post({ type: "error", text: "No workspace folder open." });
-      this._post({ type: "done" });
-      return;
-    }
-
-    const absolute = path.resolve(workspaceFolder, ctx.filePath);
-    let fileContent: string;
-    try {
-      fileContent = await fs.promises.readFile(absolute, "utf-8");
-    } catch {
-      this._post({
-        type: "error",
-        text: `Could not read file: ${ctx.filePath}`,
-      });
-      this._post({ type: "done" });
-      return;
-    }
-
-    const query = ctx.selection
-      ? `\`\`\`\n${ctx.selection}\n\`\`\`\n\n${text}`
-      : text;
-    this._log.appendLine(`[assistant-view:prompt] ${query}`);
-
-    // If the live process already has this file's content in context, skip re-sending it.
-    const fileAlreadyInContext = this._liveProcessFilePath === ctx.filePath;
-    if (fileAlreadyInContext) {
-      this._log.appendLine(`[assistant-view] Skipping file content (already in process context): ${ctx.filePath}`);
-      await this._handlePrompt(query, [ctx.filePath]);
+    let snippet: string;
+    if (ctx.selection) {
+      snippet = `\`\`\`\n${ctx.selection}\n\`\`\``;
     } else {
-      await this._handlePromptWithContext({
-        query,
-        filePath: ctx.filePath,
-        fileContent,
-        cursorLine: ctx.cursorLine,
-        contextSnippet: "",
-      });
+      snippet = await this._cursorSnippet(ctx.filePath, ctx.cursorLine);
+    }
+
+    const location = ctx.cursorLine > 1
+      ? `\`${ctx.filePath}\` (line ${ctx.cursorLine})`
+      : `\`${ctx.filePath}\``;
+
+    const query = `[Viewing ${location}]\n\n${snippet}\n\n${text}`;
+    this._log.appendLine(`[assistant-view:prompt] ${query}`);
+    await this._handlePrompt(query, [ctx.filePath]);
+  }
+
+  private async _cursorSnippet(filePath: string, cursorLine: number): Promise<string> {
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!workspaceFolder) return "";
+    try {
+      const absolute = path.resolve(workspaceFolder, filePath);
+      const content = await fs.promises.readFile(absolute, "utf-8");
+      const lines = content.split("\n");
+      const start = Math.max(0, cursorLine - 6);
+      const end = Math.min(lines.length, cursorLine + 5);
+      return `\`\`\`\n${lines.slice(start, end).join("\n")}\n\`\`\``;
+    } catch {
+      return "";
     }
   }
 
@@ -748,20 +733,6 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
 
     const stepContext = `[Regarding breakdown step ${stepIndex + 1}: "${step.title}" in \`${step.filePath}${step.lineHint ? `:${step.lineHint}` : ""}\`]\n\n${text}`;
     await this._handlePrompt(stepContext);
-  }
-
-  private async _handlePromptWithContext(opts: {
-    query: string;
-    filePath: string;
-    fileContent: string;
-    cursorLine: number;
-    contextSnippet: string;
-  }): Promise<void> {
-    // Prepend file content to the prompt so the agent has context
-    const contextPrompt = `Currently viewing \`${opts.filePath}\` (line ${opts.cursorLine}):\n\`\`\`\n${opts.fileContent}\n\`\`\`\n\n${opts.query}`;
-
-    this._liveProcessFilePath = opts.filePath;
-    await this._handlePrompt(contextPrompt, [opts.filePath]);
   }
 
   /** Called from outside to save webview entries into the active session */

@@ -51,6 +51,12 @@ export interface IpcServer {
 // Internal Types
 // ---------------------------------------------------------------------------
 
+interface ReadRequest {
+  id: string;
+  type: "read_file";
+  file_path: string;
+}
+
 interface EditRequest {
   id: string;
   type: "edit_file";
@@ -69,6 +75,7 @@ interface IpcResponse {
   id: string;
   success: boolean;
   message?: string;
+  content?: string;
   error?: string;
   editedRanges?: EditedRange[];
 }
@@ -306,7 +313,13 @@ function handleConnectionData(
       conn.write(JSON.stringify(res) + "\n");
     };
 
-    if (req.type === "edit_file") {
+    if (req.type === "read_file") {
+      const readReq = req as unknown as ReadRequest;
+      log.appendLine(`[ipc] read_file: ${readReq.file_path}`);
+      handleReadRequest(readReq)
+        .then((res) => conn.write(JSON.stringify(res) + "\n"))
+        .catch(handleError(readReq.id));
+    } else if (req.type === "edit_file") {
       const editReq = req as unknown as EditRequest;
       const allowed = getAllowedEditFile();
       if (allowed && editReq.file_path !== allowed) {
@@ -372,6 +385,18 @@ function handleConnectionData(
   }
 
   return buffer;
+}
+
+async function handleReadRequest(req: ReadRequest): Promise<IpcResponse> {
+  const uri = vscode.Uri.file(req.file_path);
+  try {
+    const doc =
+      vscode.workspace.textDocuments.find((d) => d.uri.fsPath === uri.fsPath) ??
+      (await vscode.workspace.openTextDocument(uri));
+    return { id: req.id, success: true, content: doc.getText() };
+  } catch {
+    return { id: req.id, success: false, error: `Could not read file: ${req.file_path}` };
+  }
 }
 
 async function handleEditRequest(req: EditRequest): Promise<IpcResponse> {

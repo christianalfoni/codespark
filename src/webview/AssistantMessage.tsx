@@ -5,6 +5,8 @@ import { prepareForRender } from "./prepareForRender";
 
 const TOOL_DISPLAY_NAMES: Record<string, string> = {
   read_reference: "Read Reference",
+  mcp__codespark__read_file: "Read",
+  mcp__codespark__list_directory: "List Directory",
   mcp__codespark__git_status: "Git Status",
   mcp__codespark__git_log: "Git Log",
   mcp__codespark__git_diff: "Git Diff",

@@ -101,6 +101,51 @@ function sendIpcRequest(
 function registerTools(server: McpServer) {
   // @ts-ignore — MCP SDK's deep type instantiation exceeds TS limit
   server.tool(
+    "read_file",
+    `Read the full contents of a file. Returns raw text with no line-number prefixes.
+
+Use this to inspect a file before editing it, or to understand its structure.
+For large files, prefer Grep to locate relevant sections first.`,
+    {
+      file_path: z.string().describe("Absolute path to the file to read"),
+    },
+    async ({ file_path }) => {
+      try {
+        const res = await sendIpcRequest("read_file", { file_path });
+        if (res.success) {
+          return { content: [{ type: "text" as const, text: res.content ?? "" }] };
+        } else {
+          return { content: [{ type: "text" as const, text: `Error: ${res.error}` }], isError: true };
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return { content: [{ type: "text" as const, text: `IPC error: ${msg}` }], isError: true };
+      }
+    },
+  );
+
+  // @ts-ignore — MCP SDK's deep type instantiation exceeds TS limit
+  server.tool(
+    "list_directory",
+    `List the contents of a directory. Returns each entry on its own line, with a trailing /
+for subdirectories and no suffix for files.`,
+    {
+      dir_path: z.string().describe("Absolute path to the directory to list"),
+    },
+    async ({ dir_path }) => {
+      try {
+        const entries = await fs.promises.readdir(dir_path, { withFileTypes: true });
+        const lines = entries.map((e) => (e.isDirectory() ? `${e.name}/` : e.name));
+        return { content: [{ type: "text" as const, text: lines.join("\n") }] };
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return { content: [{ type: "text" as const, text: `Error: ${msg}` }], isError: true };
+      }
+    },
+  );
+
+  // @ts-ignore — MCP SDK's deep type instantiation exceeds TS limit
+  server.tool(
     "edit_file",
     `Apply text edits to a file. Accepts multiple edits in a single call.
 

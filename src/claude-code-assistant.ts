@@ -57,7 +57,7 @@ export function createAssistantQuery(
     "--strict-mcp-config",
     ...(mcpConfigPath ? ["--mcp-config", mcpConfigPath] : []),
     "--tools",
-    "Read,Glob,Grep,WebSearch,WebFetch",
+    "Glob,Grep,WebSearch,WebFetch",
     "--disallowedTools",
     "mcp__codespark__edit_file,mcp__codespark__write_file",
     "--system-prompt",

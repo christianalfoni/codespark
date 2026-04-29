@@ -5,8 +5,10 @@
 export function prepareForRender(buffer: string): string {
   if (!buffer) return buffer;
 
+  // 0. Normalize literal \n escape sequences the LLM sometimes emits as text
+  let result = buffer.replace(/\\n/g, "\n");
+
   // 1. Close any unclosed fence (streaming)
-  let result = buffer;
   const fenceState = getFenceState(result);
 
   if (fenceState) {
