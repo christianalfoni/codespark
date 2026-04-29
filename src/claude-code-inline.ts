@@ -218,6 +218,25 @@ export async function executeInlineEdit(
         if (msg.type === "stream_event") {
           const evt = msg.event;
 
+          if (evt?.type === "message_start") {
+            const u = evt.message?.usage;
+            if (u) {
+              resultUsage = {
+                inputTokens: u.input_tokens || 0,
+                outputTokens: 0,
+                cacheReadInputTokens: u.cache_read_input_tokens || 0,
+                cacheCreationInputTokens: u.cache_creation_input_tokens || 0,
+              };
+            }
+          }
+
+          if (evt?.type === "message_delta") {
+            const u = evt.usage;
+            if (u?.output_tokens && resultUsage) {
+              resultUsage = { ...resultUsage, outputTokens: u.output_tokens };
+            }
+          }
+
           if (evt?.type === "content_block_delta" && !ttftLogged) {
             ttftLogged = true;
             log.appendLine(`[cli-inline:timing] Time To First Token: ${ms}ms`);
@@ -305,15 +324,7 @@ export async function executeInlineEdit(
                 `[cli-inline:no-edit] LLM responded with text instead of edits: ${textResponseContent.trim()}`,
               );
             }
-            const u = msg.usage;
-            if (u) {
-              resultUsage = {
-                inputTokens: u.input_tokens || 0,
-                outputTokens: u.output_tokens || 0,
-                cacheReadInputTokens: u.cache_read_input_tokens || 0,
-                cacheCreationInputTokens: u.cache_creation_input_tokens || 0,
-              };
-            }
+            // output tokens already captured from last message_delta
             log.appendLine(
               `[cli-inline] Done (${msg.num_turns} turns, $${msg.total_cost_usd?.toFixed(4) ?? "?"})`,
             );

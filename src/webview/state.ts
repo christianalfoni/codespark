@@ -40,10 +40,18 @@ export type Entry = UserEntry | AssistantEntry;
 export type ContextState = "none" | "pending" | "ready";
 
 export interface TokenUsage {
+  // input + cacheRead + cacheCreation = last message_start total (absolute context size).
+  // These are REPLACED each turn, not accumulated — message_start already includes all
+  // prior outputs baked in as context, so the value grows naturally turn to turn.
   totalInputTokens: number;
-  totalOutputTokens: number;
   totalCacheReadTokens: number;
   totalCacheCreationTokens: number;
+  // Accumulated output across all turns in the session (for cost tracking).
+  totalOutputTokens: number;
+  // Output from the most recent turn only (NOT accumulated). Combined with the
+  // totalIn fields above it gives the true post-turn context window size:
+  //   context = totalIn + lastOutputTokens
+  lastOutputTokens: number;
 }
 
 export interface Features {
@@ -83,12 +91,14 @@ export function createInitialState(saved: any): ChatState {
       totalOutputTokens: 0,
       totalCacheReadTokens: 0,
       totalCacheCreationTokens: 0,
+      lastOutputTokens: 0,
     },
     inlineUsage: {
       totalInputTokens: 0,
       totalOutputTokens: 0,
       totalCacheReadTokens: 0,
       totalCacheCreationTokens: 0,
+      lastOutputTokens: 0,
     },
     features: { stackedCommitsEnabled: false },
   };
@@ -114,6 +124,12 @@ export function createInitialState(saved: any): ChatState {
   }
   if (saved?.activeSessionId) {
     state.activeSessionId = saved.activeSessionId;
+  }
+  if (saved?.usage) {
+    state.usage = { ...state.usage, ...saved.usage };
+  }
+  if (saved?.inlineUsage) {
+    state.inlineUsage = { ...state.inlineUsage, ...saved.inlineUsage };
   }
 
   return state;

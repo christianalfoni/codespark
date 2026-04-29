@@ -130,6 +130,37 @@ export async function* iterateAssistantEvents(
   const toolUseIdMap = new Map<string, { tool: string; toolId: number }>();
   let lastAssistantText = "";
 
+  // ---------------------------------------------------------------------------
+  // Token / context-window tracking
+  //
+  // The Claude Code CLI makes one or more internal Anthropic API calls per user
+  // turn (one extra per tool call). Each API call produces its own stream_event
+  // sequence: message_start → content_block_* → message_delta → message_stop.
+  //
+  // Why not use result.usage?
+  //   result.usage sums ALL internal API calls. For a turn with one tool call
+  //   (two API calls) the system prompt is counted twice in result.usage.input,
+  //   making the number roughly double the actual context window size.
+  //
+  // Correct approach — two events, last-one-wins per turn:
+  //
+  //   message_start.usage  →  input_tokens + cache_read + cache_creation
+  //     = the full context fed as INPUT to that specific API call.
+  //     When tools are used this fires multiple times; the last one is largest
+  //     because it includes the tool_use block and tool result as input.
+  //
+  //   message_delta.usage.output_tokens
+  //     = tokens generated in THAT API call only (not cumulative).
+  //     The last message_delta before result = the final text response tokens.
+  //     Intermediate tool_use output tokens are already folded into the next
+  //     message_start as input, so they are NOT double-counted here.
+  //
+  // True context window after a turn:
+  //   lastMsgStart.(input + cacheRead + cacheCreation) + lastMsgDeltaOutput
+  // ---------------------------------------------------------------------------
+  let lastMsgStart = { input: 0, cacheRead: 0, cacheCreation: 0 };
+  let lastMsgDeltaOutput = 0;
+
   const rl = readline.createInterface({ input: handle.process.stdout! });
 
   try {
@@ -149,6 +180,21 @@ export async function* iterateAssistantEvents(
         if (evt?.type === "message_start") {
           yield { type: "turn-start" };
           lastAssistantText = "";
+          const u = evt.message?.usage;
+          if (u) {
+            lastMsgStart = {
+              input: u.input_tokens || 0,
+              cacheRead: u.cache_read_input_tokens || 0,
+              cacheCreation: u.cache_creation_input_tokens || 0,
+            };
+          }
+        }
+
+        if (evt?.type === "message_delta") {
+          const u = evt.usage;
+          if (u?.output_tokens) {
+            lastMsgDeltaOutput = u.output_tokens;
+          }
         }
 
         if (evt?.type === "content_block_start") {
@@ -238,20 +284,21 @@ export async function* iterateAssistantEvents(
       }
 
       if (msg.type === "result") {
-        // Emit cumulative usage for the whole invocation from the result message.
-        // result.usage sums all turns and has accurate output_tokens (unlike
-        // partial assistant messages which arrive mid-stream).
-        const usage = msg.usage;
-        if (usage) {
-          yield {
-            type: "usage",
-            source: "assistant" as const,
-            inputTokens: usage.input_tokens || 0,
-            outputTokens: usage.output_tokens || 0,
-            cacheReadInputTokens: usage.cache_read_input_tokens || 0,
-            cacheCreationInputTokens: usage.cache_creation_input_tokens || 0,
-          };
-        }
+        // Emit one usage event per turn using the last message_start (context window)
+        // + last message_delta output (tokens generated in the final API call only).
+        // This gives: context = input + cacheRead + cacheCreation + output — accurate
+        // even for multi-tool turns where result.usage would double-count cached tokens.
+        yield {
+          type: "usage",
+          source: "assistant" as const,
+          inputTokens: lastMsgStart.input,
+          outputTokens: lastMsgDeltaOutput,
+          cacheReadInputTokens: lastMsgStart.cacheRead,
+          cacheCreationInputTokens: lastMsgStart.cacheCreation,
+        };
+        lastMsgStart = { input: 0, cacheRead: 0, cacheCreation: 0 };
+        lastMsgDeltaOutput = 0;
+
         yield* flushPendingTools(pendingTools, toolUseIdMap);
 
         const sdkSessionId = msg.session_id ?? "";

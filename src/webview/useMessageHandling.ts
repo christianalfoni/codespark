@@ -39,6 +39,14 @@ export function useMessageHandling(
 
     switch (msg.type) {
       case "init": {
+        const sessionChanged = msg.activeSessionId !== prev.activeSessionId;
+        const zeroUsage = {
+          totalInputTokens: 0,
+          totalOutputTokens: 0,
+          totalCacheReadTokens: 0,
+          totalCacheCreationTokens: 0,
+          lastOutputTokens: 0,
+        };
         return {
           ...prev,
           contextState: msg.hasContext
@@ -47,9 +55,18 @@ export function useMessageHandling(
           sessions: msg.sessions,
           activeSessionId: msg.activeSessionId,
           features: msg.features ?? prev.features,
+          ...(sessionChanged ? { usage: zeroUsage, inlineUsage: zeroUsage } : {}),
         };
       }
       case "restore": {
+        const sessionChanged = msg.activeSessionId !== prev.activeSessionId;
+        const zeroUsage = {
+          totalInputTokens: 0,
+          totalOutputTokens: 0,
+          totalCacheReadTokens: 0,
+          totalCacheCreationTokens: 0,
+          lastOutputTokens: 0,
+        };
         return {
           ...prev,
           entries: msg.entries,
@@ -61,19 +78,23 @@ export function useMessageHandling(
           sessions: msg.sessions,
           activeSessionId: msg.activeSessionId,
           features: msg.features ?? prev.features,
-          usage: {
-            totalInputTokens: 0,
-            totalOutputTokens: 0,
-            totalCacheReadTokens: 0,
-            totalCacheCreationTokens: 0,
-          },
+          ...(sessionChanged ? { usage: zeroUsage, inlineUsage: zeroUsage } : {}),
         };
       }
       case "sessions-updated": {
+        const sessionChanged = msg.activeSessionId !== prev.activeSessionId;
+        const zeroUsage = {
+          totalInputTokens: 0,
+          totalOutputTokens: 0,
+          totalCacheReadTokens: 0,
+          totalCacheCreationTokens: 0,
+          lastOutputTokens: 0,
+        };
         return {
           ...prev,
           sessions: msg.sessions,
           activeSessionId: msg.activeSessionId,
+          ...(sessionChanged ? { usage: zeroUsage, inlineUsage: zeroUsage } : {}),
         };
       }
       case "inject-user": {
@@ -169,9 +190,9 @@ export function useMessageHandling(
         return { ...prev, stepStatuses: newStatuses };
       }
       case "usage": {
-        console.log(`[usage] source=${msg.source} in=${msg.inputTokens} cr=${msg.cacheReadInputTokens} cc=${msg.cacheCreationInputTokens} out=${msg.outputTokens} | prev_totalIn=${prev.usage.totalInputTokens + prev.usage.totalCacheReadTokens + prev.usage.totalCacheCreationTokens}`);
         if (msg.source === "inline") {
-          // Inline edits are independent invocations — accumulate everything.
+          // Inline edits are independent invocations — accumulate everything so
+          // the stats bar shows total tokens consumed across all fast edits.
           return {
             ...prev,
             inlineUsage: {
@@ -179,12 +200,21 @@ export function useMessageHandling(
               totalCacheReadTokens: prev.inlineUsage.totalCacheReadTokens + msg.cacheReadInputTokens,
               totalCacheCreationTokens: prev.inlineUsage.totalCacheCreationTokens + msg.cacheCreationInputTokens,
               totalOutputTokens: prev.inlineUsage.totalOutputTokens + msg.outputTokens,
+              lastOutputTokens: msg.outputTokens,
             },
           };
         }
-        // Assistant uses --resume so each result.usage already reflects the full
-        // growing context window. Replace input/cache (the last value IS the total)
-        // but accumulate output (each invocation only reports its own output).
+        // One usage event is emitted per assistant turn (at result time), carrying:
+        //   inputTokens / cacheRead / cacheCreation  →  from the LAST message_start
+        //     of that turn. This is the true context window size fed as input.
+        //     REPLACE (not accumulate): each turn's message_start already includes
+        //     all previous turns' outputs baked in as context, so the value grows
+        //     naturally without us summing it.
+        //   outputTokens  →  from the LAST message_delta of that turn (final text
+        //     response only, not intermediate tool_use output). ACCUMULATE across
+        //     turns to track total tokens generated this session.
+        //   lastOutputTokens  →  same as outputTokens but NOT accumulated — always
+        //     the most recent turn's output, used by StatsBar to compute full context.
         return {
           ...prev,
           usage: {
@@ -192,6 +222,7 @@ export function useMessageHandling(
             totalCacheReadTokens: msg.cacheReadInputTokens,
             totalCacheCreationTokens: msg.cacheCreationInputTokens,
             totalOutputTokens: prev.usage.totalOutputTokens + msg.outputTokens,
+            lastOutputTokens: msg.outputTokens,
           },
         };
       }
