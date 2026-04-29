@@ -105,7 +105,10 @@ export interface UsageMessage {
   type: "usage";
   source: "assistant" | "inline";
   inputTokens: number;
+  /** Total output tokens across all internal API calls (from result.usage) — accurate for cost. */
   outputTokens: number;
+  /** Output tokens from the final API call only (from last message_delta) — used for context window size. */
+  contextOutputTokens: number;
   cacheReadInputTokens: number;
   cacheCreationInputTokens: number;
 }

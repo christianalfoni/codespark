@@ -811,6 +811,21 @@ body {
   opacity: 0.7;
 }
 
+.stats-bar-tokens--hoverable {
+  position: relative;
+  cursor: default;
+}
+
+.stats-bar-tokens__detail {
+  display: none;
+  margin-left: 4px;
+  opacity: 0.6;
+}
+
+.stats-bar-tokens--hoverable:hover .stats-bar-tokens__detail {
+  display: inline;
+}
+
 .stats-bar-tokens-inline {
   display: inline-flex;
   align-items: center;

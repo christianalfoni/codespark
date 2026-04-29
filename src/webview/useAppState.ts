@@ -19,6 +19,8 @@ export function useAppState(vscode: VsCodeApi) {
         entries: state.entries,
         sessions: state.sessions,
         activeSessionId: state.activeSessionId,
+        usage: state.usage,
+        inlineUsage: state.inlineUsage,
       });
     }
   }, [
@@ -26,6 +28,8 @@ export function useAppState(vscode: VsCodeApi) {
     state.isStreaming,
     state.sessions,
     state.activeSessionId,
+    state.usage,
+    state.inlineUsage,
     vscode,
   ]);
 

@@ -176,7 +176,9 @@ export async function executeInlineEdit(
   const toolsInFlight = new Map<string, { name: string; start: number }>();
   const activeToolBlocks = new Map<number, { name: string; json: string }>();
   let textResponseContent = "";
-  let resultUsage: { inputTokens: number; outputTokens: number; cacheReadInputTokens: number; cacheCreationInputTokens: number } | null = null;
+  let resultUsage: { inputTokens: number; cacheReadInputTokens: number; cacheCreationInputTokens: number } | null = null;
+  let lastApiCallOutput = 0;  // last message_delta output — for context window size
+  let totalOutputTokens = 0; // result.usage.output_tokens — accurate total across all API calls
   const editedLines: Array<{ startLine: number; endLine: number }> = [];
 
   let resolveOnDone: (() => void) | undefined;
@@ -223,7 +225,6 @@ export async function executeInlineEdit(
             if (u) {
               resultUsage = {
                 inputTokens: u.input_tokens || 0,
-                outputTokens: 0,
                 cacheReadInputTokens: u.cache_read_input_tokens || 0,
                 cacheCreationInputTokens: u.cache_creation_input_tokens || 0,
               };
@@ -231,9 +232,8 @@ export async function executeInlineEdit(
           }
 
           if (evt?.type === "message_delta") {
-            const u = evt.usage;
-            if (u?.output_tokens && resultUsage) {
-              resultUsage = { ...resultUsage, outputTokens: u.output_tokens };
+            if (evt.usage?.output_tokens) {
+              lastApiCallOutput = evt.usage.output_tokens;
             }
           }
 
@@ -324,13 +324,13 @@ export async function executeInlineEdit(
                 `[cli-inline:no-edit] LLM responded with text instead of edits: ${textResponseContent.trim()}`,
               );
             }
-            // output tokens already captured from last message_delta
+            totalOutputTokens = msg.usage?.output_tokens ?? 0;
             log.appendLine(
               `[cli-inline] Done (${msg.num_turns} turns, $${msg.total_cost_usd?.toFixed(4) ?? "?"})`,
             );
             if (resultUsage) {
               log.appendLine(
-                `[cli-inline:tokens] in=${resultUsage.inputTokens}, cr=${resultUsage.cacheReadInputTokens}, cc=${resultUsage.cacheCreationInputTokens}, out=${resultUsage.outputTokens}`,
+                `[cli-inline:tokens] in=${resultUsage.inputTokens}, cr=${resultUsage.cacheReadInputTokens}, cc=${resultUsage.cacheCreationInputTokens}, out=${totalOutputTokens} (ctx_out=${lastApiCallOutput})`,
               );
             }
           } else {
@@ -377,7 +377,8 @@ export async function executeInlineEdit(
       : undefined,
     latencyMs,
     inputTokens: resultUsage?.inputTokens ?? 0,
-    outputTokens: resultUsage?.outputTokens ?? 0,
+    outputTokens: totalOutputTokens,
+    contextOutputTokens: lastApiCallOutput,
     cacheReadInputTokens: resultUsage?.cacheReadInputTokens ?? 0,
     cacheCreationInputTokens: resultUsage?.cacheCreationInputTokens ?? 0,
   };

@@ -292,7 +292,10 @@ export async function* iterateAssistantEvents(
           type: "usage",
           source: "assistant" as const,
           inputTokens: lastMsgStart.input,
-          outputTokens: lastMsgDeltaOutput,
+          // result.usage.output_tokens sums all API calls — correct for total cost display.
+          // lastMsgDeltaOutput is only the final call — correct for context window size.
+          outputTokens: msg.usage?.output_tokens || lastMsgDeltaOutput,
+          contextOutputTokens: lastMsgDeltaOutput,
           cacheReadInputTokens: lastMsgStart.cacheRead,
           cacheCreationInputTokens: lastMsgStart.cacheCreation,
         };

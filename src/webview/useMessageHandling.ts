@@ -200,7 +200,7 @@ export function useMessageHandling(
               totalCacheReadTokens: prev.inlineUsage.totalCacheReadTokens + msg.cacheReadInputTokens,
               totalCacheCreationTokens: prev.inlineUsage.totalCacheCreationTokens + msg.cacheCreationInputTokens,
               totalOutputTokens: prev.inlineUsage.totalOutputTokens + msg.outputTokens,
-              lastOutputTokens: msg.outputTokens,
+              lastOutputTokens: msg.contextOutputTokens,
             },
           };
         }
@@ -222,7 +222,7 @@ export function useMessageHandling(
             totalCacheReadTokens: msg.cacheReadInputTokens,
             totalCacheCreationTokens: msg.cacheCreationInputTokens,
             totalOutputTokens: prev.usage.totalOutputTokens + msg.outputTokens,
-            lastOutputTokens: msg.outputTokens,
+            lastOutputTokens: msg.contextOutputTokens,
           },
         };
       }

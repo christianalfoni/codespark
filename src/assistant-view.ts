@@ -412,6 +412,7 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
       this.reportInlineUsage({
         inputTokens: result.inputTokens,
         outputTokens: result.outputTokens,
+        contextOutputTokens: result.contextOutputTokens,
         cacheReadInputTokens: result.cacheReadInputTokens,
         cacheCreationInputTokens: result.cacheCreationInputTokens,
       });
@@ -674,6 +675,7 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
   public reportInlineUsage(usage: {
     inputTokens: number;
     outputTokens: number;
+    contextOutputTokens: number;
     cacheReadInputTokens: number;
     cacheCreationInputTokens: number;
   }): void {
@@ -682,6 +684,7 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
       source: "inline",
       inputTokens: usage.inputTokens,
       outputTokens: usage.outputTokens,
+      contextOutputTokens: usage.contextOutputTokens,
       cacheReadInputTokens: usage.cacheReadInputTokens,
       cacheCreationInputTokens: usage.cacheCreationInputTokens,
     });
