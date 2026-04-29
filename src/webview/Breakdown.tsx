@@ -96,6 +96,7 @@ export function StepDetail({ step, stepIndex, stepStatus, entries, isStreaming, 
               key={i}
               index={globalIndex}
               content={entry.content}
+              fileRef={entry.fileRef}
               actionLabel={entry.actionLabel}
               registerRef={registerUserMessage}
               isActive={globalIndex === activeUserIndex}

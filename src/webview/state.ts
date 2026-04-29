@@ -32,6 +32,7 @@ export interface UserEntry {
   content: string;
   stepRef?: StepRef;
   actionLabel?: string;
+  fileRef?: { filePath: string; cursorLine: number; selection?: string };
 }
 
 export type Entry = UserEntry | AssistantEntry;

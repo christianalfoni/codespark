@@ -120,9 +120,10 @@ export function App({ vscode }: AppProps) {
       !opts?.skipStepRef && state.selectedStepIndex !== null
         ? state.breakdownSteps[state.selectedStepIndex]
         : null;
+    const fileRef = state.fileContext ?? undefined;
     const userEntry: Entry = step
-      ? { role: "user", content: text, stepRef: { stepIndex: state.selectedStepIndex!, title: step.title, filePath: step.filePath }, ...(opts?.actionLabel ? { actionLabel: opts.actionLabel } : {}) }
-      : { role: "user", content: text, ...(opts?.actionLabel ? { actionLabel: opts.actionLabel } : {}) };
+      ? { role: "user", content: text, stepRef: { stepIndex: state.selectedStepIndex!, title: step.title, filePath: step.filePath }, ...(opts?.actionLabel ? { actionLabel: opts.actionLabel } : {}), ...(fileRef ? { fileRef } : {}) }
+      : { role: "user", content: text, ...(opts?.actionLabel ? { actionLabel: opts.actionLabel } : {}), ...(fileRef ? { fileRef } : {}) };
     const newEntries: Entry[] = [
       ...state.entries,
       userEntry,
@@ -134,6 +135,7 @@ export function App({ vscode }: AppProps) {
       isStreaming: true,
       activeTool: null,
       contextState: "pending",
+      fileContext: null,
       ...(opts?.skipStepRef ? { selectedStepIndex: null } : {}),
     });
     userScrolledUp.current = false;
@@ -323,6 +325,7 @@ export function App({ vscode }: AppProps) {
                         index={i}
                         content={entry.content}
                         stepRef={entry.stepRef}
+                        fileRef={entry.fileRef}
                         actionLabel={entry.actionLabel}
                         registerRef={registerUserMessage}
                         isActive={i === activeUserIndex}
