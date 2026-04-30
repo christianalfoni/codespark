@@ -23,7 +23,7 @@ const extensionOpts = {
 /** @type {import('esbuild').BuildOptions} */
 /** @type {import('esbuild').BuildOptions} */
 const mcpServerOpts = {
-  entryPoints: ["./src/mcp-server.ts"],
+  entryPoints: ["./src/mcp-server/index.ts"],
   bundle: true,
   outfile: "out/mcp-server.js",
   format: "cjs",

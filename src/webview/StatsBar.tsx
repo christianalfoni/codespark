@@ -1,19 +1,7 @@
 import { useRef } from "preact/hooks";
 import { CHECK_ICON, CLIPBOARD_ICON } from "./markdown";
-import { copyCodeWithFeedback } from "./utils";
+import { copyCodeWithFeedback, formatTokens } from "./utils";
 import type { TokenUsage } from "./state";
-
-interface StatsBarProps {
-  conversationText: string;
-  usage: TokenUsage;
-  inlineUsage: TokenUsage;
-}
-
-function formatTokens(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-  return String(n);
-}
 
 function totalIn(u: TokenUsage): number {
   return u.totalInputTokens + u.totalCacheReadTokens + u.totalCacheCreationTokens;

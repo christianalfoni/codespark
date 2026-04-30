@@ -19,6 +19,7 @@ import {
   FILE_ICON,
   BOLT_ICON,
   copyCodeWithFeedback,
+  formatTokens,
   handleCommandClick,
   REVIEW_ICON,
   STACK_ICON,
@@ -45,6 +46,7 @@ export function App({ vscode }: AppProps) {
   const pinnedQueryRef = useRef<HTMLDivElement>(null);
   const stepPinnedQueryRef = useRef<HTMLDivElement>(null);
   const inputAreaRef = useRef<HTMLDivElement>(null);
+  const copyBtnRef = useRef<HTMLButtonElement>(null);
 
   useMessageHandling(setState, textareaRef, vscode);
 
@@ -266,6 +268,14 @@ export function App({ vscode }: AppProps) {
       ? state.breakdownSteps[state.selectedStepIndex]
       : null;
 
+  const usageTotalIn =
+    state.usage.totalInputTokens +
+    state.usage.totalCacheReadTokens +
+    state.usage.totalCacheCreationTokens;
+  const usageContext = usageTotalIn + state.usage.lastOutputTokens;
+  const usageOut = state.usage.totalOutputTokens;
+  const hasUsage = usageContext > 0;
+
   return (
     <>
       <div class="message-list-wrapper">
@@ -341,13 +351,6 @@ export function App({ vscode }: AppProps) {
                     />
                   );
                 })}
-                {!state.isStreaming && (
-                  <StatsBar
-                    conversationText={serializeConversation(state.entries)}
-                    usage={state.usage}
-                    inlineUsage={state.inlineUsage}
-                  />
-                )}
                 <div class="message-list-spacer" />
               </>
             )}
@@ -396,71 +399,100 @@ export function App({ vscode }: AppProps) {
               onBlur={() => vscode.postMessage({ type: "input-focus", focused: false })}
             />
             <div class="input-toolbar">
-              <button
-                class="reset-btn"
-                data-tooltip="New session"
-                disabled={state.isStreaming}
-                onClick={newSession}
-                dangerouslySetInnerHTML={{ __html: NEW_SESSION_ICON }}
-              />
-              {hasSessions && state.sessions.length > 1 && (
-                <SessionMenu
-                  sessions={state.sessions}
-                  activeSessionId={state.activeSessionId}
+              <div class="input-toolbar-left">
+                <button
+                  class="reset-btn"
+                  data-tooltip="New session"
                   disabled={state.isStreaming}
-                  onSwitch={switchToSession}
+                  onClick={newSession}
+                  dangerouslySetInnerHTML={{ __html: NEW_SESSION_ICON }}
                 />
-              )}
-              {state.breakdownSteps.length > 0 && (
-                <>
-                  {state.features.stackedCommitsEnabled && (
+                {hasSessions && state.sessions.length > 1 && (
+                  <SessionMenu
+                    sessions={state.sessions}
+                    activeSessionId={state.activeSessionId}
+                    disabled={state.isStreaming}
+                    onSwitch={switchToSession}
+                  />
+                )}
+                <button
+                  ref={copyBtnRef}
+                  class="reset-btn"
+                  data-tooltip="Copy conversation"
+                  disabled={state.isStreaming}
+                  onClick={() => {
+                    if (copyBtnRef.current) {
+                      copyCodeWithFeedback(
+                        serializeConversation(state.entries),
+                        copyBtnRef.current,
+                        CHECK_ICON,
+                        CLIPBOARD_ICON,
+                      );
+                    }
+                  }}
+                  dangerouslySetInnerHTML={{ __html: CLIPBOARD_ICON }}
+                />
+                {state.breakdownSteps.length > 0 && (
+                  <>
+                    {state.features.stackedCommitsEnabled && (
+                      <button
+                        class="reset-btn review-btn"
+                        data-tooltip="Create stacked commits from breakdown"
+                        disabled={state.isStreaming}
+                        onClick={() => {
+                          onSelectStep(null);
+                          send(
+                            "Create stacked commits for my current breakdown. Call git_status to see all uncommitted changes, then use the breakdown steps as a guide to group those files into logical commits — multiple steps may map to the same file, and a step may involve files not listed in its breakdown entry. Call create_stacked_commits with an ordered list of commits, each specifying which files to stage. Commit messages should be in the form 'step-title: short summary'.",
+                            { skipStepRef: true, actionLabel: "Stack commits" },
+                          );
+                        }}
+                        dangerouslySetInnerHTML={{ __html: STACK_ICON }}
+                      />
+                    )}
                     <button
                       class="reset-btn review-btn"
-                      data-tooltip="Create stacked commits from breakdown"
+                      data-tooltip="Review breakdown"
                       disabled={state.isStreaming}
                       onClick={() => {
                         onSelectStep(null);
                         send(
-                          "Create stacked commits for my current breakdown. First call git_diff (no args) to see all uncommitted changes, then split them into one commit per breakdown step and call create_stacked_commits with the ordered list. Each patch must apply on top of the previous one — be careful with hunk ordering if steps touch the same file. If a patch fails, re-slice and retry. Commit messages should be in the form 'step-title: short summary'.",
-                          { skipStepRef: true, actionLabel: "Stack commits" },
+                          "Review the changes I made for the current breakdown steps. Check if I followed the guidance correctly and suggest any improvements.",
+                          { skipStepRef: true, actionLabel: "Review breakdown" },
                         );
                       }}
-                      dangerouslySetInnerHTML={{ __html: STACK_ICON }}
+                      dangerouslySetInnerHTML={{ __html: REVIEW_ICON }}
                     />
-                  )}
+                    {state.selectedStepIndex !== null && (
+                      <button
+                        class="reset-btn review-btn"
+                        data-tooltip={state.stepStatuses.get(state.selectedStepIndex)?.status === "applying" ? "Applying…" : "Fast Edit — apply this step"}
+                        disabled={state.isStreaming || state.stepStatuses.get(state.selectedStepIndex)?.status === "applying"}
+                        onClick={() => onApplyStep(state.selectedStepIndex!)}
+                        dangerouslySetInnerHTML={{ __html: state.stepStatuses.get(state.selectedStepIndex)?.status === "applying" ? SPINNER_ICON : BOLT_ICON }}
+                      />
+                    )}
+                  </>
+                )}
+              </div>
+              <div class="input-toolbar-right">
+                {hasUsage && (
+                  <span class="toolbar-stats toolbar-stats--hoverable">
+                    {formatTokens(usageContext)} tokens{state.usage.hadThinking ? " · thinking" : ""}
+                    <span class="toolbar-stats__detail">
+                      (in: {formatTokens(usageContext - usageOut)}, out: {formatTokens(usageOut)})
+                    </span>
+                  </span>
+                )}
+                {state.isStreaming && (
                   <button
-                    class="reset-btn review-btn"
-                    data-tooltip="Review breakdown"
-                    disabled={state.isStreaming}
-                    onClick={() => {
-                      onSelectStep(null);
-                      send(
-                        "Review the changes I made for the current breakdown steps. Check if I followed the guidance correctly and suggest any improvements.",
-                        { skipStepRef: true, actionLabel: "Review breakdown" },
-                      );
-                    }}
-                    dangerouslySetInnerHTML={{ __html: REVIEW_ICON }}
+                    class="send-btn"
+                    style={{ marginLeft: "4px" }}
+                    title="Stop (Escape)"
+                    onClick={onClickStop}
+                    dangerouslySetInnerHTML={{ __html: STOP_ICON }}
                   />
-                  {state.selectedStepIndex !== null && (
-                    <button
-                      class="reset-btn review-btn"
-                      data-tooltip={state.stepStatuses.get(state.selectedStepIndex)?.status === "applying" ? "Applying…" : "Fast Edit — apply this step"}
-                      disabled={state.isStreaming || state.stepStatuses.get(state.selectedStepIndex)?.status === "applying"}
-                      onClick={() => onApplyStep(state.selectedStepIndex!)}
-                      dangerouslySetInnerHTML={{ __html: state.stepStatuses.get(state.selectedStepIndex)?.status === "applying" ? SPINNER_ICON : BOLT_ICON }}
-                    />
-                  )}
-                </>
-              )}
-              <div style={{ flex: 1 }} />
-              {state.isStreaming && (
-                <button
-                  class="send-btn"
-                  title="Stop (Escape)"
-                  onClick={onClickStop}
-                  dangerouslySetInnerHTML={{ __html: STOP_ICON }}
-                />
-              )}
+                )}
+              </div>
             </div>
           </div>
         </div>

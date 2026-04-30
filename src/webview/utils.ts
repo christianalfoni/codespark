@@ -6,6 +6,12 @@ export const REVIEW_ICON = `<svg viewBox="0 0 16 16"><path d="M8 1a7 7 0 1 0 0 1
 export const BOLT_ICON = `<svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M14.5 2L5 13h6.5L9.5 22L19 11h-6.5L14.5 2Z"/></svg>`;
 export const STACK_ICON = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="4" cy="3.5" r="1.5"/><circle cx="4" cy="12.5" r="1.5"/><circle cx="4" cy="8" r="1.5"/><path d="M7 3.5h6M7 8h6M7 12.5h6"/></svg>`;
 
+export function formatTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return String(n);
+}
+
 export function copyCodeWithFeedback(
   code: string,
   button: HTMLButtonElement,

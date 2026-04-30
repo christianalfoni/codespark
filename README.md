@@ -62,3 +62,13 @@ The breakdown makes this practical:
 - **Context generation is fast** — the assistant reads files, searches the codebase, and synthesizes what you need to know.
 - **Context is sticky** — because you implement the steps, what you learn stays with you. It becomes part of how you think about the codebase.
 - **Token cost drops dramatically** — a breakdown is a fraction of the tokens an agent spends implementing changes end-to-end.
+
+## Token efficiency
+
+CodeSpark is designed to keep token usage — and cost — low.
+
+**The assistant agent starts lean.** A fresh Claude Code session loads ~16.7K tokens of context: a large system prompt, tool definitions for Bash, Edit, Write, and more. The CodeSpark assistant strips this down to ~8.5K by restricting the tool set to read-only operations (Glob, Grep, WebSearch, WebFetch, and a handful of git tools). No Bash. No file editing. Tool definitions repeat on every turn, so a smaller set pays off across the entire conversation.
+
+**Exploration is read-only.** Because the assistant has no Bash or file-write tools, it cannot run commands, install packages, or modify the codebase while you explore. Beyond safety, this matters for cost: Bash and file-editing tool definitions are expensive, and removing them from the schema reduces input tokens on every turn in the session.
+
+**Edits run on Haiku.** When you apply a breakdown step, a separate process runs on Claude Haiku — roughly 20× cheaper per token than Sonnet. Even applying many steps in a row costs only a few cents at most.

@@ -80,25 +80,6 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
       );
     });
 
-    this._ipcServer.onBreakdownStepUpdate((update) => {
-      if (update.index < 0 || update.index >= this._steps.length) {
-        this._log.appendLine(
-          `[assistant-view] Step update out of range: index ${update.index}, have ${this._steps.length} step(s)`,
-        );
-        return;
-      }
-      const step = { ...this._steps[update.index] };
-      if (update.title !== undefined) step.title = update.title;
-      if (update.description !== undefined) step.description = update.description;
-      if (update.filePath !== undefined) step.filePath = update.filePath;
-      if (update.lineHint !== undefined) step.lineHint = update.lineHint;
-      this._steps[update.index] = step;
-      this._postBreakdown();
-      this._persistBreakdown();
-      this._log.appendLine(
-        `[assistant-view] Step ${update.index} updated`,
-      );
-    });
   }
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
@@ -115,9 +96,11 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
     webviewView.webview.html = this._getHtml(webviewView.webview);
 
     webviewView.webview.onDidReceiveMessage((msg) => {
-      this._log.appendLine(
-        `[assistant-view] msg: ${JSON.stringify(msg).slice(0, 200)}`,
-      );
+      if (msg.type !== "input-focus") {
+        this._log.appendLine(
+          `[assistant-view] msg: ${JSON.stringify(msg).slice(0, 200)}`,
+        );
+      }
 
       switch (msg.type) {
         case "send":
