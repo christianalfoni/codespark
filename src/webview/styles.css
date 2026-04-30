@@ -701,6 +701,7 @@ body {
   color: var(--vscode-descriptionForeground);
   opacity: 0.7;
   white-space: nowrap;
+  margin-right: 4px;
 }
 
 .toolbar-stats--hoverable {

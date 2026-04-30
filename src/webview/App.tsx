@@ -486,7 +486,6 @@ export function App({ vscode }: AppProps) {
                 {state.isStreaming && (
                   <button
                     class="send-btn"
-                    style={{ marginLeft: "4px" }}
                     title="Stop (Escape)"
                     onClick={onClickStop}
                     dangerouslySetInnerHTML={{ __html: STOP_ICON }}
