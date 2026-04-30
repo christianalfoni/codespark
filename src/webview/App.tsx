@@ -415,23 +415,25 @@ export function App({ vscode }: AppProps) {
                     onSwitch={switchToSession}
                   />
                 )}
-                <button
-                  ref={copyBtnRef}
-                  class="reset-btn"
-                  data-tooltip="Copy conversation"
-                  disabled={state.isStreaming}
-                  onClick={() => {
-                    if (copyBtnRef.current) {
-                      copyCodeWithFeedback(
-                        serializeConversation(state.entries),
-                        copyBtnRef.current,
-                        CHECK_ICON,
-                        CLIPBOARD_ICON,
-                      );
-                    }
-                  }}
-                  dangerouslySetInnerHTML={{ __html: CLIPBOARD_ICON }}
-                />
+                {!isEmpty && (
+                  <button
+                    ref={copyBtnRef}
+                    class="reset-btn"
+                    data-tooltip="Copy conversation"
+                    disabled={state.isStreaming}
+                    onClick={() => {
+                      if (copyBtnRef.current) {
+                        copyCodeWithFeedback(
+                          serializeConversation(state.entries),
+                          copyBtnRef.current,
+                          CHECK_ICON,
+                          CLIPBOARD_ICON,
+                        );
+                      }
+                    }}
+                    dangerouslySetInnerHTML={{ __html: CLIPBOARD_ICON }}
+                  />
+                )}
                 {state.breakdownSteps.length > 0 && (
                   <>
                     {state.features.stackedCommitsEnabled && (
@@ -477,7 +479,7 @@ export function App({ vscode }: AppProps) {
               <div class="input-toolbar-right">
                 {hasUsage && (
                   <span class="toolbar-stats toolbar-stats--hoverable">
-                    {formatTokens(usageContext)} tokens{state.usage.hadThinking ? " · thinking" : ""}
+                    {formatTokens(usageContext)} tokens{state.usage.hadThinking ? " · extended thinking" : ""}
                     <span class="toolbar-stats__detail">
                       (in: {formatTokens(usageContext - usageOut)}, out: {formatTokens(usageOut)})
                     </span>
