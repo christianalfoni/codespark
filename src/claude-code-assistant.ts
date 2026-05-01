@@ -2,6 +2,7 @@ import * as childProcess from "child_process";
 import * as readline from "readline";
 import * as vscode from "vscode";
 import { buildAssistantSystemPrompt } from "./prompts";
+import { spawnClaude } from "./claude-cli";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -9,6 +10,7 @@ import { buildAssistantSystemPrompt } from "./prompts";
 
 export interface AssistantQueryHandle {
   process: childProcess.ChildProcess;
+  rl: readline.Interface;
   /** SDK session ID, available after the `result` message */
   sdkSessionId?: string;
   /** Send a follow-up message to the running process via stdin */
@@ -60,50 +62,22 @@ export function createAssistantQuery(
     `[claude-code-assistant] Creating query (resume: ${resumeSessionId ?? "none"}) — ${prompt.slice(0, 100)}`,
   );
 
-  const args = [
-    "--print",
-    "--input-format",
-    "stream-json",
-    "--output-format",
-    "stream-json",
-    "--verbose",
-    "--include-partial-messages",
-    "--dangerously-skip-permissions",
-    "--disable-slash-commands",
-    "--strict-mcp-config",
-    ...(mcpConfigPath ? ["--mcp-config", mcpConfigPath] : []),
-    "--tools",
-    "Glob,Grep,WebSearch,WebFetch",
-    "--disallowedTools",
-    "mcp__codespark__edit_file,mcp__codespark__write_file",
-    "--system-prompt",
-    buildAssistantSystemPrompt(cwd),
-  ];
-
-  if (resumeSessionId) {
-    args.push("--resume", resumeSessionId);
-  }
-
-  const proc = childProcess.spawn("claude", args, {
+  const claude = spawnClaude({
+    args: [
+      "--tools",
+      "Glob,Grep,WebSearch,WebFetch",
+      "--disallowedTools",
+      "mcp__codespark__edit_file,mcp__codespark__write_file",
+      ...(resumeSessionId ? ["--resume", resumeSessionId] : []),
+    ],
     cwd,
-    stdio: ["pipe", "pipe", "pipe"],
+    log,
+    logPrefix: "claude-code-assistant",
+    systemPrompt: buildAssistantSystemPrompt(cwd),
+    mcpConfigPath,
   });
 
-  proc.on("error", (err) => {
-    log.appendLine(`[claude-code-assistant] Process error: ${err.message}`);
-  });
-
-  proc.on("exit", (code, signal) => {
-    log.appendLine(
-      `[claude-code-assistant] Process exited (code=${code}, signal=${signal}, pid=${proc.pid})`,
-    );
-  });
-
-  proc.stderr?.on("data", (chunk: Buffer) => {
-    log.appendLine(`[claude-code-assistant:stderr] ${chunk.toString().trim()}`);
-  });
-
-  proc.stdout?.on("data", () => {
+  claude.proc.stdout?.on("data", () => {
     if (!stdoutSeen) {
       stdoutSeen = true;
       log.appendLine(`[claude-code-assistant] First stdout data received`);
@@ -120,16 +94,16 @@ export function createAssistantQuery(
     log.appendLine(
       `[claude-code-assistant] Sending message to stdin: ${msg.slice(0, 100)}`,
     );
-    const ok = proc.stdin?.write(msg + "\n");
+    const ok = claude.proc.stdin?.write(msg + "\n");
     log.appendLine(
-      `[claude-code-assistant] stdin.write ok=${ok}, pid=${proc.pid}`,
+      `[claude-code-assistant] stdin.write ok=${ok}, pid=${claude.proc.pid}`,
     );
   }
 
   // Send initial prompt via stdin
   sendMessage(prompt);
 
-  return { process: proc, sendMessage };
+  return { process: claude.proc, rl: claude.rl, sendMessage };
 }
 
 // ---------------------------------------------------------------------------
@@ -181,10 +155,8 @@ export async function* iterateAssistantEvents(
   let lastMsgDeltaOutput = 0;
   let hasThinking = false;
 
-  const rl = readline.createInterface({ input: handle.process.stdout! });
-
   try {
-    for await (const line of rl) {
+    for await (const line of handle.rl) {
       if (!line.trim()) continue;
 
       let msg: any;

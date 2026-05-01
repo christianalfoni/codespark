@@ -6,9 +6,10 @@ import * as path from "path";
 import * as readline from "readline";
 import * as vscode from "vscode";
 
-import { InlineEditResult } from "./types";
+import { InlineEditResult, Usage } from "./types";
 import { IpcServer } from "./ipc-server";
 import { buildSystemPrompt } from "./prompts";
+import { spawnClaude } from "./claude-cli";
 
 // ---------------------------------------------------------------------------
 // Exported types
@@ -76,60 +77,37 @@ export async function prepareInlineEdit(
   );
 
   const tSpawn = Date.now();
-
-  const args = [
-    "--print",
-    "--input-format",
-    "stream-json",
-    "--output-format",
-    "stream-json",
-    "--verbose",
-    "--model",
-    "claude-haiku-4-5-20251001",
-    "--dangerously-skip-permissions",
-    "--disable-slash-commands",
-    "--strict-mcp-config",
-    "--mcp-config",
-    mcpConfigPath,
-    "--include-partial-messages",
-    "--tools",
-    "Read,Glob,Grep",
-    "--system-prompt",
-    systemPrompt,
-    "--resume",
-    sessionId,
-  ];
-
   const env = { ...process.env, MAX_THINKING_TOKENS: "0" };
 
-  const proc = childProcess.spawn("claude", args, {
+  const claude = spawnClaude({
+    args: [
+      "--model",
+      "claude-haiku-4-5-20251001",
+      "--tools",
+      "Read,Glob,Grep",
+      "--resume",
+      sessionId,
+    ],
     cwd: workspaceFolder,
+    log,
     env,
-    stdio: ["pipe", "pipe", "pipe"],
+    logPrefix: "cli-inline",
+    systemPrompt,
+    mcpConfigPath,
+    onExit() {
+      fs.promises.unlink(sessionFile).catch(() => {});
+    },
   });
 
-  proc.on("error", (err) => {
-    log.appendLine(`[cli-inline] Process error: ${err.message}`);
-  });
+  log.appendLine(`[cli-inline:timing] Spawn: ${Date.now() - tSpawn}ms`);
 
-  proc.stderr?.on("data", (chunk: Buffer) => {
-    log.appendLine(`[cli-inline:stderr] ${chunk.toString().trim()}`);
-  });
-
-  proc.on("exit", (code, signal) => {
-    log.appendLine(
-      `[cli-inline] Process exited (code=${code}, signal=${signal}, pid=${proc.pid})`,
-    );
-    fs.promises.unlink(sessionFile).catch(() => {});
-  });
-
-  const rl = readline.createInterface({ input: proc.stdout! });
-
-  log.appendLine(
-    `[cli-inline:timing] Spawn: ${Date.now() - tSpawn}ms`,
-  );
-
-  return { proc, rl, sessionFile, filePath: ctx.filePath, absFilePath };
+  return {
+    proc: claude.proc,
+    rl: claude.rl,
+    sessionFile,
+    filePath: ctx.filePath,
+    absFilePath,
+  };
 }
 
 /**
@@ -176,8 +154,8 @@ export async function executeInlineEdit(
   const toolsInFlight = new Map<string, { name: string; start: number }>();
   const activeToolBlocks = new Map<number, { name: string; json: string }>();
   let textResponseContent = "";
-  let resultUsage: { inputTokens: number; cacheReadInputTokens: number; cacheCreationInputTokens: number } | null = null;
-  let lastApiCallOutput = 0;  // last message_delta output — for context window size
+  let resultUsage: Usage | null = null;
+  let lastApiCallOutput = 0; // last message_delta output — for context window size
   let totalOutputTokens = 0; // result.usage.output_tokens — accurate total across all API calls
   const editedLines: Array<{ startLine: number; endLine: number }> = [];
 
@@ -227,6 +205,8 @@ export async function executeInlineEdit(
                 inputTokens: u.input_tokens || 0,
                 cacheReadInputTokens: u.cache_read_input_tokens || 0,
                 cacheCreationInputTokens: u.cache_creation_input_tokens || 0,
+                contextOutputTokens: 0,
+                outputTokens: 0,
               };
             }
           }
@@ -306,7 +286,8 @@ export async function executeInlineEdit(
             for (const block of content) {
               if (block?.type !== "tool_result") continue;
               const id = block.tool_use_id;
-              const pending = typeof id === "string" ? toolsInFlight.get(id) : undefined;
+              const pending =
+                typeof id === "string" ? toolsInFlight.get(id) : undefined;
               if (!pending) continue;
               toolsInFlight.delete(id);
               const status = block.is_error ? "error" : "ok";
@@ -372,14 +353,19 @@ export async function executeInlineEdit(
   return {
     hasEdits,
     editedLines,
-    textResponse: !editToolSeen && textResponseContent.trim()
-      ? textResponseContent.trim()
-      : undefined,
+    textResponse:
+      !editToolSeen && textResponseContent.trim()
+        ? textResponseContent.trim()
+        : undefined,
     latencyMs,
+    // TODO: Fix the typing here
+    // @ts-ignore
     inputTokens: resultUsage?.inputTokens ?? 0,
     outputTokens: totalOutputTokens,
     contextOutputTokens: lastApiCallOutput,
+    // @ts-ignore
     cacheReadInputTokens: resultUsage?.cacheReadInputTokens ?? 0,
+    // @ts-ignore
     cacheCreationInputTokens: resultUsage?.cacheCreationInputTokens ?? 0,
   };
 }
@@ -412,7 +398,9 @@ function describeTool(name: string, input: unknown): string {
   }
   if (name === "Grep") {
     const pattern = str("pattern");
-    return pattern ? `Grepping "${truncate(pattern, 40)}"` : mapToolStatus(name);
+    return pattern
+      ? `Grepping "${truncate(pattern, 40)}"`
+      : mapToolStatus(name);
   }
   if (name === "Glob") {
     const pattern = str("pattern");
