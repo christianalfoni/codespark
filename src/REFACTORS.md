@@ -8,7 +8,7 @@ I've gone through the codebase. Here's a focused review of where organization co
 
 ## High-impact opportunities
 
-### 1. Split [src/mcp-server.ts](vscode://file${workspaceFolder}/src/mcp-server.ts) (695 lines, multiple concerns)
+### 1. Split [src/mcp-server.ts](vscode://file${workspaceFolder}/src/mcp-server.ts) (695 lines, multiple concerns) (DONE)
 
 This file mixes the HTTP/IPC plumbing with five distinct tool families. It's the biggest single file and the most natural to break up:
 
@@ -21,7 +21,7 @@ This file mixes the HTTP/IPC plumbing with five distinct tool families. It's the
 
 The bundle entry stays the same (`out/mcp-server.js`) — only the source is reorganized.
 
-### 2. Split [src/assistant-view.ts](vscode://file${workspaceFolder}/src/assistant-view.ts) (781 lines, the largest TS file)
+### 2. Split [src/assistant-view.ts](vscode://file${workspaceFolder}/src/assistant-view.ts) (781 lines, the largest TS file) (DONE)
 
 `AssistantViewProvider` is doing eight things at once:
 
@@ -37,7 +37,7 @@ The bundle entry stays the same (`out/mcp-server.js`) — only the source is reo
 
 The class becomes a thin coordinator that delegates.
 
-### 3. Deduplicate the "dim non-edited lines" effect
+### 3. Deduplicate the "dim non-edited lines" effect (DONE)
 
 This block appears almost verbatim in both [src/invoker.ts:289-352](vscode://file${workspaceFolder}/src/invoker.ts:289) and [src/assistant-view.ts:325-378](vscode://file${workspaceFolder}/src/assistant-view.ts:325):
 
@@ -61,7 +61,7 @@ export function highlightEditedLines(
 ): { dispose: () => void };
 ```
 
-### 4. Deduplicate the Claude CLI spawn boilerplate
+### 4. Deduplicate the Claude CLI spawn boilerplate (DONE)
 
 [src/claude-code-inline.ts](vscode://file${workspaceFolder}/src/claude-code-inline.ts) and [src/claude-code-assistant.ts](vscode://file${workspaceFolder}/src/claude-code-assistant.ts) both:
 
@@ -90,7 +90,7 @@ export function spawnClaude(opts: {
 
 That saves ~30 lines per call site and centralizes the flag list (currently easy to drift).
 
-### 5. Deduplicate "gather CLAUDE.md + reference files"
+### 5. Deduplicate "gather CLAUDE.md + reference files" (DONE)
 
 Same logic appears in [src/invoker.ts:96-128](vscode://file${workspaceFolder}/src/invoker.ts:96) and [src/assistant-view.ts:407-432](vscode://file${workspaceFolder}/src/assistant-view.ts:407). Extract to [src/instructionDecorations.ts](vscode://file${workspaceFolder}/src/instructionDecorations.ts) (or a new `src/instructionContext.ts`):
 

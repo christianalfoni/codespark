@@ -10,6 +10,7 @@ import {
 } from "../claude-code-inline";
 import { dimNonEditedLines, startFileScan } from "../editor-effects";
 import { Usage } from "../types";
+import { gatherInstructionContext } from "../instructionContext";
 
 export class ApplyBreakdownStep {
   constructor(
@@ -122,36 +123,22 @@ export class ApplyBreakdownStep {
   ): Promise<PreparedInlineEdit> {
     // Gather instruction content from CLAUDE.md files
     const editor = vscode.window.activeTextEditor;
-    let instructionContent: string | undefined;
-    if (editor) {
-      const instructions = this._decorationProvider.activate(
-        editor.document.uri,
+
+    if (!editor) {
+      return prepareInlineEdit(
+        {
+          fileContent,
+          filePath,
+          instructionContent: undefined,
+          referenceFiles: [],
+        },
+        this._log,
+        this._mcpConfigPath!,
       );
-      const parts: string[] = [];
-      if (instructions.root) parts.push(instructions.root.content);
-      for (const loc of instructions.local) parts.push(loc.content);
-      instructionContent =
-        parts.length > 0 ? parts.join("\n\n---\n\n") : undefined;
-      this._decorationProvider.deactivate();
     }
 
-    // Gather reference files
-    const referenceFiles: { path: string; content: string }[] = [];
-    if (editor) {
-      const instructions = this._decorationProvider.activate(
-        editor.document.uri,
-      );
-      for (const absPath of instructions.referencedFiles) {
-        try {
-          const content = await fs.promises.readFile(absPath, "utf-8");
-          const relPath = vscode.workspace.asRelativePath(absPath);
-          referenceFiles.push({ path: relPath, content });
-        } catch {
-          // skip unreadable reference files
-        }
-      }
-      this._decorationProvider.deactivate();
-    }
+    const { instructionContent, referenceFiles } =
+      await gatherInstructionContext(editor, this._decorationProvider);
 
     return prepareInlineEdit(
       { fileContent, filePath, instructionContent, referenceFiles },
