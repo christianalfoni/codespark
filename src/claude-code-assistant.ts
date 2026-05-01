@@ -19,7 +19,13 @@ export type WebviewEvent =
   | { type: "turn-start" }
   | { type: "token"; text: string }
   | { type: "tool-start"; tool: string; toolId: number; description?: string }
-  | { type: "tool-end"; tool: string; toolId: number; isError: boolean; description?: string }
+  | {
+      type: "tool-end";
+      tool: string;
+      toolId: number;
+      isError: boolean;
+      description?: string;
+    }
   | {
       type: "done";
       resultText: string;
@@ -27,7 +33,17 @@ export type WebviewEvent =
       numTurns?: number;
       totalCostUsd?: number;
     }
-  | { type: "error"; text: string };
+  | { type: "error"; text: string }
+  | {
+      type: "usage";
+      source: string;
+      hasThinking?: boolean;
+      inputTokens: number;
+      outputTokens: number;
+      contextOutputTokens: number;
+      cacheReadInputTokens: number;
+      cacheCreationInputTokens: number;
+    };
 
 // ---------------------------------------------------------------------------
 // Spawn claude CLI
@@ -125,7 +141,10 @@ export async function* iterateAssistantEvents(
   log: vscode.OutputChannel,
 ): AsyncGenerator<WebviewEvent> {
   let toolIdCounter = 0;
-  const pendingTools = new Map<number, { tool: string; toolId: number; toolUseId?: string }>();
+  const pendingTools = new Map<
+    number,
+    { tool: string; toolId: number; toolUseId?: string }
+  >();
   /** Map from tool_use_id → our internal toolId, for matching tool results */
   const toolUseIdMap = new Map<string, { tool: string; toolId: number }>();
   let lastAssistantText = "";
@@ -226,7 +245,6 @@ export async function* iterateAssistantEvents(
           lastAssistantText += evt.delta.text;
           yield { type: "token", text: evt.delta.text };
         }
-
       }
 
       if (msg.type === "assistant") {
@@ -255,7 +273,8 @@ export async function* iterateAssistantEvents(
           for (const block of content) {
             if (block?.type !== "tool_result") continue;
             const id = block.tool_use_id;
-            const pending = typeof id === "string" ? toolUseIdMap.get(id) : undefined;
+            const pending =
+              typeof id === "string" ? toolUseIdMap.get(id) : undefined;
             if (!pending) continue;
             toolUseIdMap.delete(id);
 
@@ -266,7 +285,9 @@ export async function* iterateAssistantEvents(
               if (typeof block.content === "string") {
                 description = block.content.slice(0, 200);
               } else if (Array.isArray(block.content)) {
-                const textBlock = block.content.find((b: any) => b.type === "text");
+                const textBlock = block.content.find(
+                  (b: any) => b.type === "text",
+                );
                 if (textBlock?.text) {
                   description = textBlock.text.slice(0, 200);
                 }
@@ -351,7 +372,10 @@ export async function* iterateAssistantEvents(
 }
 
 function* flushPendingTools(
-  pendingTools: Map<number, { tool: string; toolId: number; toolUseId?: string }>,
+  pendingTools: Map<
+    number,
+    { tool: string; toolId: number; toolUseId?: string }
+  >,
   toolUseIdMap: Map<string, { tool: string; toolId: number }>,
 ): Generator<WebviewEvent> {
   for (const [, pending] of pendingTools) {

@@ -1,6 +1,5 @@
 import * as vscode from "vscode";
 import * as path from "path";
-import * as fs from "fs";
 import {
   startAssistantQuery,
   getLiveQuery,
@@ -19,33 +18,20 @@ import {
   getSessionInfos,
 } from "./assistant-agent";
 import { IpcServer, BreakdownStepInput } from "./ipc-server";
-import {
-  PreparedInlineEdit,
-  prepareInlineEdit,
-  executeInlineEdit,
-} from "./claude-code-inline";
-import { InstructionFileDecorationProvider } from "./instructionDecorations";
-import { startFileScan } from "./editor-effects";
 
-function getNonce(): string {
-  let text = "";
-  const chars =
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  for (let i = 0; i < 32; i++) {
-    text += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return text;
-}
+import { InstructionFileDecorationProvider } from "./instructionDecorations";
+import { getHtml } from "./webview-backend/html";
+import { TerminalManager } from "./webview-backend/terminal";
+import { buildFileContextQuery } from "./webview-backend/file-context";
+import { PendingFileContext } from "./types";
+import { ApplyBreakdownStep } from "./webview-backend/apply-breakdown-step";
 
 export class AssistantViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewId = "codeSpark.assistant";
-
+  private _terminalManager = new TerminalManager();
+  private _applyStepRunner: ApplyBreakdownStep;
   private _view?: vscode.WebviewView;
-  private _pendingFileContext?: {
-    filePath: string;
-    cursorLine: number;
-    selection?: string;
-  };
+  private _pendingFileContext?: PendingFileContext;
   /** Queue of prompts awaiting done events, in order */
   private _promptQueue: { text: string; files: string[] }[] = [];
   /** Whether an event loop is already running for the active session */
@@ -61,6 +47,10 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
 
   public get isInputFocused(): boolean {
     return this._isInputFocused;
+  }
+
+  private get _workspaceFolder(): string | undefined {
+    return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   }
 
   constructor(
@@ -79,7 +69,18 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
         `[assistant-view] Breakdown created: ${steps.length} step(s)`,
       );
     });
-
+    this._applyStepRunner = new ApplyBreakdownStep(
+      _log,
+      _mcpConfigPath,
+      _ipcServer,
+      _decorationProvider,
+      (message) => {
+        this._post(message);
+      },
+      (usage) => {
+        this.reportInlineUsage(usage);
+      },
+    );
   }
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
@@ -93,7 +94,7 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
       ],
     };
 
-    webviewView.webview.html = this._getHtml(webviewView.webview);
+    webviewView.webview.html = getHtml(webviewView.webview, this._extensionUri);
 
     webviewView.webview.onDidReceiveMessage((msg) => {
       if (msg.type !== "input-focus") {
@@ -104,8 +105,9 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
 
       switch (msg.type) {
         case "send":
+          // TODO: You can have both pending file context and step focus
           if (this._pendingFileContext) {
-            this._handleSendWithContext(msg.text);
+            this._handleSendWithContext(this._pendingFileContext, msg.text);
           } else if (msg.stepIndex !== undefined && msg.stepIndex !== null) {
             this._handleSendWithStep(msg.text, msg.stepIndex);
           } else {
@@ -126,7 +128,7 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
           this._openFile(msg.path, msg.line);
           break;
         case "run-command":
-          this._runInTerminal(msg.command);
+          this._terminalManager.run(msg.command);
           break;
         case "new-session":
           this._handleNewSession(msg.currentEntries);
@@ -137,9 +139,18 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
         case "select-step":
           this._handleSelectStep(msg.index);
           break;
-        case "apply-step":
-          this._handleApplyStep(msg.index);
+        case "apply-step": {
+          if (!this._workspaceFolder) {
+            return;
+          }
+          this._applyStepRunner.apply(
+            this._workspaceFolder,
+            this._steps[msg.index],
+            msg.index,
+          );
           break;
+        }
+
         case "input-focus":
           this._isInputFocused = !!msg.focused;
           break;
@@ -164,6 +175,8 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
   private _post(msg: unknown): void {
     this._view?.webview.postMessage(msg);
   }
+
+  // --- Session lifecycle ---
 
   private _sendInit(): void {
     const session = getActiveSession();
@@ -253,8 +266,12 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  private async _openFile(filePath: string, line?: number, preserveFocus = false): Promise<void> {
-    const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  private async _openFile(
+    filePath: string,
+    line?: number,
+    preserveFocus = false,
+  ): Promise<void> {
+    const workspaceFolder = this._workspaceFolder;
     if (!workspaceFolder) return;
 
     const absolute = path.resolve(workspaceFolder, filePath);
@@ -273,45 +290,7 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  private _terminal: vscode.Terminal | undefined;
-  private _busyTerminals = new Set<vscode.Terminal>();
-  private _shellListenersReady = false;
-
-  private _ensureShellListeners(): void {
-    if (this._shellListenersReady) return;
-    this._shellListenersReady = true;
-    vscode.window.onDidStartTerminalShellExecution((e) => {
-      this._busyTerminals.add(e.terminal);
-    });
-    vscode.window.onDidEndTerminalShellExecution((e) => {
-      this._busyTerminals.delete(e.terminal);
-    });
-  }
-
-  private _getTerminal(): vscode.Terminal {
-    this._ensureShellListeners();
-
-    if (
-      this._terminal &&
-      !this._terminal.exitStatus &&
-      !this._busyTerminals.has(this._terminal)
-    ) {
-      return this._terminal;
-    }
-
-    this._terminal = vscode.window.createTerminal("CodeSpark");
-    return this._terminal;
-  }
-
-  private _runInTerminal(command: string): void {
-    const terminal = this._getTerminal();
-    terminal.show();
-    terminal.sendText(command);
-  }
-
-  // ---------------------------------------------------------------------------
-  // Breakdown
-  // ---------------------------------------------------------------------------
+  // --- Breakdown ---
 
   private _postBreakdown(): void {
     this._post({
@@ -341,171 +320,6 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
     await this._openFile(step.filePath, step.lineHint, true);
   }
 
-  private async _handleApplyStep(index: number): Promise<void> {
-    const step = this._steps[index];
-    if (!step) return;
-
-    const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-    if (!workspaceFolder || !this._mcpConfigPath) return;
-
-    this._post({ type: "step-status", index, status: "applying" });
-
-    // Open the file in the editor so the user can see the edits.
-    // If the file is already the active editor, don't jump — the user may have scrolled.
-    const absolute = path.resolve(workspaceFolder, step.filePath);
-    const alreadyActive =
-      vscode.window.activeTextEditor?.document.uri.fsPath === absolute;
-    if (!alreadyActive) {
-      try {
-        await fs.promises.mkdir(path.dirname(absolute), { recursive: true });
-        if (!fs.existsSync(absolute)) {
-          await fs.promises.writeFile(absolute, "", "utf-8");
-        }
-        const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(absolute));
-        const options: vscode.TextDocumentShowOptions = {};
-        if (step.lineHint && step.lineHint > 0) {
-          const pos = new vscode.Position(step.lineHint - 1, 0);
-          options.selection = new vscode.Range(pos, pos);
-        }
-        await vscode.window.showTextDocument(doc, options);
-      } catch {
-        // Non-fatal — edits can still apply
-      }
-    }
-
-    // Start scanning immediately — prepare runs concurrently
-    const activeEditor = vscode.window.activeTextEditor;
-    const isEmpty = activeEditor ? activeEditor.document.getText().trim().length === 0 : true;
-    let pulse: { dispose: () => void } | null =
-      activeEditor && !isEmpty ? startFileScan(activeEditor) : null;
-
-    const prepared = await this._prepareFreshEdit(step);
-
-    try {
-      const result = await executeInlineEdit(
-        prepared,
-        step.description,
-        this._log,
-        this._ipcServer,
-      );
-
-      pulse?.dispose();
-      pulse = null;
-
-      this.reportInlineUsage({
-        inputTokens: result.inputTokens,
-        outputTokens: result.outputTokens,
-        contextOutputTokens: result.contextOutputTokens,
-        cacheReadInputTokens: result.cacheReadInputTokens,
-        cacheCreationInputTokens: result.cacheCreationInputTokens,
-      });
-
-      if (result.hasEdits) {
-        this._post({ type: "step-status", index, status: "done" });
-
-        // Dim non-edited lines to highlight what changed
-        const currentEditor = vscode.window.activeTextEditor;
-        if (currentEditor && result.editedLines.length > 0) {
-          const editedLineSet = new Set<number>();
-          for (const range of result.editedLines) {
-            for (let l = range.startLine; l <= range.endLine; l++) {
-              editedLineSet.add(l);
-            }
-          }
-
-          const dimType = vscode.window.createTextEditorDecorationType({
-            isWholeLine: true,
-            opacity: "0.3",
-          });
-
-          const dimRanges: vscode.Range[] = [];
-          for (let l = 0; l < currentEditor.document.lineCount; l++) {
-            if (!editedLineSet.has(l)) {
-              dimRanges.push(new vscode.Range(l, 0, l, 0));
-            }
-          }
-          currentEditor.setDecorations(dimType, dimRanges);
-
-          function cleanup() {
-            dimType.dispose();
-            saveListener.dispose();
-            changeListener.dispose();
-          }
-
-          const saveListener = vscode.workspace.onDidSaveTextDocument((doc) => {
-            if (doc.uri.fsPath === currentEditor.document.uri.fsPath) {
-              cleanup();
-            }
-          });
-
-          const changeListener = vscode.workspace.onDidChangeTextDocument((e) => {
-            if (
-              e.document.uri.fsPath === currentEditor.document.uri.fsPath &&
-              e.reason === vscode.TextDocumentChangeReason.Undo
-            ) {
-              cleanup();
-            }
-          });
-        }
-      } else {
-        this._post({
-          type: "step-status",
-          index,
-          status: "error",
-          text: result.textResponse ?? "No edits applied",
-        });
-      }
-    } catch (err: unknown) {
-      pulse?.dispose();
-      const msg = err instanceof Error ? err.message : String(err);
-      this._log.appendLine(`[assistant-view] Apply step error: ${msg}`);
-      this._post({ type: "step-status", index, status: "error", text: msg });
-    }
-  }
-
-  private async _prepareFreshEdit(step: BreakdownStepInput): Promise<PreparedInlineEdit> {
-    const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath!;
-    const absolute = path.resolve(workspaceFolder, step.filePath);
-    const fileContent = await fs.promises.readFile(absolute, "utf-8");
-    return this._prepareEdit(step.filePath, fileContent);
-  }
-
-  private async _prepareEdit(filePath: string, fileContent: string): Promise<PreparedInlineEdit> {
-    // Gather instruction content from CLAUDE.md files
-    const editor = vscode.window.activeTextEditor;
-    let instructionContent: string | undefined;
-    if (editor) {
-      const instructions = this._decorationProvider.activate(editor.document.uri);
-      const parts: string[] = [];
-      if (instructions.root) parts.push(instructions.root.content);
-      for (const loc of instructions.local) parts.push(loc.content);
-      instructionContent = parts.length > 0 ? parts.join("\n\n---\n\n") : undefined;
-      this._decorationProvider.deactivate();
-    }
-
-    // Gather reference files
-    const referenceFiles: { path: string; content: string }[] = [];
-    if (editor) {
-      const instructions = this._decorationProvider.activate(editor.document.uri);
-      for (const absPath of instructions.referencedFiles) {
-        try {
-          const content = await fs.promises.readFile(absPath, "utf-8");
-          const relPath = vscode.workspace.asRelativePath(absPath);
-          referenceFiles.push({ path: relPath, content });
-        } catch {
-          // skip unreadable reference files
-        }
-      }
-      this._decorationProvider.deactivate();
-    }
-
-    return prepareInlineEdit(
-      { fileContent, filePath, instructionContent, referenceFiles },
-      this._log,
-      this._mcpConfigPath!,
-    );
-  }
-
   private _buildBreakdownContext(): string {
     if (this._steps.length === 0) return "";
 
@@ -520,6 +334,8 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
     return lines.join("\n") + "\n\n";
   }
 
+  // --- Prompt event loop ---
+
   private async _handlePrompt(
     text: string,
     files: string[] = [],
@@ -530,7 +346,7 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
       text = breakdownContext + text;
     }
     this._log.appendLine(`[assistant-view:prompt] ${text}`);
-    const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    const workspaceFolder = this._workspaceFolder;
     if (!workspaceFolder) {
       this._post({ type: "error", text: "No workspace folder open." });
       this._post({ type: "done" });
@@ -673,38 +489,18 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
     });
   }
 
-  private async _handleSendWithContext(text: string): Promise<void> {
-    const ctx = this._pendingFileContext!;
-
-    let snippet: string;
-    if (ctx.selection) {
-      snippet = `\`\`\`\n${ctx.selection}\n\`\`\``;
-    } else {
-      snippet = await this._cursorSnippet(ctx.filePath, ctx.cursorLine);
+  private async _handleSendWithContext(
+    ctx: PendingFileContext,
+    text: string,
+  ): Promise<void> {
+    if (!this._workspaceFolder) {
+      return;
     }
 
-    const location = ctx.cursorLine > 1
-      ? `\`${ctx.filePath}\` (line ${ctx.cursorLine})`
-      : `\`${ctx.filePath}\``;
+    const query = await buildFileContextQuery(ctx, this._workspaceFolder, text);
 
-    const query = `[Viewing ${location}]\n\n${snippet}\n\n${text}`;
     this._log.appendLine(`[assistant-view:prompt] ${query}`);
     await this._handlePrompt(query, [ctx.filePath]);
-  }
-
-  private async _cursorSnippet(filePath: string, cursorLine: number): Promise<string> {
-    const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-    if (!workspaceFolder) return "";
-    try {
-      const absolute = path.resolve(workspaceFolder, filePath);
-      const content = await fs.promises.readFile(absolute, "utf-8");
-      const lines = content.split("\n");
-      const start = Math.max(0, cursorLine - 6);
-      const end = Math.min(lines.length, cursorLine + 5);
-      return `\`\`\`\n${lines.slice(start, end).join("\n")}\n\`\`\``;
-    } catch {
-      return "";
-    }
   }
 
   private async _handleSendWithStep(
@@ -727,38 +523,5 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
     if (sessionId) {
       updateSessionEntries(sessionId, entries);
     }
-  }
-
-  private _getHtml(webview: vscode.Webview): string {
-    const scriptUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this._extensionUri, "out", "webview.js"),
-    );
-    const cssUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this._extensionUri, "out", "webview.css"),
-    );
-    const logoUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this._extensionUri, "media", "logo.svg"),
-    );
-    const nonce = getNonce();
-
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy"
-    content="default-src 'none';
-      style-src ${webview.cspSource};
-      script-src 'nonce-${nonce}';
-      font-src ${webview.cspSource};
-      img-src ${webview.cspSource};">
-  <link rel="stylesheet" href="${cssUri}">
-  <title>Assistant</title>
-</head>
-<body>
-  <div id="root" data-logo="${logoUri}"></div>
-  <script nonce="${nonce}" src="${scriptUri}"></script>
-</body>
-</html>`;
   }
 }

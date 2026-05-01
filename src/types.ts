@@ -7,4 +7,19 @@ export interface InlineEditResult {
   outputTokens: number;
   cacheReadInputTokens: number;
   cacheCreationInputTokens: number;
+  contextOutputTokens: number;
+}
+
+export interface Usage {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadInputTokens: number;
+  cacheCreationInputTokens: number;
+  contextOutputTokens: number;
+}
+
+export interface PendingFileContext {
+  filePath: string;
+  cursorLine: number;
+  selection?: string;
 }
