@@ -8,7 +8,7 @@ import {
   prepareInlineEdit,
   executeInlineEdit,
 } from "../claude-code-inline";
-import { startFileScan } from "../editor-effects";
+import { dimNonEditedLines, startFileScan } from "../editor-effects";
 import { Usage } from "../types";
 
 export class ApplyBreakdownStep {
@@ -158,55 +158,5 @@ export class ApplyBreakdownStep {
       this._log,
       this._mcpConfigPath!,
     );
-  }
-}
-
-function dimNonEditedLines(
-  editor: vscode.TextEditor,
-  editedLines: { startLine: number; endLine: number }[],
-) {
-  // Dim non-edited lines to highlight what changed
-
-  if (editedLines.length > 0) {
-    const editedLineSet = new Set<number>();
-    for (const range of editedLines) {
-      for (let l = range.startLine; l <= range.endLine; l++) {
-        editedLineSet.add(l);
-      }
-    }
-
-    const dimType = vscode.window.createTextEditorDecorationType({
-      isWholeLine: true,
-      opacity: "0.3",
-    });
-
-    const dimRanges: vscode.Range[] = [];
-    for (let l = 0; l < editor.document.lineCount; l++) {
-      if (!editedLineSet.has(l)) {
-        dimRanges.push(new vscode.Range(l, 0, l, 0));
-      }
-    }
-    editor.setDecorations(dimType, dimRanges);
-
-    function cleanup() {
-      dimType.dispose();
-      saveListener.dispose();
-      changeListener.dispose();
-    }
-
-    const saveListener = vscode.workspace.onDidSaveTextDocument((doc) => {
-      if (doc.uri.fsPath === editor.document.uri.fsPath) {
-        cleanup();
-      }
-    });
-
-    const changeListener = vscode.workspace.onDidChangeTextDocument((e) => {
-      if (
-        e.document.uri.fsPath === editor.document.uri.fsPath &&
-        e.reason === vscode.TextDocumentChangeReason.Undo
-      ) {
-        cleanup();
-      }
-    });
   }
 }
