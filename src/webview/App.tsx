@@ -441,7 +441,7 @@ export function App({ vscode }: AppProps) {
                   onClick={() => {
                     onSelectStep(null);
                     send(
-                      "Create a PR for the current changes. Use git_diff to see what changed, then call create_pr with a commit message and a PR description written in the Agent Contribution Report format.",
+                      "Create a PR for the current changes. Use git_log and git_diff to review what has been committed, then call create_pr with the PR title and a description written in the Agent Contribution Report format.",
                       { skipStepRef: true, actionLabel: "Create PR" },
                     );
                   }}

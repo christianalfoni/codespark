@@ -144,7 +144,7 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
           }
           this._applyStepRunner.apply(
             this._workspaceFolder,
-            this._steps[msg.index],
+            this._steps,
             msg.index,
           );
           break;

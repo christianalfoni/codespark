@@ -23,9 +23,10 @@ export class ApplyBreakdownStep {
   ) {}
   async apply(
     workspaceFolder: string,
-    step: BreakdownStepInput,
+    allSteps: BreakdownStepInput[],
     index: number,
   ): Promise<void> {
+    const step = allSteps[index];
     if (!this._mcpConfigPath) return;
 
     this._post({ type: "step-status", index, status: "applying" });
@@ -64,11 +65,12 @@ export class ApplyBreakdownStep {
       activeEditor && !isEmpty ? startFileScan(activeEditor) : null;
 
     const prepared = await this._prepareFreshEdit(step);
+    const instruction = buildInstruction(allSteps, index);
 
     try {
       const result = await executeInlineEdit(
         prepared,
-        step.description,
+        instruction,
         this._log,
         this._ipcServer,
       );
@@ -146,4 +148,27 @@ export class ApplyBreakdownStep {
       this._mcpConfigPath!,
     );
   }
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function buildInstruction(steps: BreakdownStepInput[], index: number): string {
+  const current = steps[index];
+  const prior = steps.slice(0, index);
+
+  let instruction = "";
+
+  if (prior.length > 0) {
+    instruction += "## Breakdown context (completed steps)\n\n";
+    for (let i = 0; i < prior.length; i++) {
+      instruction += `### Step ${i + 1}: ${prior[i].title} (${prior[i].filePath})\n${prior[i].description}\n\n`;
+    }
+    instruction += "---\n\n";
+  }
+
+  instruction += `## Your task: ${current.title}\n\n${current.description}`;
+
+  return instruction;
 }

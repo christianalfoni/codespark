@@ -25,15 +25,14 @@ export function registerPrTools(server: McpServer) {
     "create_pr",
     {
       annotations: { title: "Create PR" },
-      description: `Stage all changes, commit, push, and open a GitHub pull request.
+      description: `Push the current branch and open a GitHub pull request.
 
-Before calling this tool, you must compose both the commit_message and pr_description
-yourself, using:
-  - The current diff (git_diff against the base branch or HEAD)
+Before calling this tool, you must compose the pr_description yourself, using:
+  - git_log and git_diff to understand what commits have been made
   - The session breakdown steps (if any were set)
   - The conversation with the user
 
-**Commit message** — one concise imperative sentence (≤72 chars). No period.
+**PR title** — derived from the first line of the most recent commit message.
 
 **PR description** — use this format:
 
@@ -67,30 +66,18 @@ Rules:
 - References list only files directly read or edited during the session
 - If there are multiple user stories, repeat the full block per story
 
-The tool commits everything currently modified or untracked, pushes to origin, and
-creates the PR. The first line of commit_message becomes the PR title.`,
+The tool pushes the current branch to origin and creates the PR.`,
       inputSchema: {
-        commit_message: z
+        pr_title: z
           .string()
-          .describe("Commit message (first line becomes the PR title)"),
+          .describe("PR title — use the first line of the most recent commit message"),
         pr_description: z
           .string()
           .describe("Full PR body in Agent Contribution Report markdown format"),
       },
     },
-    async ({ commit_message, pr_description }) => {
+    async ({ pr_title, pr_description }) => {
       try {
-        await runGit(["add", "-A"]);
-
-        const staged = (await runGit(["diff", "--cached", "--name-only"])).trim();
-        if (!staged) {
-          return {
-            content: [{ type: "text" as const, text: "Nothing to commit — working tree clean." }],
-          };
-        }
-
-        await runGit(["commit", "-m", commit_message]);
-
         const branch = (await runGit(["branch", "--show-current"])).trim();
 
         try {
@@ -99,12 +86,11 @@ creates the PR. The first line of commit_message becomes the PR title.`,
           await runGit(["push"]);
         }
 
-        const prTitle = commit_message.split("\n")[0].trim();
         const prUrl = await runCommand("gh", [
           "pr",
           "create",
           "--title",
-          prTitle,
+          pr_title,
           "--body",
           pr_description,
         ]);
