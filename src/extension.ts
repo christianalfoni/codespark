@@ -58,9 +58,6 @@ export function activate(context: vscode.ExtensionContext) {
   const mcpPort = 30000 + (process.pid % 10000);
   const mcpServerScript = path.join(context.extensionPath, "out", "mcp-server.js");
   const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? "";
-  const stackedCommitsEnabled = vscode.workspace
-    .getConfiguration("codeSpark.experiments")
-    .get<boolean>("stackedCommits", false);
 
   // Wait for IPC socket to be ready before spawning MCP server
   ipcServer.ready.then(() => {
@@ -70,7 +67,6 @@ export function activate(context: vscode.ExtensionContext) {
         CODESPARK_SOCKET: ipcServer.socketPath,
         CODESPARK_MCP_PORT: String(mcpPort),
         CODESPARK_WORKSPACE: workspaceFolder,
-        CODESPARK_STACKED_COMMITS: stackedCommitsEnabled ? "1" : "",
       },
       stdio: ["pipe", "pipe", "pipe"],
     });
@@ -145,7 +141,7 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(watcher);
 
   // Assistant agent webview panel
-  const assistantView = new AssistantViewProvider(context.extensionUri, log, mcpConfigPath, ipcServer, decorationProvider, { stackedCommitsEnabled });
+  const assistantView = new AssistantViewProvider(context.extensionUri, log, mcpConfigPath, ipcServer, decorationProvider);
 
   context.subscriptions.push(
     vscode.commands.registerCommand("codeSpark.showStats", () => {

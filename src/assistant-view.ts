@@ -59,7 +59,6 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
     private readonly _mcpConfigPath: string | undefined,
     private readonly _ipcServer: IpcServer,
     private readonly _decorationProvider: InstructionFileDecorationProvider,
-    private readonly _features: { stackedCommitsEnabled: boolean },
   ) {
     this._ipcServer.onBreakdown((steps) => {
       this._steps = steps;
@@ -188,7 +187,6 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
         sessions: getSessionInfos(),
         activeSessionId: getActiveSessionId(),
         hasContext: !!session.summary,
-        features: this._features,
       });
     } else {
       this._steps = session?.breakdownSteps ?? [];
@@ -197,7 +195,6 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
         hasContext: !!getAssistantSummary(),
         sessions: getSessionInfos(),
         activeSessionId: getActiveSessionId(),
-        features: this._features,
       });
     }
     this._postBreakdown();

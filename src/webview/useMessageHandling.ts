@@ -54,7 +54,6 @@ export function useMessageHandling(
             : prev.contextState,
           sessions: msg.sessions,
           activeSessionId: msg.activeSessionId,
-          features: msg.features ?? prev.features,
           ...(sessionChanged ? { usage: zeroUsage, inlineUsage: zeroUsage } : {}),
         };
       }
@@ -77,7 +76,6 @@ export function useMessageHandling(
             : ("none" as ContextState),
           sessions: msg.sessions,
           activeSessionId: msg.activeSessionId,
-          features: msg.features ?? prev.features,
           ...(sessionChanged ? { usage: zeroUsage, inlineUsage: zeroUsage } : {}),
         };
       }

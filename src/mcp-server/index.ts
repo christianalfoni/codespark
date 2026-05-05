@@ -15,7 +15,7 @@ import { connectIpcWithRetry } from "./ipc-client";
 import { registerFsTools } from "./tools-fs";
 import { registerGitTools } from "./tools-git";
 import { registerBreakdownTools } from "./tools-breakdown";
-import { registerStackedCommitsTools } from "./tools-stackedCommits";
+import { registerPrTools } from "./tools-pr";
 
 // ---------------------------------------------------------------------------
 // IPC client — connects to the extension's Unix socket
@@ -52,7 +52,7 @@ function registerTools(server: McpServer) {
   registerFsTools(server);
   registerGitTools(server);
   registerBreakdownTools(server);
-  registerStackedCommitsTools(server);
+  registerPrTools(server);
 }
 
 async function main() {

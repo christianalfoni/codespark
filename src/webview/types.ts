@@ -71,7 +71,6 @@ export interface InitMessage {
   hasContext: boolean;
   sessions: SessionInfo[];
   activeSessionId: string | null;
-  features?: import("./state").Features;
 }
 export interface TurnStartMessage {
   type: "turn-start";
@@ -131,7 +130,6 @@ export interface RestoreMessage {
   sessions: SessionInfo[];
   activeSessionId: string | null;
   hasContext: boolean;
-  features?: import("./state").Features;
 }
 
 export interface InjectUserMessage {

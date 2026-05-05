@@ -43,6 +43,7 @@ export function registerGitTools(server: McpServer) {
   server.registerTool(
     "git_status",
     {
+      annotations: { title: "Git Status" },
       description: `Show the current branch, staged, modified, and untracked files.`,
     },
     async () => {
@@ -62,6 +63,7 @@ export function registerGitTools(server: McpServer) {
   server.registerTool(
     "git_log",
     {
+      annotations: { title: "Git Log" },
       description: `View commit history. Optionally filter by file path or ref (branch/tag/hash).`,
       inputSchema: {
         max_count: z
@@ -104,6 +106,7 @@ export function registerGitTools(server: McpServer) {
   server.registerTool(
     "git_diff",
     {
+      annotations: { title: "Git Diff" },
       description: `Show diffs. With no arguments shows unstaged changes. Use staged=true for staged changes,
 or provide a ref (e.g. "main", "HEAD~3") to diff against.`,
       inputSchema: {
@@ -152,6 +155,7 @@ or provide a ref (e.g. "main", "HEAD~3") to diff against.`,
   server.registerTool(
     "git_blame",
     {
+      annotations: { title: "Git Blame" },
       description: `Annotate a file with authorship and last-change info for each line.`,
       inputSchema: {
         file: z.string().describe("File path to annotate"),

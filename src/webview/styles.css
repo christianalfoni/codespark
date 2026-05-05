@@ -778,6 +778,14 @@ body {
   fill: currentColor;
 }
 
+.pr-icon {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  transform: scale(0.85);
+  display: inline-block;
+}
+
 .review-btn:hover:not(:disabled) {
   color: var(--vscode-panelTitle-activeBorder);
 }

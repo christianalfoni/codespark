@@ -56,10 +56,6 @@ export interface TokenUsage {
   hadThinking: boolean;
 }
 
-export interface Features {
-  stackedCommitsEnabled: boolean;
-}
-
 export interface ChatState {
   entries: Entry[];
   isStreaming: boolean;
@@ -73,7 +69,6 @@ export interface ChatState {
   stepStatuses: Map<number, { status: "applying" | "done" | "error"; text?: string }>;
   usage: TokenUsage;
   inlineUsage: TokenUsage;
-  features: Features;
 }
 
 export function createInitialState(saved: any): ChatState {
@@ -104,7 +99,6 @@ export function createInitialState(saved: any): ChatState {
       lastOutputTokens: 0,
       hadThinking: false,
     },
-    features: { stackedCommitsEnabled: false },
   };
 
   if (saved?.entries) {

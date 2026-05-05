@@ -21,8 +21,8 @@ import {
   copyCodeWithFeedback,
   formatTokens,
   handleCommandClick,
+  PR_ICON,
   REVIEW_ICON,
-  STACK_ICON,
 } from "./utils";
 
 const SPINNER_ICON = `<svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14" class="step-apply-spin"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zm0 1.5a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11z" opacity="0.25"/><path d="M8 1a7 7 0 0 1 7 7h-1.5A5.5 5.5 0 0 0 8 2.5V1z"/></svg>`;
@@ -434,23 +434,21 @@ export function App({ vscode }: AppProps) {
                     dangerouslySetInnerHTML={{ __html: CLIPBOARD_ICON }}
                   />
                 )}
+                {state.entries.length > 0 && <button
+                  class="reset-btn review-btn"
+                  data-tooltip="Create PR"
+                  disabled={state.isStreaming}
+                  onClick={() => {
+                    onSelectStep(null);
+                    send(
+                      "Create a PR for the current changes. Use git_diff to see what changed, then call create_pr with a commit message and a PR description written in the Agent Contribution Report format.",
+                      { skipStepRef: true, actionLabel: "Create PR" },
+                    );
+                  }}
+                  dangerouslySetInnerHTML={{ __html: PR_ICON }}
+                />}
                 {state.breakdownSteps.length > 0 && (
                   <>
-                    {state.features.stackedCommitsEnabled && (
-                      <button
-                        class="reset-btn review-btn"
-                        data-tooltip="Create stacked commits from breakdown"
-                        disabled={state.isStreaming}
-                        onClick={() => {
-                          onSelectStep(null);
-                          send(
-                            "Create stacked commits for my current breakdown. Call git_status to see all uncommitted changes, then use the breakdown steps as a guide to group those files into logical commits — multiple steps may map to the same file, and a step may involve files not listed in its breakdown entry. Call create_stacked_commits with an ordered list of commits, each specifying which files to stage. Commit messages should be in the form 'step-title: short summary'.",
-                            { skipStepRef: true, actionLabel: "Stack commits" },
-                          );
-                        }}
-                        dangerouslySetInnerHTML={{ __html: STACK_ICON }}
-                      />
-                    )}
                     <button
                       class="reset-btn review-btn"
                       data-tooltip="Review breakdown"

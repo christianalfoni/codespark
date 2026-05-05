@@ -6,6 +6,7 @@ export function registerBreakdownTools(server: McpServer) {
   server.registerTool(
     "write_breakdown",
     {
+      annotations: { title: "Write Breakdown" },
       description: `Set the breakdown steps for the user. Each step describes a focused piece of work
 in a specific file. The user will see these in the sidebar and can click each one to see
 its details.

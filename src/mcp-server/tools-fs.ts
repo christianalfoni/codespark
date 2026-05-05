@@ -7,6 +7,7 @@ export function registerFsTools(server: McpServer) {
   server.registerTool(
     "read_file",
     {
+      annotations: { title: "Read File" },
       description: `Read the full contents of a file. Returns raw text with no line-number prefixes.
     
     Use this to inspect a file before editing it, or to understand its structure.
@@ -41,6 +42,7 @@ export function registerFsTools(server: McpServer) {
   server.registerTool(
     "list_directory",
     {
+      annotations: { title: "List Directory" },
       description: `List the contents of a directory. Returns each entry on its own line, with a trailing /
   for subdirectories and no suffix for files.`,
       inputSchema: {
@@ -69,6 +71,7 @@ export function registerFsTools(server: McpServer) {
   server.registerTool(
     "edit_file",
     {
+      annotations: { title: "Edit File" },
       description: `Apply text edits to a file. Accepts multiple edits in a single call.
   
   Each edit replaces \`old_string\` with \`new_string\`. All edit ranges are computed
@@ -136,6 +139,7 @@ export function registerFsTools(server: McpServer) {
   server.registerTool(
     "write_file",
     {
+      annotations: { title: "Write File" },
       description: `Write content to a file. Creates the file (and any missing parent directories) if it
   does not exist, or replaces the entire content of an existing file.
   
