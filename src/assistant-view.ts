@@ -43,6 +43,8 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
   private _steps: BreakdownStepInput[] = [];
   /** Index of the step currently being applied, if any */
   private _pendingApplyIndex: number | null = null;
+  /** Title of the step captured at apply time, used to detect stale applies after a new breakdown */
+  private _pendingApplyTitle: string | null = null;
   /** Whether an edit was made for the pending apply step */
   private _pendingApplyEdited = false;
   /** Scan animation running while a fast edit is pending */
@@ -67,6 +69,14 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
     private readonly _decorationProvider: InstructionFileDecorationProvider,
   ) {
     this._ipcServer.onBreakdown((steps) => {
+      if (this._pendingApplyIndex !== null) {
+        this._pendingApplyScan?.dispose();
+        this._pendingApplyScan = null;
+        this._ipcServer.allowedEditFile = null;
+        this._pendingApplyIndex = null;
+        this._pendingApplyTitle = null;
+        this._pendingApplyEdited = false;
+      }
       this._steps = steps;
       this._postBreakdown();
       this._persistBreakdown();
@@ -401,6 +411,7 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
             this._pendingApplyScan = null;
             this._ipcServer.allowedEditFile = null;
             this._pendingApplyIndex = null;
+            this._pendingApplyTitle = null;
             this._pendingApplyEdited = false;
           }
 
@@ -426,6 +437,7 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
         this._pendingApplyScan = null;
         this._ipcServer.allowedEditFile = null;
         this._pendingApplyIndex = null;
+        this._pendingApplyTitle = null;
         this._pendingApplyEdited = false;
       }
     }
@@ -440,6 +452,7 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
     const absPath = path.resolve(workspaceFolder, step.filePath);
     this._ipcServer.allowedEditFile = absPath;
     this._pendingApplyIndex = index;
+    this._pendingApplyTitle = step.title;
     this._pendingApplyEdited = false;
     this._post({ type: "step-status", index, status: "applying" });
 
@@ -448,7 +461,7 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
     this._pendingApplyScan = activeEditor && !isEmpty ? startFileScan(activeEditor) : null;
 
     const editDisposable = this._ipcServer.onEdit((filePath, _editCount, editedRanges) => {
-      if (filePath !== absPath || this._pendingApplyIndex !== index) return;
+      if (filePath !== absPath || this._pendingApplyIndex !== index || this._pendingApplyTitle !== step.title) return;
       this._pendingApplyEdited = true;
       this._pendingApplyScan?.dispose();
       this._pendingApplyScan = null;
