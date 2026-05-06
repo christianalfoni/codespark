@@ -285,7 +285,7 @@ function handleConnectionData(
           JSON.stringify({
             id: editReq.id,
             success: false,
-            error: `File editing is not available. Use write_breakdown to plan changes as steps for the user to review and apply.`,
+            error: `Do not edit files. Help the user by explaining, answering questions, or suggesting changes in your response — without modifying any files.`,
           }) + "\n",
         );
       } else if (editReq.file_path !== allowed) {
@@ -312,7 +312,7 @@ function handleConnectionData(
           JSON.stringify({
             id: writeReq.id,
             success: false,
-            error: `File editing is not available. Use write_breakdown to plan changes as steps for the user to review and apply.`,
+            error: `Do not write files. Help the user by explaining, answering questions, or suggesting changes in your response — without modifying any files.`,
           }) + "\n",
         );
       } else if (writeReq.file_path !== allowed) {

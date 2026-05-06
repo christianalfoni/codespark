@@ -391,8 +391,12 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
           });
 
           // Clean up fast-edit gate after each response
-          if (this._pendingApplyIndex !== null && !this._pendingApplyEdited) {
-            this._post({ type: "step-status", index: this._pendingApplyIndex, status: "error", text: "No edits were applied" });
+          if (this._pendingApplyIndex !== null) {
+            if (this._pendingApplyEdited) {
+              this._post({ type: "step-status", index: this._pendingApplyIndex, status: "done" });
+            } else {
+              this._post({ type: "step-status", index: this._pendingApplyIndex, status: "error", text: "No edits were applied" });
+            }
             this._pendingApplyScan?.dispose();
             this._pendingApplyScan = null;
             this._ipcServer.allowedEditFile = null;
@@ -415,6 +419,15 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
       this._log.appendLine(`[assistant:error] ${msg}`);
       this._post({ type: "error", text: msg });
       this._post({ type: "done" });
+      // Ensure fast-edit gate is released on error so subsequent open questions
+      // don't see stale allowedEditFile state
+      if (this._pendingApplyIndex !== null) {
+        this._pendingApplyScan?.dispose();
+        this._pendingApplyScan = null;
+        this._ipcServer.allowedEditFile = null;
+        this._pendingApplyIndex = null;
+        this._pendingApplyEdited = false;
+      }
     }
     this._eventLoopRunning = false;
   }
@@ -440,7 +453,6 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
       this._pendingApplyScan?.dispose();
       this._pendingApplyScan = null;
       editDisposable.dispose();
-      this._post({ type: "step-status", index, status: "done" });
       const editor = vscode.window.activeTextEditor;
       if (editor && editor.document.uri.fsPath === absPath) {
         dimNonEditedLines(editor, editedRanges);
