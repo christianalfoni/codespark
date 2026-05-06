@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import * as os from "os";
 import * as path from "path";
 import {
   startAssistantQuery,
@@ -9,6 +10,7 @@ import {
   appendAssistantContext,
   getActiveSessionId,
   getActiveSession,
+  getLiveQuery,
   createSession,
   switchSession,
   deleteSession,
@@ -18,6 +20,7 @@ import {
   getSessionInfos,
 } from "./assistant-agent";
 import { IpcServer, BreakdownStepInput } from "./ipc-server";
+import { encodeCwdPath } from "./claude-code-inline";
 
 import { InstructionFileDecorationProvider } from "./instructionDecorations";
 import { getHtml } from "./webview-backend/html";
@@ -51,6 +54,16 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
 
   private get _workspaceFolder(): string | undefined {
     return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  }
+
+  private _activeSessionFilePath(): string | undefined {
+    const sessionId = getActiveSessionId();
+    const workspaceFolder = this._workspaceFolder;
+    if (!sessionId || !workspaceFolder) return undefined;
+    const sdkSessionId = getLiveQuery(sessionId)?.sdkSessionId;
+    if (!sdkSessionId) return undefined;
+    const encodedCwd = encodeCwdPath(workspaceFolder);
+    return path.join(os.homedir(), ".claude", "projects", encodedCwd, `${sdkSessionId}.jsonl`);
   }
 
   constructor(
@@ -146,6 +159,7 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
             this._workspaceFolder,
             this._steps,
             msg.index,
+            this._activeSessionFilePath(),
           );
           break;
         }
@@ -522,3 +536,4 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
     }
   }
 }
+

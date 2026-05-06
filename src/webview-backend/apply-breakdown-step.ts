@@ -25,6 +25,7 @@ export class ApplyBreakdownStep {
     workspaceFolder: string,
     allSteps: BreakdownStepInput[],
     index: number,
+    sessionFilePath?: string,
   ): Promise<void> {
     const step = allSteps[index];
     if (!this._mcpConfigPath) return;
@@ -64,10 +65,10 @@ export class ApplyBreakdownStep {
     let pulse: { dispose: () => void } | null =
       activeEditor && !isEmpty ? startFileScan(activeEditor) : null;
 
-    const prepared = await this._prepareFreshEdit(step);
     const instruction = buildInstruction(allSteps, index);
 
     try {
+      const prepared = await this._prepareFreshEdit(step, sessionFilePath);
       const result = await executeInlineEdit(
         prepared,
         instruction,
@@ -112,16 +113,18 @@ export class ApplyBreakdownStep {
 
   private async _prepareFreshEdit(
     step: BreakdownStepInput,
+    existingSessionPath?: string,
   ): Promise<PreparedInlineEdit> {
     const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath!;
     const absolute = path.resolve(workspaceFolder, step.filePath);
     const fileContent = await fs.promises.readFile(absolute, "utf-8");
-    return this._prepareEdit(step.filePath, fileContent);
+    return this._prepareEdit(step.filePath, fileContent, existingSessionPath);
   }
 
   private async _prepareEdit(
     filePath: string,
     fileContent: string,
+    existingSessionPath?: string,
   ): Promise<PreparedInlineEdit> {
     // Gather instruction content from CLAUDE.md files
     const editor = vscode.window.activeTextEditor;
@@ -143,7 +146,7 @@ export class ApplyBreakdownStep {
       await gatherInstructionContext(editor, this._decorationProvider);
 
     return prepareInlineEdit(
-      { fileContent, filePath, instructionContent, referenceFiles },
+      { fileContent, filePath, instructionContent, referenceFiles, existingSessionPath },
       this._log,
       this._mcpConfigPath!,
     );
@@ -161,7 +164,7 @@ function buildInstruction(steps: BreakdownStepInput[], index: number): string {
   let instruction = "";
 
   if (prior.length > 0) {
-    instruction += "## Breakdown context (completed steps)\n\n";
+    instruction += "## Completed steps\n\n";
     for (let i = 0; i < prior.length; i++) {
       instruction += `### Step ${i + 1}: ${prior[i].title} (${prior[i].filePath})\n${prior[i].description}\n\n`;
     }
