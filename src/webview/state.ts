@@ -137,24 +137,6 @@ export function getFullText(entry: AssistantEntry): string {
   return entry.turns.map((t) => t.text).join("");
 }
 
-export function getAllTools(entry: AssistantEntry): ToolEntry[] {
-  const tools: ToolEntry[] = [];
-  for (const turn of entry.turns) {
-    for (const t of turn.tools) {
-      tools.push(t);
-    }
-  }
-  return tools;
-}
-
-export function countTurns(entries: Entry[]): number {
-  let n = 0;
-  for (const entry of entries) {
-    if (entry.role === "assistant") n += entry.turns.length;
-  }
-  return n;
-}
-
 export function serializeConversation(entries: Entry[]): string {
   const parts: string[] = [];
   for (const entry of entries) {

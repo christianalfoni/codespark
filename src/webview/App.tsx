@@ -249,9 +249,17 @@ export function App({ vscode }: AppProps) {
       return;
     }
 
-    // Scroll step detail to top
+    const hasConversation = state.entries.some(
+      (e) => e.role === "user" && e.stepRef?.stepIndex === index,
+    );
+
+    userScrolledUp.current = !hasConversation;
+
     requestAnimationFrame(() => {
-      if (stepListRef.current) {
+      if (!stepListRef.current) return;
+      if (hasConversation) {
+        stepListRef.current.scrollTop = stepListRef.current.scrollHeight;
+      } else {
         stepListRef.current.scrollTop = 0;
       }
     });

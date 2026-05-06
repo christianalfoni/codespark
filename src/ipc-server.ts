@@ -15,8 +15,6 @@ export type EditListener = (
   editedRanges: EditedRange[],
 ) => void;
 
-export type BeforeEditListener = (filePath: string) => Promise<void>;
-
 export interface BreakdownStepInput {
   title: string;
   description: string;
@@ -32,7 +30,6 @@ export interface IpcServer {
   /** When set, edit_file is restricted to this exact file path. */
   allowedEditFile: string | null;
   onEdit: (listener: EditListener) => { dispose: () => void };
-  onBeforeEdit: (listener: BeforeEditListener) => { dispose: () => void };
   onBreakdown: (listener: BreakdownListener) => { dispose: () => void };
   dispose: () => void;
 }
@@ -80,7 +77,6 @@ export function startIpcServer(log: vscode.OutputChannel): IpcServer {
       ? `\\\\.\\pipe\\codespark-${process.pid}`
       : `/tmp/codespark-${process.pid}.sock`;
   const editListeners = new Set<EditListener>();
-  const beforeEditListeners = new Set<BeforeEditListener>();
   const breakdownListeners = new Set<BreakdownListener>();
   let allowedEditFile: string | null = null;
 
@@ -107,7 +103,6 @@ export function startIpcServer(log: vscode.OutputChannel): IpcServer {
         buffer,
         log,
         editListeners,
-        beforeEditListeners,
         breakdownListeners,
         conn,
         () => allowedEditFile,
@@ -142,14 +137,6 @@ export function startIpcServer(log: vscode.OutputChannel): IpcServer {
       return {
         dispose: () => {
           editListeners.delete(listener);
-        },
-      };
-    },
-    onBeforeEdit(listener: BeforeEditListener) {
-      beforeEditListeners.add(listener);
-      return {
-        dispose: () => {
-          beforeEditListeners.delete(listener);
         },
       };
     },
@@ -239,19 +226,11 @@ function computeDiffRanges(before: string, after: string): EditedRange[] {
   return editedRanges;
 }
 
-async function runBeforeEditListeners(
-  listeners: Set<BeforeEditListener>,
-  filePath: string,
-): Promise<void> {
-  await Promise.all(Array.from(listeners).map((l) => l(filePath)));
-}
-
 function handleConnectionData(
   chunk: Buffer,
   buffer: string,
   log: vscode.OutputChannel,
   editListeners: Set<EditListener>,
-  beforeEditListeners: Set<BeforeEditListener>,
   breakdownListeners: Set<BreakdownListener>,
   conn: net.Socket,
   getAllowedEditFile: () => string | null,
@@ -301,38 +280,52 @@ function handleConnectionData(
     } else if (req.type === "edit_file") {
       const editReq = req as unknown as EditRequest;
       const allowed = getAllowedEditFile();
-      if (allowed && editReq.file_path !== allowed) {
+      if (allowed === null) {
         conn.write(
           JSON.stringify({
             id: editReq.id,
             success: false,
-            error: `Editing restricted to the current file. Cannot edit ${editReq.file_path}`,
+            error: `File editing is not available. Use write_breakdown to plan changes as steps for the user to review and apply.`,
+          }) + "\n",
+        );
+      } else if (editReq.file_path !== allowed) {
+        conn.write(
+          JSON.stringify({
+            id: editReq.id,
+            success: false,
+            error: `Editing restricted to the current step's file (${allowed}). Cannot edit ${editReq.file_path}`,
           }) + "\n",
         );
       } else {
         log.appendLine(
           `[ipc] edit_file: ${editReq.edits.length} edit(s) on ${editReq.file_path}`,
         );
-        runBeforeEditListeners(beforeEditListeners, editReq.file_path)
-          .then(() => handleEditRequest(editReq))
+        handleEditRequest(editReq)
           .then(handleResult(editReq.file_path, editReq.edits.length))
           .catch(handleError(editReq.id));
       }
     } else if (req.type === "write_file") {
       const writeReq = req as unknown as WriteRequest;
       const allowed = getAllowedEditFile();
-      if (allowed && writeReq.file_path !== allowed) {
+      if (allowed === null) {
         conn.write(
           JSON.stringify({
             id: writeReq.id,
             success: false,
-            error: `Editing restricted to the current file. Cannot write ${writeReq.file_path}`,
+            error: `File editing is not available. Use write_breakdown to plan changes as steps for the user to review and apply.`,
+          }) + "\n",
+        );
+      } else if (writeReq.file_path !== allowed) {
+        conn.write(
+          JSON.stringify({
+            id: writeReq.id,
+            success: false,
+            error: `Editing restricted to the current step's file (${allowed}). Cannot write ${writeReq.file_path}`,
           }) + "\n",
         );
       } else {
         log.appendLine(`[ipc] write_file: ${writeReq.file_path}`);
-        runBeforeEditListeners(beforeEditListeners, writeReq.file_path)
-          .then(() => handleWriteRequest(writeReq))
+        handleWriteRequest(writeReq)
           .then(handleResult(writeReq.file_path, 1))
           .catch(handleError(writeReq.id));
       }

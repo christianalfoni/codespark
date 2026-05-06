@@ -48,7 +48,7 @@ The prompt's toolbar adapts to where you are in the flow.
   <img src="./media/prompt-state-3.png" alt="Prompt with a step selected" width="480" />
 </p>
 
-- **Fast Edit** hands the selected step to the fast editing agent to apply mechanically
+- **Fast Edit** asks the assistant to apply the selected step directly
 - Any follow-up you send is scoped to the selected step — steps act like **threads**. The exchange is also visible inline in the main conversation, so you never lose the wider context
 
 ## Breakdowns
@@ -67,8 +67,8 @@ The breakdown makes this practical:
 
 CodeSpark is designed to keep token usage — and cost — low.
 
-**The assistant agent starts lean.** A fresh Claude Code session loads ~16.7K tokens of context: a large system prompt, tool definitions for Bash, Edit, Write, and more. The CodeSpark assistant strips this down to ~8.5K by restricting the tool set to read-only operations (Glob, Grep, WebSearch, WebFetch, and a handful of git tools). No Bash. No file editing. Tool definitions repeat on every turn, so a smaller set pays off across the entire conversation.
+**The assistant agent starts lean.** A fresh Claude Code session loads ~16.7K tokens of context: a large system prompt, tool definitions for Bash, Edit, Write, and more. The CodeSpark assistant strips this down to ~8.5K by restricting the tool set to read-only operations (Glob, Grep, WebSearch, WebFetch, and a handful of git tools). No Bash. Tool definitions repeat on every turn, so a smaller set pays off across the entire conversation.
 
-**Exploration is read-only.** Because the assistant has no Bash or file-write tools, it cannot run commands, install packages, or modify the codebase while you explore. Beyond safety, this matters for cost: Bash and file-editing tool definitions are expensive, and removing them from the schema reduces input tokens on every turn in the session.
+**Editing is gated.** The assistant can see `edit_file` and `write_file` tools but they are blocked by default — calling them returns an error that redirects the model to `write_breakdown` instead. Editing is only unlocked when you explicitly click **Fast Edit** on a step, and only for that step's file. This keeps exploration sessions read-only without needing to remove the tools from the schema.
 
-**Edits run on Haiku.** When you apply a breakdown step, a separate process runs on Claude Haiku — roughly 20× cheaper per token than Sonnet. Even applying many steps in a row costs only a few cents at most.
+**Fast Edit reuses the existing session.** Applying a step sends an `[APPLY STEP]` message into the same assistant session — no new process, no model switch, no cold cache. The full conversation context is already warm.

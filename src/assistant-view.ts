@@ -1,5 +1,4 @@
 import * as vscode from "vscode";
-import * as os from "os";
 import * as path from "path";
 import {
   startAssistantQuery,
@@ -10,7 +9,6 @@ import {
   appendAssistantContext,
   getActiveSessionId,
   getActiveSession,
-  getLiveQuery,
   createSession,
   switchSession,
   deleteSession,
@@ -19,20 +17,18 @@ import {
   saveBreakdownSteps,
   getSessionInfos,
 } from "./assistant-agent";
-import { IpcServer, BreakdownStepInput } from "./ipc-server";
-import { encodeCwdPath } from "./claude-code-inline";
+import { IpcServer, BreakdownStepInput, EditedRange } from "./ipc-server";
 
 import { InstructionFileDecorationProvider } from "./instructionDecorations";
 import { getHtml } from "./webview-backend/html";
 import { TerminalManager } from "./webview-backend/terminal";
 import { buildFileContextQuery } from "./webview-backend/file-context";
 import { PendingFileContext } from "./types";
-import { ApplyBreakdownStep } from "./webview-backend/apply-breakdown-step";
+import { dimNonEditedLines, startFileScan } from "./editor-effects";
 
 export class AssistantViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewId = "codeSpark.assistant";
   private _terminalManager = new TerminalManager();
-  private _applyStepRunner: ApplyBreakdownStep;
   private _view?: vscode.WebviewView;
   private _pendingFileContext?: PendingFileContext;
   /** Queue of prompts awaiting done events, in order */
@@ -45,6 +41,12 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
   });
   /** Current breakdown steps for the active session */
   private _steps: BreakdownStepInput[] = [];
+  /** Index of the step currently being applied, if any */
+  private _pendingApplyIndex: number | null = null;
+  /** Whether an edit was made for the pending apply step */
+  private _pendingApplyEdited = false;
+  /** Scan animation running while a fast edit is pending */
+  private _pendingApplyScan: { dispose: () => void } | null = null;
   /** Whether the webview's prompt input currently holds focus */
   private _isInputFocused = false;
 
@@ -56,15 +58,6 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
     return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   }
 
-  private _activeSessionFilePath(): string | undefined {
-    const sessionId = getActiveSessionId();
-    const workspaceFolder = this._workspaceFolder;
-    if (!sessionId || !workspaceFolder) return undefined;
-    const sdkSessionId = getLiveQuery(sessionId)?.sdkSessionId;
-    if (!sdkSessionId) return undefined;
-    const encodedCwd = encodeCwdPath(workspaceFolder);
-    return path.join(os.homedir(), ".claude", "projects", encodedCwd, `${sdkSessionId}.jsonl`);
-  }
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
@@ -81,18 +74,6 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
         `[assistant-view] Breakdown created: ${steps.length} step(s)`,
       );
     });
-    this._applyStepRunner = new ApplyBreakdownStep(
-      _log,
-      _mcpConfigPath,
-      _ipcServer,
-      _decorationProvider,
-      (message) => {
-        this._post(message);
-      },
-      (usage) => {
-        this.reportInlineUsage(usage);
-      },
-    );
   }
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
@@ -152,15 +133,7 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
           this._handleSelectStep(msg.index);
           break;
         case "apply-step": {
-          if (!this._workspaceFolder) {
-            return;
-          }
-          this._applyStepRunner.apply(
-            this._workspaceFolder,
-            this._steps,
-            msg.index,
-            this._activeSessionFilePath(),
-          );
+          this._handleApplyStep(msg.index);
           break;
         }
 
@@ -416,6 +389,17 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
             numTurns: evt.numTurns,
             totalCostUsd: evt.totalCostUsd,
           });
+
+          // Clean up fast-edit gate after each response
+          if (this._pendingApplyIndex !== null && !this._pendingApplyEdited) {
+            this._post({ type: "step-status", index: this._pendingApplyIndex, status: "error", text: "No edits were applied" });
+            this._pendingApplyScan?.dispose();
+            this._pendingApplyScan = null;
+            this._ipcServer.allowedEditFile = null;
+            this._pendingApplyIndex = null;
+            this._pendingApplyEdited = false;
+          }
+
           // Don't break — keep listening for follow-up turns
         } else {
           if (evt.type === "usage") {
@@ -433,6 +417,44 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
       this._post({ type: "done" });
     }
     this._eventLoopRunning = false;
+  }
+
+  private _handleApplyStep(index: number): void {
+    const workspaceFolder = this._workspaceFolder;
+    const step = this._steps[index];
+    if (!workspaceFolder || !step) return;
+
+    const absPath = path.resolve(workspaceFolder, step.filePath);
+    this._ipcServer.allowedEditFile = absPath;
+    this._pendingApplyIndex = index;
+    this._pendingApplyEdited = false;
+    this._post({ type: "step-status", index, status: "applying" });
+
+    const activeEditor = vscode.window.activeTextEditor;
+    const isEmpty = activeEditor ? activeEditor.document.getText().trim().length === 0 : true;
+    this._pendingApplyScan = activeEditor && !isEmpty ? startFileScan(activeEditor) : null;
+
+    const editDisposable = this._ipcServer.onEdit((filePath, _editCount, editedRanges) => {
+      if (filePath !== absPath || this._pendingApplyIndex !== index) return;
+      this._pendingApplyEdited = true;
+      this._pendingApplyScan?.dispose();
+      this._pendingApplyScan = null;
+      editDisposable.dispose();
+      this._post({ type: "step-status", index, status: "done" });
+      const editor = vscode.window.activeTextEditor;
+      if (editor && editor.document.uri.fsPath === absPath) {
+        dimNonEditedLines(editor, editedRanges);
+      }
+    });
+
+    const priorSteps = this._steps.slice(0, index);
+    let prompt = `[APPLY STEP]\nFile: ${step.filePath}\nStep: ${step.title}\n\n${step.description}`;
+    if (priorSteps.length > 0) {
+      const context = priorSteps.map((s, i) => `${i + 1}. ${s.title} (${s.filePath})\n${s.description}`).join("\n\n");
+      prompt = `[APPLY STEP]\nFile: ${step.filePath}\nStep: ${step.title}\n\n${step.description}\n\n---\nPrevious steps for context:\n${context}`;
+    }
+
+    this._handlePrompt(prompt);
   }
 
   /** Set file context to be attached to the next query from the webview */

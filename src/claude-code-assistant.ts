@@ -66,8 +66,6 @@ export function createAssistantQuery(
     args: [
       "--tools",
       "Glob,Grep,WebSearch,WebFetch",
-      "--disallowedTools",
-      "mcp__codespark__edit_file,mcp__codespark__write_file",
       ...(resumeSessionId ? ["--resume", resumeSessionId] : []),
     ],
     cwd,

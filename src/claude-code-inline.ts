@@ -28,7 +28,6 @@ export interface PrepareContext {
   filePath: string;
   instructionContent: string | undefined;
   referenceFiles: { path: string; content: string }[];
-  existingSessionPath?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -70,22 +69,7 @@ export async function prepareInlineEdit(
     });
   }
 
-  let sessionContent: string;
-  if (ctx.existingSessionPath) {
-    try {
-      sessionContent = await buildSessionFromExisting(
-        ctx.existingSessionPath,
-        sessionId,
-        workspaceFolder,
-        files,
-      );
-    } catch {
-      log.appendLine(`[cli-inline] Could not read existing session, building fresh`);
-      sessionContent = buildSessionJSONL(sessionId, workspaceFolder, files);
-    }
-  } else {
-    sessionContent = buildSessionJSONL(sessionId, workspaceFolder, files);
-  }
+  const sessionContent = buildSessionJSONL(sessionId, workspaceFolder, files);
   await fs.promises.mkdir(sessionDir, { recursive: true });
   await fs.promises.writeFile(sessionFile, sessionContent);
   log.appendLine(
@@ -445,7 +429,7 @@ function formatFileContentWithLineNumbers(content: string): string {
     .join("\n");
 }
 
-export function encodeCwdPath(cwd: string): string {
+function encodeCwdPath(cwd: string): string {
   return cwd.replace(/[^a-zA-Z0-9-]/g, "-");
 }
 
@@ -574,101 +558,4 @@ function buildSessionJSONL(
   );
 
   return lines.join("\n") + "\n";
-}
-
-async function buildSessionFromExisting(
-  existingPath: string,
-  newSessionId: string,
-  cwd: string,
-  files: SessionFile[],
-): Promise<string> {
-  const existing = await fs.promises.readFile(existingPath, "utf-8");
-
-  // Find the uuid of the last entry to use as parentUuid for the appended entries
-  let lastUuid: string | null = null;
-  for (const line of existing.trimEnd().split("\n").reverse()) {
-    try {
-      const entry = JSON.parse(line);
-      if (entry.uuid) {
-        lastUuid = entry.uuid;
-        break;
-      }
-    } catch {}
-  }
-
-  const now = new Date().toISOString();
-  const version = "2.1.101";
-  const baseFields = { userType: "external", entrypoint: "cli", cwd, sessionId: newSessionId, version };
-  const lines: string[] = [];
-  let prevUuid = lastUuid;
-
-  for (let i = 0; i < files.length; i++) {
-    const file = files[i];
-    const toolUseId = `toolu_preread_${i}`;
-    const assistantUuid = crypto.randomUUID();
-    const resultUuid = crypto.randomUUID();
-    const numberedContent = formatFileContentWithLineNumbers(file.content);
-    const numLines = file.content.split("\n").length;
-
-    lines.push(JSON.stringify({
-      parentUuid: prevUuid,
-      isSidechain: false,
-      type: "assistant",
-      message: {
-        model: "claude-haiku-4-5-20251001",
-        id: `msg_preread_${i}`,
-        type: "message",
-        role: "assistant",
-        content: [{ type: "tool_use", id: toolUseId, name: "Read", input: { file_path: file.absPath } }],
-        stop_reason: "tool_use",
-        stop_sequence: null,
-        usage: { input_tokens: 0, output_tokens: 0 },
-      },
-      uuid: assistantUuid,
-      timestamp: now,
-      ...baseFields,
-    }));
-
-    lines.push(JSON.stringify({
-      parentUuid: assistantUuid,
-      isSidechain: false,
-      type: "user",
-      message: {
-        role: "user",
-        content: [{ tool_use_id: toolUseId, type: "tool_result", content: numberedContent }],
-      },
-      uuid: resultUuid,
-      timestamp: now,
-      toolUseResult: {
-        type: "text",
-        file: { filePath: file.absPath, content: file.content, numLines, startLine: 1, totalLines: numLines },
-      },
-      sourceToolAssistantUUID: assistantUuid,
-      ...baseFields,
-    }));
-
-    prevUuid = resultUuid;
-  }
-
-  const prefillUuid = crypto.randomUUID();
-  lines.push(JSON.stringify({
-    parentUuid: prevUuid,
-    isSidechain: false,
-    type: "assistant",
-    message: {
-      model: "claude-sonnet-4-6",
-      id: "msg_prefill",
-      type: "message",
-      role: "assistant",
-      content: [{ type: "text", text: "I've read the file. I'll make assumptions where needed and apply the changes now." }],
-      stop_reason: "end_turn",
-      stop_sequence: null,
-      usage: { input_tokens: 0, output_tokens: 0 },
-    },
-    uuid: prefillUuid,
-    timestamp: now,
-    ...baseFields,
-  }));
-
-  return existing.trimEnd() + "\n" + lines.join("\n") + "\n";
 }
