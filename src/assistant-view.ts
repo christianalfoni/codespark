@@ -47,8 +47,14 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
   private _pendingApplyTitle: string | null = null;
   /** Whether an edit was made for the pending apply step */
   private _pendingApplyEdited = false;
+  /** Absolute file path being edited in the current apply run */
+  private _pendingApplyAbsPath: string | null = null;
+  /** Edited ranges accumulated during the apply run, applied as diff at agent completion */
+  private _pendingApplyEditedRanges: Array<{ startLine: number; endLine: number }> = [];
   /** Scan animation running while a fast edit is pending */
   private _pendingApplyScan: { dispose: () => void } | null = null;
+  /** IPC edit subscription for the current apply run */
+  private _pendingApplyEditSub: { dispose: () => void } | null = null;
   /** Whether the webview's prompt input currently holds focus */
   private _isInputFocused = false;
 
@@ -70,12 +76,16 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
   ) {
     this._ipcServer.onBreakdown((steps) => {
       if (this._pendingApplyIndex !== null) {
+        this._pendingApplyEditSub?.dispose();
+        this._pendingApplyEditSub = null;
         this._pendingApplyScan?.dispose();
         this._pendingApplyScan = null;
         this._ipcServer.allowedEditFile = null;
         this._pendingApplyIndex = null;
         this._pendingApplyTitle = null;
+        this._pendingApplyAbsPath = null;
         this._pendingApplyEdited = false;
+        this._pendingApplyEditedRanges = [];
       }
       this._steps = steps;
       this._postBreakdown();
@@ -402,17 +412,25 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
 
           // Clean up fast-edit gate after each response
           if (this._pendingApplyIndex !== null) {
+            this._pendingApplyEditSub?.dispose();
+            this._pendingApplyEditSub = null;
+            this._pendingApplyScan?.dispose();
+            this._pendingApplyScan = null;
             if (this._pendingApplyEdited) {
+              const editor = vscode.window.activeTextEditor;
+              if (editor && editor.document.uri.fsPath === this._pendingApplyAbsPath) {
+                dimNonEditedLines(editor, this._pendingApplyEditedRanges);
+              }
               this._post({ type: "step-status", index: this._pendingApplyIndex, status: "done" });
             } else {
               this._post({ type: "step-status", index: this._pendingApplyIndex, status: "error", text: "No edits were applied" });
             }
-            this._pendingApplyScan?.dispose();
-            this._pendingApplyScan = null;
             this._ipcServer.allowedEditFile = null;
             this._pendingApplyIndex = null;
             this._pendingApplyTitle = null;
+            this._pendingApplyAbsPath = null;
             this._pendingApplyEdited = false;
+            this._pendingApplyEditedRanges = [];
           }
 
           // Don't break — keep listening for follow-up turns
@@ -433,12 +451,16 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
       // Ensure fast-edit gate is released on error so subsequent open questions
       // don't see stale allowedEditFile state
       if (this._pendingApplyIndex !== null) {
+        this._pendingApplyEditSub?.dispose();
+        this._pendingApplyEditSub = null;
         this._pendingApplyScan?.dispose();
         this._pendingApplyScan = null;
         this._ipcServer.allowedEditFile = null;
         this._pendingApplyIndex = null;
         this._pendingApplyTitle = null;
+        this._pendingApplyAbsPath = null;
         this._pendingApplyEdited = false;
+        this._pendingApplyEditedRanges = [];
       }
     }
     this._eventLoopRunning = false;
@@ -453,23 +475,19 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
     this._ipcServer.allowedEditFile = absPath;
     this._pendingApplyIndex = index;
     this._pendingApplyTitle = step.title;
+    this._pendingApplyAbsPath = absPath;
     this._pendingApplyEdited = false;
+    this._pendingApplyEditedRanges = [];
     this._post({ type: "step-status", index, status: "applying" });
 
     const activeEditor = vscode.window.activeTextEditor;
     const isEmpty = activeEditor ? activeEditor.document.getText().trim().length === 0 : true;
     this._pendingApplyScan = activeEditor && !isEmpty ? startFileScan(activeEditor) : null;
 
-    const editDisposable = this._ipcServer.onEdit((filePath, _editCount, editedRanges) => {
+    this._pendingApplyEditSub = this._ipcServer.onEdit((filePath, _editCount, editedRanges) => {
       if (filePath !== absPath || this._pendingApplyIndex !== index || this._pendingApplyTitle !== step.title) return;
       this._pendingApplyEdited = true;
-      this._pendingApplyScan?.dispose();
-      this._pendingApplyScan = null;
-      editDisposable.dispose();
-      const editor = vscode.window.activeTextEditor;
-      if (editor && editor.document.uri.fsPath === absPath) {
-        dimNonEditedLines(editor, editedRanges);
-      }
+      this._pendingApplyEditedRanges.push(...editedRanges);
     });
 
     const priorSteps = this._steps.slice(0, index);
