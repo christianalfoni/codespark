@@ -547,23 +547,6 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
     this._post({ type: "focus" });
   }
 
-  public reportInlineUsage(usage: {
-    inputTokens: number;
-    outputTokens: number;
-    contextOutputTokens: number;
-    cacheReadInputTokens: number;
-    cacheCreationInputTokens: number;
-  }): void {
-    this._post({
-      type: "usage",
-      source: "inline",
-      inputTokens: usage.inputTokens,
-      outputTokens: usage.outputTokens,
-      contextOutputTokens: usage.contextOutputTokens,
-      cacheReadInputTokens: usage.cacheReadInputTokens,
-      cacheCreationInputTokens: usage.cacheCreationInputTokens,
-    });
-  }
 
   private async _handleSendWithContext(
     ctx: PendingFileContext,

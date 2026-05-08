@@ -273,9 +273,12 @@ function handleConnectionData(
 
     if (req.type === "read_file") {
       const readReq = req as unknown as ReadRequest;
-      log.appendLine(`[ipc] read_file: ${readReq.file_path}`);
       handleReadRequest(readReq)
-        .then((res) => conn.write(JSON.stringify(res) + "\n"))
+        .then((res) => {
+          const lines = res.content ? res.content.split("\n").length : 0;
+          log.appendLine(`[ipc] read_file: ${readReq.file_path} (${lines} lines)`);
+          conn.write(JSON.stringify(res) + "\n");
+        })
         .catch(handleError(readReq.id));
     } else if (req.type === "edit_file") {
       const editReq = req as unknown as EditRequest;

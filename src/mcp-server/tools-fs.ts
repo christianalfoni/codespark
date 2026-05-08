@@ -72,43 +72,27 @@ export function registerFsTools(server: McpServer) {
     "edit_file",
     {
       annotations: { title: "Edit File" },
-      description: `Apply text edits to a file. Accepts multiple edits in a single call.
-  
-  Each edit replaces \`old_string\` with \`new_string\`. All edit ranges are computed
-  against the original document text before any replacements are applied, so edits
-  do not affect each other's positions — you do not need to account for offset shifts.
-  
-  The editor will automatically scroll to the largest change.
-  
-  If any edit fails (e.g. old_string not found or is ambiguous), the entire batch
-  is rejected and no changes are made.
-  
-  Example: to update an import AND change code, pass both edits in one call:
-    edits: [
-      { "old_string": "import { A }", "new_string": "import { A, B }" },
-      { "old_string": "doSomething(A)", "new_string": "doSomething(A, B)" },
-    ]`,
+      description: `Replace a single occurrence of text in a file.
+
+Replaces \`old_string\` with \`new_string\`. The match must be exact and unambiguous — include enough surrounding context to uniquely identify the location.
+
+If the match fails (not found or appears more than once) the edit is rejected and no changes are made. Call this tool multiple times for multiple changes.`,
       inputSchema: {
         file_path: z.string().describe("Absolute path to the file to edit"),
-        edits: z
-          .array(
-            z.object({
-              old_string: z
-                .string()
-                .describe("The exact text to find in the file"),
-              new_string: z.string().describe("The replacement text"),
-            }),
-          )
-          .describe("Array of edits to apply atomically"),
+        old_string: z.string().describe("The exact text to find in the file"),
+        new_string: z.string().describe("The replacement text"),
       },
     },
-    async ({ file_path, edits }) => {
+    async ({ file_path, old_string, new_string }) => {
       try {
-        const res = await sendIpcRequest("edit_file", { file_path, edits });
+        const res = await sendIpcRequest("edit_file", {
+          file_path,
+          edits: [{ old_string, new_string }],
+        });
         if (res.success) {
           return { content: [{ type: "text" as const, text: res.message }] };
         } else {
-          const input = JSON.stringify({ file_path, edits }, null, 2);
+          const input = JSON.stringify({ file_path, old_string, new_string }, null, 2);
           return {
             content: [
               {
@@ -121,7 +105,7 @@ export function registerFsTools(server: McpServer) {
         }
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
-        const input = JSON.stringify({ file_path, edits }, null, 2);
+        const input = JSON.stringify({ file_path, old_string, new_string }, null, 2);
         return {
           content: [
             {

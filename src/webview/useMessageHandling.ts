@@ -54,7 +54,7 @@ export function useMessageHandling(
             : prev.contextState,
           sessions: msg.sessions,
           activeSessionId: msg.activeSessionId,
-          ...(sessionChanged ? { usage: zeroUsage, inlineUsage: zeroUsage } : {}),
+          ...(sessionChanged ? { usage: zeroUsage } : {}),
         };
       }
       case "restore": {
@@ -76,7 +76,7 @@ export function useMessageHandling(
             : ("none" as ContextState),
           sessions: msg.sessions,
           activeSessionId: msg.activeSessionId,
-          ...(sessionChanged ? { usage: zeroUsage, inlineUsage: zeroUsage } : {}),
+          ...(sessionChanged ? { usage: zeroUsage } : {}),
         };
       }
       case "sessions-updated": {
@@ -92,7 +92,7 @@ export function useMessageHandling(
           ...prev,
           sessions: msg.sessions,
           activeSessionId: msg.activeSessionId,
-          ...(sessionChanged ? { usage: zeroUsage, inlineUsage: zeroUsage } : {}),
+          ...(sessionChanged ? { usage: zeroUsage } : {}),
         };
       }
       case "inject-user": {
@@ -188,20 +188,6 @@ export function useMessageHandling(
         return { ...prev, stepStatuses: newStatuses };
       }
       case "usage": {
-        if (msg.source === "inline") {
-          // Inline edits are independent invocations — accumulate everything so
-          // the stats bar shows total tokens consumed across all fast edits.
-          return {
-            ...prev,
-            inlineUsage: {
-              totalInputTokens: prev.inlineUsage.totalInputTokens + msg.inputTokens,
-              totalCacheReadTokens: prev.inlineUsage.totalCacheReadTokens + msg.cacheReadInputTokens,
-              totalCacheCreationTokens: prev.inlineUsage.totalCacheCreationTokens + msg.cacheCreationInputTokens,
-              totalOutputTokens: prev.inlineUsage.totalOutputTokens + msg.outputTokens,
-              lastOutputTokens: msg.contextOutputTokens,
-            },
-          };
-        }
         // One usage event is emitted per assistant turn (at result time), carrying:
         //   inputTokens / cacheRead / cacheCreation  →  from the LAST message_start
         //     of that turn. This is the true context window size fed as input.

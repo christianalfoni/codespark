@@ -20,7 +20,6 @@ export function useAppState(vscode: VsCodeApi) {
         sessions: state.sessions,
         activeSessionId: state.activeSessionId,
         usage: state.usage,
-        inlineUsage: state.inlineUsage,
       });
     }
   }, [
@@ -29,7 +28,6 @@ export function useAppState(vscode: VsCodeApi) {
     state.sessions,
     state.activeSessionId,
     state.usage,
-    state.inlineUsage,
     vscode,
   ]);
 

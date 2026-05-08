@@ -68,7 +68,6 @@ export interface ChatState {
   selectedStepIndex: number | null;
   stepStatuses: Map<number, { status: "applying" | "done" | "error"; text?: string }>;
   usage: TokenUsage;
-  inlineUsage: TokenUsage;
 }
 
 export function createInitialState(saved: any): ChatState {
@@ -84,14 +83,6 @@ export function createInitialState(saved: any): ChatState {
     selectedStepIndex: null,
     stepStatuses: new Map(),
     usage: {
-      totalInputTokens: 0,
-      totalOutputTokens: 0,
-      totalCacheReadTokens: 0,
-      totalCacheCreationTokens: 0,
-      lastOutputTokens: 0,
-      hadThinking: false,
-    },
-    inlineUsage: {
       totalInputTokens: 0,
       totalOutputTokens: 0,
       totalCacheReadTokens: 0,
@@ -126,10 +117,6 @@ export function createInitialState(saved: any): ChatState {
   if (saved?.usage) {
     state.usage = { ...state.usage, ...saved.usage };
   }
-  if (saved?.inlineUsage) {
-    state.inlineUsage = { ...state.inlineUsage, ...saved.inlineUsage };
-  }
-
   return state;
 }
 

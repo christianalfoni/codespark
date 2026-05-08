@@ -84,7 +84,7 @@ export async function prepareInlineEdit(
       "--model",
       "claude-haiku-4-5-20251001",
       "--tools",
-      "Read,Glob,Grep",
+      "Glob,Grep",
       "--resume",
       sessionId,
     ],
@@ -375,7 +375,7 @@ export async function executeInlineEdit(
 // ---------------------------------------------------------------------------
 
 function mapToolStatus(name: string): string {
-  if (name === "Read") return "Reading...";
+  if (name === "mcp__codespark__read_file") return "Reading...";
   if (name === "mcp__codespark__edit_file") return "Editing...";
   if (name === "Bash") return "Running...";
   if (name === "Grep") return "Searching...";
@@ -388,7 +388,7 @@ function describeTool(name: string, input: unknown): string {
   const str = (key: string): string | undefined =>
     typeof obj[key] === "string" ? (obj[key] as string) : undefined;
 
-  if (name === "Read") {
+  if (name === "mcp__codespark__read_file") {
     const fp = str("file_path");
     return fp ? `Reading ${basename(fp)}` : mapToolStatus(name);
   }

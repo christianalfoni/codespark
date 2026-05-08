@@ -102,7 +102,7 @@ export interface DoneMessage {
 }
 export interface UsageMessage {
   type: "usage";
-  source: "assistant" | "inline";
+  source: "assistant";
   inputTokens: number;
   /** Total output tokens across all internal API calls (from result.usage) — accurate for cost. */
   outputTokens: number;
