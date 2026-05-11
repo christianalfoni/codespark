@@ -46,6 +46,7 @@ export function useMessageHandling(
           totalCacheReadTokens: 0,
           totalCacheCreationTokens: 0,
           lastOutputTokens: 0,
+          hadThinking: false,
         };
         return {
           ...prev,
@@ -65,6 +66,7 @@ export function useMessageHandling(
           totalCacheReadTokens: 0,
           totalCacheCreationTokens: 0,
           lastOutputTokens: 0,
+          hadThinking: false,
         };
         return {
           ...prev,
@@ -87,6 +89,7 @@ export function useMessageHandling(
           totalCacheReadTokens: 0,
           totalCacheCreationTokens: 0,
           lastOutputTokens: 0,
+          hadThinking: false,
         };
         return {
           ...prev,
@@ -175,17 +178,7 @@ export function useMessageHandling(
         };
       }
       case "breakdown": {
-        return {
-          ...prev,
-          breakdownSteps: msg.steps,
-          selectedStepIndex: null,
-          stepStatuses: new Map(),
-        };
-      }
-      case "step-status": {
-        const newStatuses = new Map(prev.stepStatuses);
-        newStatuses.set(msg.index, { status: msg.status, text: msg.text });
-        return { ...prev, stepStatuses: newStatuses };
+        return { ...prev, breakdownSteps: msg.steps };
       }
       case "usage": {
         // One usage event is emitted per assistant turn (at result time), carrying:

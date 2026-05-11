@@ -14,7 +14,6 @@ import * as http from "http";
 import { connectIpcWithRetry } from "./ipc-client";
 import { registerFsTools } from "./tools-fs";
 import { registerGitTools } from "./tools-git";
-import { registerBreakdownTools } from "./tools-breakdown";
 import { registerPrTools } from "./tools-pr";
 
 // ---------------------------------------------------------------------------
@@ -51,7 +50,6 @@ function parseBody(req: http.IncomingMessage): Promise<any> {
 function registerTools(server: McpServer) {
   registerFsTools(server);
   registerGitTools(server);
-  registerBreakdownTools(server);
   registerPrTools(server);
 }
 

@@ -15,22 +15,11 @@ export type EditListener = (
   editedRanges: EditedRange[],
 ) => void;
 
-export interface BreakdownStepInput {
-  title: string;
-  description: string;
-  filePath: string;
-  lineHint?: number;
-}
-
-export type BreakdownListener = (steps: BreakdownStepInput[]) => void;
-
 export interface IpcServer {
   socketPath: string;
   ready: Promise<void>;
-  /** When set, edit_file is restricted to this exact file path. */
-  allowedEditFile: string | null;
+  editMode: boolean;
   onEdit: (listener: EditListener) => { dispose: () => void };
-  onBreakdown: (listener: BreakdownListener) => { dispose: () => void };
   dispose: () => void;
 }
 
@@ -58,6 +47,12 @@ interface WriteRequest {
   content: string;
 }
 
+interface DeleteRequest {
+  id: string;
+  type: "delete_file";
+  file_path: string;
+}
+
 interface IpcResponse {
   id: string;
   success: boolean;
@@ -77,8 +72,7 @@ export function startIpcServer(log: vscode.OutputChannel): IpcServer {
       ? `\\\\.\\pipe\\codespark-${process.pid}`
       : `/tmp/codespark-${process.pid}.sock`;
   const editListeners = new Set<EditListener>();
-  const breakdownListeners = new Set<BreakdownListener>();
-  let allowedEditFile: string | null = null;
+  let _editMode = false;
 
   // Clean up stale socket from prior crash
   try {
@@ -98,15 +92,7 @@ export function startIpcServer(log: vscode.OutputChannel): IpcServer {
     let buffer = "";
 
     conn.on("data", (chunk) => {
-      buffer = handleConnectionData(
-        chunk,
-        buffer,
-        log,
-        editListeners,
-        breakdownListeners,
-        conn,
-        () => allowedEditFile,
-      );
+      buffer = handleConnectionData(chunk, buffer, log, editListeners, conn, () => _editMode);
     });
 
     conn.on("error", (err) => {
@@ -126,25 +112,16 @@ export function startIpcServer(log: vscode.OutputChannel): IpcServer {
   return {
     socketPath,
     ready,
-    get allowedEditFile() {
-      return allowedEditFile;
-    },
-    set allowedEditFile(value: string | null) {
-      allowedEditFile = value;
+    get editMode() { return _editMode; },
+    set editMode(v: boolean) {
+      _editMode = v;
+      log.appendLine(`[ipc] editMode=${v}`);
     },
     onEdit(listener: EditListener) {
       editListeners.add(listener);
       return {
         dispose: () => {
           editListeners.delete(listener);
-        },
-      };
-    },
-    onBreakdown(listener: BreakdownListener) {
-      breakdownListeners.add(listener);
-      return {
-        dispose: () => {
-          breakdownListeners.delete(listener);
         },
       };
     },
@@ -231,9 +208,8 @@ function handleConnectionData(
   buffer: string,
   log: vscode.OutputChannel,
   editListeners: Set<EditListener>,
-  breakdownListeners: Set<BreakdownListener>,
   conn: net.Socket,
-  getAllowedEditFile: () => string | null,
+  getEditMode: () => boolean,
 ): string {
   buffer += chunk.toString();
 
@@ -281,65 +257,35 @@ function handleConnectionData(
         })
         .catch(handleError(readReq.id));
     } else if (req.type === "edit_file") {
-      const editReq = req as unknown as EditRequest;
-      const allowed = getAllowedEditFile();
-      if (allowed === null) {
-        conn.write(
-          JSON.stringify({
-            id: editReq.id,
-            success: false,
-            error: `Do not edit files. Help the user by explaining, answering questions, or suggesting changes in your response — without modifying any files.`,
-          }) + "\n",
-        );
-      } else if (editReq.file_path !== allowed) {
-        conn.write(
-          JSON.stringify({
-            id: editReq.id,
-            success: false,
-            error: `Editing restricted to the current step's file (${allowed}). Cannot edit ${editReq.file_path}`,
-          }) + "\n",
-        );
+      if (!getEditMode()) {
+        conn.write(JSON.stringify({ id: req.id, success: false, error: "Editing is blocked. Use the fast edit button to make changes." }) + "\n");
       } else {
-        log.appendLine(
-          `[ipc] edit_file: ${editReq.edits.length} edit(s) on ${editReq.file_path}`,
-        );
+        const editReq = req as unknown as EditRequest;
+        log.appendLine(`[ipc] edit_file: ${editReq.edits.length} edit(s) on ${editReq.file_path}`);
         handleEditRequest(editReq)
           .then(handleResult(editReq.file_path, editReq.edits.length))
           .catch(handleError(editReq.id));
       }
     } else if (req.type === "write_file") {
-      const writeReq = req as unknown as WriteRequest;
-      const allowed = getAllowedEditFile();
-      if (allowed === null) {
-        conn.write(
-          JSON.stringify({
-            id: writeReq.id,
-            success: false,
-            error: `Do not write files. Help the user by explaining, answering questions, or suggesting changes in your response — without modifying any files.`,
-          }) + "\n",
-        );
-      } else if (writeReq.file_path !== allowed) {
-        conn.write(
-          JSON.stringify({
-            id: writeReq.id,
-            success: false,
-            error: `Editing restricted to the current step's file (${allowed}). Cannot write ${writeReq.file_path}`,
-          }) + "\n",
-        );
+      if (!getEditMode()) {
+        conn.write(JSON.stringify({ id: req.id, success: false, error: "Writing is blocked. Use the fast edit button to make changes." }) + "\n");
       } else {
+        const writeReq = req as unknown as WriteRequest;
         log.appendLine(`[ipc] write_file: ${writeReq.file_path}`);
         handleWriteRequest(writeReq)
           .then(handleResult(writeReq.file_path, 1))
           .catch(handleError(writeReq.id));
       }
-    } else if (req.type === "write_breakdown") {
-      const steps = (req as any).items as BreakdownStepInput[];
-      log.appendLine(`[ipc] write_breakdown: ${steps.length} step(s)`);
-      for (const listener of breakdownListeners) {
-        listener(steps);
+    } else if (req.type === "delete_file") {
+      if (!getEditMode()) {
+        conn.write(JSON.stringify({ id: req.id, success: false, error: "Deleting is blocked. Use the fast edit button to make changes." }) + "\n");
+      } else {
+        const deleteReq = req as unknown as DeleteRequest;
+        log.appendLine(`[ipc] delete_file: ${deleteReq.file_path}`);
+        handleDeleteRequest(deleteReq)
+          .then((res) => conn.write(JSON.stringify(res) + "\n"))
+          .catch(handleError(deleteReq.id));
       }
-      const res = { id: req.id, success: true, message: `Created ${steps.length} step(s)` };
-      conn.write(JSON.stringify(res) + "\n");
     } else {
       conn.write(
         JSON.stringify({
@@ -407,6 +353,8 @@ async function handleEditRequest(req: EditRequest): Promise<IpcResponse> {
     };
   }
 
+  await vscode.workspace.save(uri);
+
   const after = doc.getText();
   const editedRanges = computeDiffRanges(before, after);
 
@@ -416,6 +364,16 @@ async function handleEditRequest(req: EditRequest): Promise<IpcResponse> {
     message: `Applied ${textEdits.length} edit(s)`,
     editedRanges,
   };
+}
+
+async function handleDeleteRequest(req: DeleteRequest): Promise<IpcResponse> {
+  const uri = vscode.Uri.file(req.file_path);
+  try {
+    await vscode.workspace.fs.delete(uri, { useTrash: true });
+    return { id: req.id, success: true, message: `Deleted ${req.file_path}` };
+  } catch {
+    return { id: req.id, success: false, error: `Could not delete file: ${req.file_path}` };
+  }
 }
 
 async function handleWriteRequest(req: WriteRequest): Promise<IpcResponse> {
@@ -445,6 +403,8 @@ async function handleWriteRequest(req: WriteRequest): Promise<IpcResponse> {
       error: "WorkspaceEdit failed to apply",
     };
   }
+
+  await vscode.workspace.save(uri);
 
   const after = doc.getText();
   const editedRanges = computeDiffRanges(before, after);

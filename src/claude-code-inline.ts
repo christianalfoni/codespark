@@ -132,9 +132,6 @@ export async function executeInlineEdit(
 ): Promise<InlineEditResult> {
   const { proc, rl, filePath, absFilePath } = prepared;
 
-  // Restrict IPC edits to this file only
-  ipcServer.allowedEditFile = absFilePath;
-
   // Send instruction
   const userInstruction = `Apply the following changes to ${filePath}:\n\n${instruction}`;
   const inputMsg = JSON.stringify({
@@ -344,7 +341,6 @@ export async function executeInlineEdit(
     await donePromise;
   } finally {
     ipcEditSub.dispose();
-    ipcServer.allowedEditFile = null;
   }
 
   const latencyMs = Date.now() - tSend;

@@ -66,6 +66,10 @@
       {
         "command": "codeSpark.openAssistant",
         "title": "CodeSpark: Open Assistant"
+      },
+      {
+        "command": "codeSpark.toggleIntentComment",
+        "title": "CodeSpark: Toggle intent comment (MODIFY → ADD → REMOVE → off)"
       }
     ],
     "keybindings": [
@@ -73,7 +77,15 @@
         "command": "codeSpark.openAssistant",
         "mac": "cmd+shift+i",
         "win": "ctrl+shift+i",
-        "linux": "ctrl+shift+i"
+        "linux": "ctrl+shift+i",
+        "when": "!editorTextFocus"
+      },
+      {
+        "command": "codeSpark.toggleIntentComment",
+        "mac": "cmd+shift+i",
+        "win": "ctrl+shift+i",
+        "linux": "ctrl+shift+i",
+        "when": "editorTextFocus"
       }
     ],
     "colors": [],

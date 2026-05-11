@@ -63,6 +63,15 @@ The breakdown makes this practical:
 - **Context is sticky** — because you implement the steps, what you learn stays with you. It becomes part of how you think about the codebase.
 - **Token cost drops dramatically** — a breakdown is a fraction of the tokens an agent spends implementing changes end-to-end.
 
+## Commands
+
+CodeSpark registers the following commands (accessible via the Command Palette). You can bind them to keyboard shortcuts in your `keybindings.json`:
+
+| Command | Default shortcut | Description |
+|---|---|---|
+| `codeSpark.openAssistant` | `Cmd+Shift+I` (when not in editor) | Open the assistant with the current file as context |
+| `codeSpark.toggleIntentComment` | `Cmd+Shift+I` (when in editor) | Cycle `MODIFY → ADD → REMOVE → off` on the current line |
+
 ## Token efficiency
 
 CodeSpark is designed to keep token usage — and cost — low.
