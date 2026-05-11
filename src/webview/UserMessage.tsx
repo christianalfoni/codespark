@@ -1,7 +1,6 @@
 import { useRef, useEffect, useState } from "preact/hooks";
 import { renderMarkdown } from "./markdown";
 import { prepareForRender } from "./prepareForRender";
-import type { StepRef } from "./state";
 import { FILE_ICON } from "./utils";
 
 const MAX_LINES = 3;
@@ -25,7 +24,6 @@ function truncateContent(text: string): {
 export function UserMessage({
   content,
   index,
-  stepRef,
   fileRef,
   actionLabel,
   registerRef,
@@ -33,7 +31,6 @@ export function UserMessage({
 }: {
   content: string;
   index: number;
-  stepRef?: StepRef;
   fileRef?: { filePath: string; cursorLine: number; selection?: string };
   actionLabel?: string;
   registerRef: (index: number, el: HTMLElement | null) => void;
@@ -67,11 +64,6 @@ export function UserMessage({
       onClick={isTruncated ? () => setExpanded((e) => !e) : undefined}
       style={isTruncated ? { cursor: "pointer" } : undefined}
     >
-      {stepRef && (
-        <div class="step-ref-badge">
-          <span class="step-ref-title">{stepRef.title}</span>
-        </div>
-      )}
       {fileRef && (
         <div class="message-file-ref">
           <span class="message-file-ref__icon" dangerouslySetInnerHTML={{ __html: FILE_ICON }} />

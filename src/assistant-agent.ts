@@ -10,20 +10,12 @@ import {
 // Session types
 // ---------------------------------------------------------------------------
 
-export interface BreakdownStepData {
-  title: string;
-  description: string;
-  filePath: string;
-  lineHint?: number;
-}
-
 export interface AssistantSession {
   id: string;
   name: string;
   entries: Entry[];
   agentMessages: any[];
   summary: string;
-  breakdownSteps: BreakdownStepData[];
 }
 
 // ---------------------------------------------------------------------------
@@ -65,24 +57,7 @@ export function getActiveSession(): AssistantSession | undefined {
 
 export function getAssistantSummary(): string | undefined {
   const session = getActiveSession();
-  if (!session) return undefined;
-
-  const parts: string[] = [];
-
-  // Include breakdown steps if present
-  const steps = session.breakdownSteps;
-  if (steps && steps.length > 0) {
-    const stepLines = steps.map((step, i) =>
-      `${i + 1}. **${step.title}** — \`${step.filePath}${step.lineHint ? `:${step.lineHint}` : ""}\`\n   ${step.description}`,
-    );
-    parts.push(`## Breakdown\n\n${stepLines.join("\n\n")}`);
-  }
-
-  if (session.summary) {
-    parts.push(session.summary);
-  }
-
-  return parts.length > 0 ? parts.join("\n\n---\n\n") : undefined;
+  return session?.summary || undefined;
 }
 
 
@@ -94,7 +69,6 @@ export function createSession(name?: string): AssistantSession {
     entries: [],
     agentMessages: [],
     summary: "",
-    breakdownSteps: [],
   };
   _sessions.push(session);
   // Enforce max sessions — drop oldest
@@ -127,14 +101,6 @@ export function updateSessionEntries(id: string, entries: Entry[]): void {
   const session = _sessions.find((s) => s.id === id);
   if (session) {
     session.entries = entries;
-    persistSessions();
-  }
-}
-
-export function saveBreakdownSteps(id: string, steps: BreakdownStepData[]): void {
-  const session = _sessions.find((s) => s.id === id);
-  if (session) {
-    session.breakdownSteps = steps;
     persistSessions();
   }
 }

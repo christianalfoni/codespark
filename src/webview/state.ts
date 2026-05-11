@@ -21,16 +21,9 @@ export interface AssistantEntry {
   turns: Turn[];
 }
 
-export interface StepRef {
-  stepIndex: number;
-  title: string;
-  filePath: string;
-}
-
 export interface UserEntry {
   role: "user";
   content: string;
-  stepRef?: StepRef;
   actionLabel?: string;
   fileRef?: { filePath: string; cursorLine: number; selection?: string };
 }
@@ -65,8 +58,6 @@ export interface ChatState {
   activeSessionId: string | null;
   fileContext: { filePath: string; cursorLine: number; selection?: string } | null;
   breakdownSteps: BreakdownStep[];
-  selectedStepIndex: number | null;
-  stepStatuses: Map<number, { status: "applying" | "done" | "error"; text?: string }>;
   usage: TokenUsage;
 }
 
@@ -80,8 +71,6 @@ export function createInitialState(saved: any): ChatState {
     activeSessionId: null,
     fileContext: null,
     breakdownSteps: [],
-    selectedStepIndex: null,
-    stepStatuses: new Map(),
     usage: {
       totalInputTokens: 0,
       totalOutputTokens: 0,

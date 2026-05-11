@@ -12,6 +12,9 @@ import {
 } from "./assistant-agent";
 import { AssistantViewProvider } from "./assistant-view";
 import { startIpcServer } from "./ipc-server";
+import { startIntentScanner } from "./intent-scanner";
+import { startIntentDecorations } from "./intent-decorations";
+import { registerIntentCommands } from "./intent-commands";
 
 function isClaudeCliAvailable(): boolean {
   try {
@@ -140,8 +143,16 @@ export function activate(context: vscode.ExtensionContext) {
   watcher.onDidDelete(onInstructionsChanged("Deleted"));
   context.subscriptions.push(watcher);
 
+  registerIntentCommands(context);
+
+  const intentScanner = startIntentScanner(workspaceFolder, log);
+  context.subscriptions.push(intentScanner);
+
+  const intentDecorations = startIntentDecorations(context);
+  context.subscriptions.push(intentDecorations);
+
   // Assistant agent webview panel
-  const assistantView = new AssistantViewProvider(context.extensionUri, log, mcpConfigPath, ipcServer, decorationProvider);
+  const assistantView = new AssistantViewProvider(context.extensionUri, log, mcpConfigPath, ipcServer, decorationProvider, intentScanner);
 
   context.subscriptions.push(
     vscode.commands.registerCommand("codeSpark.showStats", () => {

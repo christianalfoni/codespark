@@ -121,6 +121,37 @@ If the match fails (not found or appears more than once) the edit is rejected an
 
   // @ts-ignore — MCP SDK's deep type instantiation exceeds TS limit
   server.registerTool(
+    "delete_file",
+    {
+      annotations: { title: "Delete File" },
+      description: `Delete a file from the workspace. Use this to remove files that are no longer needed.`,
+      inputSchema: {
+        file_path: z.string().describe("Absolute path to the file to delete"),
+      },
+    },
+    async ({ file_path }) => {
+      try {
+        const res = await sendIpcRequest("delete_file", { file_path });
+        if (res.success) {
+          return { content: [{ type: "text" as const, text: res.message }] };
+        } else {
+          return {
+            content: [{ type: "text" as const, text: `Error: ${res.error}` }],
+            isError: true,
+          };
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return {
+          content: [{ type: "text" as const, text: `IPC error: ${msg}` }],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  // @ts-ignore — MCP SDK's deep type instantiation exceeds TS limit
+  server.registerTool(
     "write_file",
     {
       annotations: { title: "Write File" },

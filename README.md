@@ -13,62 +13,41 @@
 
 ## How it works
 
-### Assistant (`Cmd+Shift+I` / `Ctrl+Shift+I`)
+### Intent comments
 
-Your thinking partner. Lives in the sidebar. Powered by Claude Code CLI running default models. It can read files, grep through your codebase, search the web, and fetch documentation. It helps you understand code and break down work into guided steps.
+You drive the work by writing intent comments directly in your code:
 
-- Use `Cmd+Shift+I` / `Ctrl+Shift+I` from a file to open the assistant with that file as context
-- Ask questions, explore approaches, and gather context
-- When you want to implement something, the assistant creates a **breakdown** — a list of focused steps, each targeting a specific file
+```ts
+// MODIFY: extract this into a separate hook
+// ADD: add error boundary around this component
+// REMOVE: delete this deprecated helper
+```
 
-### Prompt states
+CodeSpark detects these across your entire workspace, highlights the keywords in the editor, and lists them in the sidebar. When you're ready, click the bolt button to send all intent comments to the assistant — it reads each one, navigates to the right file and line, and applies the changes. Files are saved automatically after each edit.
 
-The prompt's toolbar adapts to where you are in the flow.
+Use `Cmd+Shift+I` while the cursor is in an editor to toggle an intent comment on the current line. Each press cycles through `MODIFY → ADD → REMOVE → off`. The comment style matches the language (JS/TS uses `//`, Python uses `#`, JSX uses `{/* */}`, etc.) and inherits the indentation of the current line.
 
-**1. Empty conversation** — just the prompt.
+### Assistant
 
-<p align="center">
-  <img src="./media/prompt-state-1.png" alt="Empty prompt" width="480" />
-</p>
+The assistant lives in the sidebar. Ask it questions, explore approaches, or have it look things up — it can read files, search your codebase, fetch documentation, and run git commands. It won't touch your code unless you trigger the bolt.
 
-- **New session** resets the conversation
-- **Sessions** opens the history of previous sessions
+Open it with `Cmd+Shift+I` / `Ctrl+Shift+I` when not in an editor. If you have a file open, it opens with that file as context.
 
-**2. Conversation view with a breakdown** — the assistant has produced steps, and you're viewing the full conversation. Selecting _Conversation_ keeps the chat focused on the whole breakdown rather than one step.
+## Why this approach
 
-<p align="center">
-  <img src="./media/prompt-state-2.png" alt="Prompt with breakdown, conversation selected" width="480" />
-</p>
+The standard inline agent workflow has a hidden problem. You highlight some code, type a prompt, and the agent makes a change — but it has no idea what else you're planning. It works on that one spot in isolation, making local decisions without knowing that you're about to restructure three other files around it. The result is technically correct but contextually wrong: the agent optimizes for the prompt it was given, not for the system you're building.
 
-- **Review** asks the assistant to review the changes you've made against the breakdown and suggest improvements
+Intent comments flip this around. Instead of prompting the agent from the outside and hoping it infers your intent, you state your intent directly in the code — at the exact locations where the changes will happen. When you trigger the bolt, the agent sees all of it at once: every file, every change you have planned, the full shape of what you're trying to do. It works from the inside out, with the context it actually needs.
 
-**3. Step selected** — you've picked a specific step to work on. The prompt now references that step, and a new button appears.
+But there's a deeper reason this matters. Every time you hand off a task to an agent without fully working through it yourself, you take on **cognitive debt**. You stop forming the mental model that comes from navigating your own code. You stop building the breakdown in your head — the sense of which files are affected, which abstractions are load-bearing, which changes cascade. That understanding is not a byproduct of writing code; it *is* writing code. The moment you outsource it, it starts to decay.
 
-<p align="center">
-  <img src="./media/prompt-state-3.png" alt="Prompt with a step selected" width="480" />
-</p>
+CodeSpark is designed to keep you in that loop. You write the intent comments — which means you've already thought through what needs to change and where. You stay the author. The agent handles the mechanical execution, but the understanding stays with you.
 
-- **Fast Edit** asks the assistant to apply the selected step directly
-- Any follow-up you send is scoped to the selected step — steps act like **threads**. The exchange is also visible inline in the main conversation, so you never lose the wider context
+## Commands
 
-## Breakdowns
+CodeSpark registers the following commands (accessible via the Command Palette). You can bind them to keyboard shortcuts in your `keybindings.json`:
 
-A **breakdown** is a list of focused steps, each targeting a specific file — but _you_ implement them. The assistant helps you understand the problem, explores the codebase, and generates the context you need to move fast. Then you write the code, or let the fast editing agent handle the mechanical parts while you stay in control.
-
-This matters because **you are responsible for your codebase**. Your understanding of it is not a nice-to-have — it is what makes you effective. That understanding evolves through implementation, not through review. Every time you write code, you reinforce your mental model. Every time you skip implementation and only review, that model atrophies.
-
-The breakdown makes this practical:
-
-- **Context generation is fast** — the assistant reads files, searches the codebase, and synthesizes what you need to know.
-- **Context is sticky** — because you implement the steps, what you learn stays with you. It becomes part of how you think about the codebase.
-- **Token cost drops dramatically** — a breakdown is a fraction of the tokens an agent spends implementing changes end-to-end.
-
-## Token efficiency
-
-CodeSpark is designed to keep token usage — and cost — low.
-
-**The assistant agent starts lean.** A fresh Claude Code session loads ~16.7K tokens of context: a large system prompt, tool definitions for Bash, Edit, Write, and more. The CodeSpark assistant strips this down to ~8.5K by restricting the tool set to read-only operations (Glob, Grep, WebSearch, WebFetch, and a handful of git tools). No Bash. Tool definitions repeat on every turn, so a smaller set pays off across the entire conversation.
-
-**Editing is gated.** The assistant can see `edit_file` and `write_file` tools but they are blocked by default — calling them returns an error that redirects the model to `write_breakdown` instead. Editing is only unlocked when you explicitly click **Fast Edit** on a step, and only for that step's file. This keeps exploration sessions read-only without needing to remove the tools from the schema.
-
-**Fast Edit reuses the existing session.** Applying a step sends an `[APPLY STEP]` message into the same assistant session — no new process, no model switch, no cold cache. The full conversation context is already warm.
+| Command | Default shortcut | Description |
+|---|---|---|
+| `codeSpark.openAssistant` | `Cmd+Shift+I` (when not in editor) | Open the assistant with the current file as context |
+| `codeSpark.toggleIntentComment` | `Cmd+Shift+I` (when in editor) | Cycle `MODIFY → ADD → REMOVE → off` on the current line |
