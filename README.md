@@ -43,6 +43,12 @@ But there's a deeper reason this matters. Every time you hand off a task to an a
 
 CodeSpark is designed to keep you in that loop. You write the intent comments — which means you've already thought through what needs to change and where. You stay the author. The agent handles the mechanical execution, but the understanding stays with you.
 
+## Configuration
+
+| Setting | Default | Description |
+|---|---|---|
+| `codespark.prDescriptionTemplate` | (built-in template) | Markdown template used for PR descriptions created by the agent. Edit via the Settings UI (rendered as a textarea) or `settings.json`. |
+
 ## Commands
 
 CodeSpark registers the following commands (accessible via the Command Palette). You can bind them to keyboard shortcuts in your `keybindings.json`:

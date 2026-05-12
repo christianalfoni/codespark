@@ -2,7 +2,7 @@
   "name": "codespark-agent",
   "displayName": "CodeSpark",
   "description": "A coding agent where you still code",
-  "version": "0.27.1",
+  "version": "0.27.2",
   "publisher": "codespark",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -91,7 +91,14 @@
     "colors": [],
     "configuration": {
       "title": "CodeSpark",
-      "properties": {}
+      "properties": {
+        "codespark.prDescriptionTemplate": {
+          "type": "string",
+          "editPresentation": "multilineText",
+          "default": "## [User story title — written as consumer value]\n\n### ❌ Current behavior\n[ASCII UI mockup, code block, or Mermaid diagram showing the experience BEFORE]\n\n### ✅ New behavior\n[ASCII UI mockup, code block, or Mermaid diagram showing the experience AFTER]\n\n### 🤔 Assumptions\n- [one line each]\n\n### 🧠 Decisions\n- [one line each]\n\n### 🔄 Discussions\n- [only if you changed direction mid-session — omit if none]\n\n### 🧪 Testing\n- [what was verified, or \"Not tested\"]\n\n### 📁 References\n- [relative/path/to/file.ts](relative/path/to/file.ts)\n\nRules:\n- For VS Code extensions use ASCII UI mockups of panels/dialogs, not internal source code\n- Use Mermaid diagrams when a flow or sequence changed (5–7 nodes max)\n- Skip mechanical housekeeping: git ops, version bumps, env/tooling setup\n- References list only files directly read or edited during the session\n- If there are multiple user stories, repeat the full block per story",
+          "markdownDescription": "Markdown template used for PR descriptions created by the agent."
+        }
+      }
     }
   },
   "scripts": {

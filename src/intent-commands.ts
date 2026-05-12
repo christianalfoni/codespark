@@ -32,19 +32,14 @@ function toggleIntentComment(): void {
   if (match) {
     const [, prefix, keyword, rest] = match;
     const currentIdx = KEYWORDS.indexOf(keyword as Keyword);
-    const nextIdx = currentIdx + 1;
-
-    if (nextIdx >= KEYWORDS.length) {
-      // Cycled through all — wrap back to first keyword
-      editor.edit((b) =>
-        b.replace(line.range, `${prefix}${KEYWORDS[0]}${rest}`),
-      );
-    } else {
-      // Advance to next keyword, preserve description
-      editor.edit((b) =>
-        b.replace(line.range, `${prefix}${KEYWORDS[nextIdx]}${rest}`),
-      );
-    }
+    const nextIdx = (currentIdx + 1) % KEYWORDS.length;
+    // rest = ": <description>[suffix]" — split off any closing delimiter so $0 lands at end of description
+    const raw = rest.slice(2);
+    const { desc, suffix } = splitCommentSuffix(raw);
+    editor.insertSnippet(
+      new vscode.SnippetString(`${prefix}${KEYWORDS[nextIdx]}: ${desc}$0${suffix}`),
+      line.range,
+    );
   } else {
     // No intent comment on this line — insert MODIFY
     const { before, after } = getCommentStyle(
@@ -54,12 +49,22 @@ function toggleIntentComment(): void {
     );
     const indent = line.text.match(/^(\s*)/)?.[1] ?? "";
     const isEmptyLine = line.text.trim() === "";
-    const pos = new vscode.Position(line.lineNumber, 0);
+    // Replace whitespace-only lines (e.g. auto-indented blank lines) to avoid doubling the indent
+    const insertTarget = isEmptyLine
+      ? line.range
+      : new vscode.Position(line.lineNumber, 0);
     editor.insertSnippet(
       new vscode.SnippetString(`${indent}${before}MODIFY: $0${after}${isEmptyLine ? "" : "\n"}`),
-      pos,
+      insertTarget,
     );
   }
+}
+
+function splitCommentSuffix(text: string): { desc: string; suffix: string } {
+  if (text.endsWith(" */}")) return { desc: text.slice(0, -4), suffix: " */}" };
+  if (text.endsWith(" */")) return { desc: text.slice(0, -3), suffix: " */" };
+  if (text.endsWith(" -->")) return { desc: text.slice(0, -4), suffix: " -->" };
+  return { desc: text, suffix: "" };
 }
 
 function getCommentStyle(

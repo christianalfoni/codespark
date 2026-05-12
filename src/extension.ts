@@ -64,12 +64,14 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Wait for IPC socket to be ready before spawning MCP server
   ipcServer.ready.then(() => {
+    const prTemplate = vscode.workspace.getConfiguration("codespark").get<string>("prDescriptionTemplate", "");
     const mcpProc = require("child_process").spawn(process.execPath, [mcpServerScript], {
       env: {
         ...process.env,
         CODESPARK_SOCKET: ipcServer.socketPath,
         CODESPARK_MCP_PORT: String(mcpPort),
         CODESPARK_WORKSPACE: workspaceFolder,
+        ...(prTemplate ? { CODESPARK_PR_TEMPLATE: prTemplate } : {}),
       },
       stdio: ["pipe", "pipe", "pipe"],
     });

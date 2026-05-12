@@ -322,7 +322,14 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
     text: string,
     files: string[] = [],
   ): Promise<void> {
-    this._log.appendLine(`[assistant-view:prompt] ${text}`);
+    let prompt = text;
+    if (!this._pendingEditMode && this._steps.length > 0) {
+      const stepList = this._steps
+        .map((s) => `- ${s.keyword ?? "MODIFY"} ${s.filePath}${s.lineHint ? `:${s.lineHint}` : ""}: ${s.title}`)
+        .join("\n");
+      prompt = `[Current intended changes]\n${stepList}\n\n${text}`;
+    }
+    this._log.appendLine(`[assistant-view:prompt] ${prompt}`);
     const workspaceFolder = this._workspaceFolder;
     if (!workspaceFolder) {
       this._post({ type: "error", text: "No workspace folder open." });
@@ -338,14 +345,14 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider {
       this._sendSessionsUpdate();
     }
 
-    this._promptQueue.push({ text, files });
+    this._promptQueue.push({ text: prompt, files });
 
     // Check if session has a saved SDK session ID for resume
     const session = getActiveSession();
     const savedSdkSessionId = session?.agentMessages?.[0]?.sdkSessionId;
 
     const { handle, isFollowUp } = startAssistantQuery(
-      text,
+      prompt,
       workspaceFolder,
       this._log,
       sessionId,

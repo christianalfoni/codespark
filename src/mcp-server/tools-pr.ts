@@ -20,23 +20,7 @@ function runCommand(cmd: string, args: string[]): Promise<string> {
   });
 }
 
-export function registerPrTools(server: McpServer) {
-  server.registerTool(
-    "create_pr",
-    {
-      annotations: { title: "Create PR" },
-      description: `Push the current branch and open a GitHub pull request.
-
-Before calling this tool, you must compose the pr_description yourself, using:
-  - git_log and git_diff to understand what commits have been made
-  - The session breakdown steps (if any were set)
-  - The conversation with the user
-
-**PR title** — derived from the first line of the most recent commit message.
-
-**PR description** — use this format:
-
-## [User story title — written as consumer value]
+const DEFAULT_PR_TEMPLATE = `## [User story title — written as consumer value]
 
 ### ❌ Current behavior
 [ASCII UI mockup, code block, or Mermaid diagram showing the experience BEFORE]
@@ -64,7 +48,27 @@ Rules:
 - Use Mermaid diagrams when a flow or sequence changed (5–7 nodes max)
 - Skip mechanical housekeeping: git ops, version bumps, env/tooling setup
 - References list only files directly read or edited during the session
-- If there are multiple user stories, repeat the full block per story
+- If there are multiple user stories, repeat the full block per story`;
+
+export function registerPrTools(server: McpServer) {
+  const prTemplate = process.env.CODESPARK_PR_TEMPLATE || DEFAULT_PR_TEMPLATE;
+
+  server.registerTool(
+    "create_pr",
+    {
+      annotations: { title: "Create PR" },
+      description: `Push the current branch and open a GitHub pull request.
+
+Before calling this tool, you must compose the pr_description yourself, using:
+  - git_log and git_diff to understand what commits have been made
+  - The session breakdown steps (if any were set)
+  - The conversation with the user
+
+**PR title** — derived from the first line of the most recent commit message.
+
+**PR description** — use this format:
+
+${prTemplate}
 
 The tool pushes the current branch to origin and creates the PR.`,
       inputSchema: {
