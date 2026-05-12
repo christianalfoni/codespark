@@ -35,8 +35,10 @@ function toggleIntentComment(): void {
     const nextIdx = currentIdx + 1;
 
     if (nextIdx >= KEYWORDS.length) {
-      // Cycled through all — delete the comment line
-      editor.edit((b) => b.delete(line.rangeIncludingLineBreak));
+      // Cycled through all — wrap back to first keyword
+      editor.edit((b) =>
+        b.replace(line.range, `${prefix}${KEYWORDS[0]}${rest}`),
+      );
     } else {
       // Advance to next keyword, preserve description
       editor.edit((b) =>

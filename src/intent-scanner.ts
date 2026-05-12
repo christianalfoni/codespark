@@ -127,6 +127,20 @@ export function startIntentScanner(
     notify();
   });
 
+  const deleteListener = vscode.workspace.onDidDeleteFiles((event) => {
+    let changed = false;
+    for (const uri of event.files) {
+      const relative = path.relative(workspaceFolder, uri.fsPath).replace(/\\/g, "/");
+      const before = _steps.length;
+      _steps = _steps.filter((s) => !s.filePath.startsWith(relative));
+      if (_steps.length !== before) {
+        log.appendLine(`[intent-scanner] Deleted ${relative}: removed ${before - _steps.length} intent(s)`);
+        changed = true;
+      }
+    }
+    if (changed) notify();
+  });
+
   return {
     getSteps() {
       return _steps;
@@ -141,6 +155,7 @@ export function startIntentScanner(
     },
     dispose() {
       saveListener.dispose();
+      deleteListener.dispose();
       _listeners.clear();
     },
   };
