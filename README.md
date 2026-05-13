@@ -35,13 +35,17 @@ Open it with `Cmd+Shift+I` / `Ctrl+Shift+I` when not in an editor. If you have a
 
 ## Why this approach
 
-The standard inline agent workflow has a hidden problem. You highlight some code, type a prompt, and the agent makes a change — but it has no idea what else you're planning. It works on that one spot in isolation, making local decisions without knowing that you're about to restructure three other files around it. The result is technically correct but contextually wrong: the agent optimizes for the prompt it was given, not for the system you're building.
+Coding is not about the characters you type. It is about how you choose to solve a problem — where you put the code, what it represents, how the pieces relate, which dependencies you reach for. Those decisions are the work. The keystrokes are just how you record them.
 
-Intent comments flip this around. Instead of prompting the agent from the outside and hoping it infers your intent, you state your intent directly in the code — at the exact locations where the changes will happen. When you trigger the bolt, the agent sees all of it at once: every file, every change you have planned, the full shape of what you're trying to do. It works from the inside out, with the context it actually needs.
+AI is genuinely useful in two situations: when you have a clear solution and just want to reduce the mechanical effort of writing it out, and when you don't have a clear solution and need help gathering context, exploring options, or thinking it through. What it should never do is make you stop thinking.
 
-But there's a deeper reason this matters. Every time you hand off a task to an agent without fully working through it yourself, you take on **cognitive debt**. You stop forming the mental model that comes from navigating your own code. You stop building the breakdown in your head — the sense of which files are affected, which abstractions are load-bearing, which changes cascade. That understanding is not a byproduct of writing code; it *is* writing code. The moment you outsource it, it starts to decay.
+**The inline prompt problem.** The most common AI coding workflow — highlight code, type a prompt, accept a change — fails quietly. The agent edits that one spot without knowing what else you're planning. It has no idea you're about to move that abstraction, or that this file is about to be deleted, or that three other places depend on the thing it just renamed. Every edit is locally plausible and globally wrong. You end up reviewing a change that's technically correct for the prompt but wrong for the system you're building.
 
-CodeSpark is designed to keep you in that loop. You write the intent comments — which means you've already thought through what needs to change and where. You stay the author. The agent handles the mechanical execution, but the understanding stays with you.
+**The project prompt problem.** Handing the whole task to an agent — "implement this feature," "fix this bug" — has the opposite failure. The agent gets broad context but you get broad disconnection. You stop navigating your own codebase. You stop building the breakdown in your head: which files are affected, which abstractions are load-bearing, which changes cascade. That breakdown is not a byproduct of writing code. It *is* writing code. The moment you hand it off entirely, it starts to decay — and so does your understanding of the system you're responsible for.
+
+**Intent comments keep you in the loop.** When you write an intent comment, you've already made a decision: this file, this location, this kind of change. You stay the author. The breakdown lives in your code, not in a prompt box. When you trigger the bolt, the agent sees everything at once — every file, every planned change, the full shape of what you're doing — and handles the mechanical execution. The understanding stays with you.
+
+The assistant is there for the moments when you don't have clarity yet. Ask it a question, explore an approach, have it read some files. Once you know what you want to do, write the intent comment and move on.
 
 ## Configuration
 
