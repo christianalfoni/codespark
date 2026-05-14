@@ -106,26 +106,38 @@ export function startIntentScanner(
 
   initialScan();
 
-  const saveListener = vscode.workspace.onDidSaveTextDocument((doc) => {
-    const ext = path.extname(doc.uri.fsPath).toLowerCase();
+  function rescanFile(fsPath: string) {
+    const ext = path.extname(fsPath).toLowerCase();
     if (!TEXT_EXTENSIONS.has(ext)) return;
+    if (fsPath.includes("/node_modules/") || fsPath.includes("/.git/")) return;
 
-    const relative = path.relative(workspaceFolder, doc.uri.fsPath).replace(/\\/g, "/");
-    const fresh = scanFileContent(relative, doc.getText());
+    const relative = path.relative(workspaceFolder, fsPath).replace(/\\/g, "/");
+    const fresh = scanFile(fsPath);
 
-    // Replace steps for this file, keep all others
     const others = _steps.filter((s) => s.filePath !== relative);
-    _steps = [...others, ...fresh].sort((a, b) =>
+    const next = [...others, ...fresh].sort((a, b) =>
       a.filePath !== b.filePath
         ? a.filePath.localeCompare(b.filePath)
         : a.lineNumber - b.lineNumber,
     );
 
-    log.appendLine(
-      `[intent-scanner] Saved ${relative}: ${fresh.length} intent(s), total ${_steps.length}`,
-    );
-    notify();
-  });
+    if (next.length !== _steps.length || next.some((s, i) => s.filePath !== _steps[i]?.filePath || s.lineNumber !== _steps[i]?.lineNumber)) {
+      _steps = next;
+      log.appendLine(`[intent-scanner] Changed ${relative}: ${fresh.length} intent(s), total ${_steps.length}`);
+      notify();
+    }
+  }
+
+  // Watch for file changes from any source (VS Code saves and external edits by Claude Code)
+  const fsWatcher = vscode.workspace.createFileSystemWatcher(
+    new vscode.RelativePattern(workspaceFolder, "**/*"),
+    false,
+    false,
+    true, // ignore deletes — handled separately
+  );
+
+  const changeListener = fsWatcher.onDidChange((uri) => rescanFile(uri.fsPath));
+  const createListener = fsWatcher.onDidCreate((uri) => rescanFile(uri.fsPath));
 
   const deleteListener = vscode.workspace.onDidDeleteFiles((event) => {
     let changed = false;
@@ -154,7 +166,9 @@ export function startIntentScanner(
       };
     },
     dispose() {
-      saveListener.dispose();
+      fsWatcher.dispose();
+      changeListener.dispose();
+      createListener.dispose();
       deleteListener.dispose();
       _listeners.clear();
     },

@@ -2,7 +2,7 @@
   "name": "codespark-agent",
   "displayName": "CodeSpark",
   "description": "A coding agent where you still code",
-  "version": "0.27.2",
+  "version": "0.28.0",
   "publisher": "codespark",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -33,10 +33,10 @@
   "main": "./out/extension.js",
   "contributes": {
     "viewsContainers": {
-      "secondarySidebar": [
+      "activitybar": [
         {
           "id": "codeSpark",
-          "title": "CODESPARK",
+          "title": "CodeSpark",
           "icon": "media/icon.svg"
         }
       ]
@@ -44,42 +44,19 @@
     "views": {
       "codeSpark": [
         {
-          "id": "codeSpark.assistant",
-          "name": "Assistant",
+          "id": "codeSpark.intents",
+          "name": "Intent Comments",
           "type": "webview"
         }
       ]
     },
     "commands": [
       {
-        "command": "codeSpark.showStats",
-        "title": "CodeSpark: Show Stats"
-      },
-      {
-        "command": "codeSpark.resetStats",
-        "title": "CodeSpark: Reset Stats"
-      },
-      {
-        "command": "codeSpark.clearAssistantSummary",
-        "title": "CodeSpark: Clear Assistant Summary"
-      },
-      {
-        "command": "codeSpark.openAssistant",
-        "title": "CodeSpark: Open Assistant"
-      },
-      {
         "command": "codeSpark.toggleIntentComment",
         "title": "CodeSpark: Toggle intent comment (MODIFY → ADD → REMOVE → off)"
       }
     ],
     "keybindings": [
-      {
-        "command": "codeSpark.openAssistant",
-        "mac": "cmd+shift+i",
-        "win": "ctrl+shift+i",
-        "linux": "ctrl+shift+i",
-        "when": "!editorTextFocus"
-      },
       {
         "command": "codeSpark.toggleIntentComment",
         "mac": "cmd+shift+i",
@@ -88,18 +65,7 @@
         "when": "editorTextFocus"
       }
     ],
-    "colors": [],
-    "configuration": {
-      "title": "CodeSpark",
-      "properties": {
-        "codespark.prDescriptionTemplate": {
-          "type": "string",
-          "editPresentation": "multilineText",
-          "default": "## [User story title — written as consumer value]\n\n### ❌ Current behavior\n[ASCII UI mockup, code block, or Mermaid diagram showing the experience BEFORE]\n\n### ✅ New behavior\n[ASCII UI mockup, code block, or Mermaid diagram showing the experience AFTER]\n\n### 🤔 Assumptions\n- [one line each]\n\n### 🧠 Decisions\n- [one line each]\n\n### 🔄 Discussions\n- [only if you changed direction mid-session — omit if none]\n\n### 🧪 Testing\n- [what was verified, or \"Not tested\"]\n\n### 📁 References\n- [relative/path/to/file.ts](relative/path/to/file.ts)\n\nRules:\n- For VS Code extensions use ASCII UI mockups of panels/dialogs, not internal source code\n- Use Mermaid diagrams when a flow or sequence changed (5–7 nodes max)\n- Skip mechanical housekeeping: git ops, version bumps, env/tooling setup\n- References list only files directly read or edited during the session\n- If there are multiple user stories, repeat the full block per story",
-          "markdownDescription": "Markdown template used for PR descriptions created by the agent."
-        }
-      }
-    }
+    "colors": []
   },
   "scripts": {
     "vscode:prepublish": "npm run build",
@@ -111,19 +77,11 @@
     "publish": "npx @vscode/vsce publish"
   },
   "devDependencies": {
-    "@types/diff": "^7.0.2",
     "@types/node": "^20.11.0",
     "@types/vscode": "^1.91.0",
     "esbuild": "^0.28.0",
     "typescript": "^5.3.3",
     "vitest": "^4.1.4"
   },
-  "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.12.1",
-    "diff": "^8.0.4",
-    "highlight.js": "^11.11.1",
-    "marked": "^18.0.0",
-    "preact": "^10.29.1",
-    "zod": "^3.24.4"
-  }
+  "dependencies": {}
 }

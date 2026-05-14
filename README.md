@@ -4,12 +4,12 @@
 
 <p align="center"><em>A coding agent where you still code</em></p>
 
-![CodeSpark in action](./media/screenshot.png)
-
 ## Getting started
 
 1. Install and authenticate the [Claude Code CLI](https://code.claude.com/docs/en/quickstart)
 2. Install the CodeSpark extension: [Install in VS Code](https://marketplace.visualstudio.com/items?itemName=codespark.codespark-agent)
+
+On first activation, CodeSpark installs a global Claude Code command (`/apply-intents`) and a rule in `~/.claude/CLAUDE.md` that tells Claude Code never to edit files unless that command is explicitly run. No project files are modified.
 
 ## How it works
 
@@ -23,15 +23,15 @@ You drive the work by writing intent comments directly in your code:
 // REMOVE: delete this deprecated helper
 ```
 
-CodeSpark detects these across your entire workspace, highlights the keywords in the editor, and lists them in the sidebar. When you're ready, click the bolt button to send all intent comments to the assistant — it reads each one, navigates to the right file and line, and applies the changes. Files are saved automatically after each edit.
+CodeSpark detects these across your entire workspace and highlights the keywords in the editor. The CodeSpark icon in the activity bar shows a badge with the total count. Click it to open the sidebar — each intent comment is listed with its file and line number. Click any entry to jump straight to it.
 
 Use `Cmd+Shift+I` while the cursor is in an editor to toggle an intent comment on the current line. Each press cycles through `MODIFY → ADD → REMOVE → off`. The comment style matches the language (JS/TS uses `//`, Python uses `#`, JSX uses `{/* */}`, etc.) and inherits the indentation of the current line.
 
-### Assistant
+### Applying intents
 
-The assistant lives in the sidebar. Ask it questions, explore approaches, or have it look things up — it can read files, search your codebase, fetch documentation, and run git commands. It won't touch your code unless you trigger the bolt.
+When you're ready to apply your intent comments, run `/apply-intents` in Claude Code. Claude reads each comment in context, implements the change, removes the comment, and summarizes what was done.
 
-Open it with `Cmd+Shift+I` / `Ctrl+Shift+I` when not in an editor. If you have a file open, it opens with that file as context.
+Claude Code is configured (via the global `~/.claude/CLAUDE.md`) to never make edits outside of this command, so you stay in control of when changes happen.
 
 ## Why this approach
 
@@ -43,21 +43,10 @@ AI is genuinely useful in two situations: when you have a clear solution and jus
 
 **The project prompt problem.** Handing the whole task to an agent — "implement this feature," "fix this bug" — has the opposite failure. The agent gets broad context but you get broad disconnection. You stop navigating your own codebase. You stop building the breakdown in your head: which files are affected, which abstractions are load-bearing, which changes cascade. The moment you hand it off entirely, the codebase starts to decay — and so does your understanding of the system you're responsible for.
 
-**Intent comments keep you in the loop.** When you write an intent comment, you've already made a decision: this file, this location, this kind of change. You stay the author. The breakdown lives in your code, not in a prompt box. When you trigger the bolt, the agent sees everything at once — every file, every planned change, the full shape of what you're doing — and handles the mechanical execution. The understanding stays with you.
-
-The assistant is there for the moments when you don't have clarity yet. Ask it a question, explore an approach, have it read some files. Once you know what you want to do, write the intent comment and move on.
-
-## Configuration
-
-| Setting | Default | Description |
-|---|---|---|
-| `codespark.prDescriptionTemplate` | (built-in template) | Markdown template used for PR descriptions created by the agent. Edit via the Settings UI (rendered as a textarea) or `settings.json`. |
+**Intent comments keep you in the loop.** When you write an intent comment, you've already made a decision: this file, this location, this kind of change. You stay the author. The breakdown lives in your code, not in a prompt box. When you run `/apply-intents`, Claude sees everything at once — every file, every planned change, the full shape of what you're doing — and handles the mechanical execution. The understanding stays with you.
 
 ## Commands
 
-CodeSpark registers the following commands (accessible via the Command Palette). You can bind them to keyboard shortcuts in your `keybindings.json`:
-
 | Command | Default shortcut | Description |
 |---|---|---|
-| `codeSpark.openAssistant` | `Cmd+Shift+I` (when not in editor) | Open the assistant with the current file as context |
 | `codeSpark.toggleIntentComment` | `Cmd+Shift+I` (when in editor) | Cycle `MODIFY → ADD → REMOVE → off` on the current line |
