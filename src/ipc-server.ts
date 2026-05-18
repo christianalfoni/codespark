@@ -53,6 +53,13 @@ interface DeleteRequest {
   file_path: string;
 }
 
+interface DiagnosticsRequest {
+  id: string;
+  type: "get_diagnostics";
+  file_path: string;
+  line?: number;
+}
+
 interface IpcResponse {
   id: string;
   success: boolean;
@@ -286,6 +293,11 @@ function handleConnectionData(
           .then((res) => conn.write(JSON.stringify(res) + "\n"))
           .catch(handleError(deleteReq.id));
       }
+    } else if (req.type === "get_diagnostics") {
+      const diagReq = req as unknown as DiagnosticsRequest;
+      handleDiagnosticsRequest(diagReq)
+        .then((res) => conn.write(JSON.stringify(res) + "\n"))
+        .catch(handleError(diagReq.id));
     } else {
       conn.write(
         JSON.stringify({
@@ -374,6 +386,33 @@ async function handleDeleteRequest(req: DeleteRequest): Promise<IpcResponse> {
   } catch {
     return { id: req.id, success: false, error: `Could not delete file: ${req.file_path}` };
   }
+}
+
+async function handleDiagnosticsRequest(req: DiagnosticsRequest): Promise<IpcResponse> {
+  const uri = vscode.Uri.file(req.file_path);
+  const all = vscode.languages.getDiagnostics(uri);
+
+  const filtered =
+    req.line !== undefined
+      ? all.filter((d) => d.range.start.line === req.line! - 1)
+      : all;
+
+  if (filtered.length === 0) {
+    const scope = req.line !== undefined ? `line ${req.line}` : "this file";
+    return { id: req.id, success: true, content: `No diagnostics found for ${scope}.` };
+  }
+
+  const SEVERITY = ["Error", "Warning", "Information", "Hint"] as const;
+
+  const lines = filtered.map((d) => {
+    const sev = SEVERITY[d.severity] ?? "Unknown";
+    const loc = `${req.file_path}:${d.range.start.line + 1}:${d.range.start.character + 1}`;
+    const source = d.source ? ` [${d.source}]` : "";
+    const code = d.code !== undefined ? ` (${d.code})` : "";
+    return `${sev}${source}${code} at ${loc}: ${d.message}`;
+  });
+
+  return { id: req.id, success: true, content: lines.join("\n") };
 }
 
 async function handleWriteRequest(req: WriteRequest): Promise<IpcResponse> {

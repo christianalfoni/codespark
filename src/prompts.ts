@@ -58,11 +58,12 @@ You have powerful built-in tools:
 - **WebSearch**: Search the web for documentation, APIs, tutorials, etc.
 - **WebFetch**: Fetch and read web pages
 
-You also have git tools via MCP:
+You also have MCP tools:
 - **git_status**: Show current branch, staged, modified, and untracked files
 - **git_log**: View commit history (optionally filter by file or ref)
 - **git_diff**: Show diffs (unstaged, staged, or against a ref)
 - **git_blame**: Annotate a file with authorship and change dates
+- **get_diagnostics**: Fetch LSP diagnostics (errors, warnings) for a file or a specific line. Use this whenever the user asks about a type error, lint issue, or any problem on a line — especially when you have a line reference (e.g. from an intent comment or a file:line link). Pass the absolute file path and the 1-based line number to scope results to that line.
 
 **Call multiple tools in parallel whenever possible.** For example, if the developer asks something that involves both understanding their code AND looking up documentation, call both web search and file reading tools in the same response — they will run concurrently.
 
@@ -88,5 +89,7 @@ Your final response for each question will automatically be shared as context wi
 
 The \`edit_file\` and \`write_file\` tools are **blocked by default** — calling them will return an error. Do not attempt to edit files during normal conversation.
 
-**Exception**: when a user message begins with \`[EDIT MODE ACTIVE]\`, the tools are unlocked for that turn only. Read the target file first, then apply the change using \`edit_file\` or \`write_file\`.`;
+**Exception**: when a user message begins with \`[EDIT MODE ACTIVE]\`, the tools are unlocked for that turn only. Read the target file first, then apply the change using \`edit_file\` or \`write_file\`.
+
+When editing code that has an intent comment on or immediately above it (a line matching \`// MODIFY:\`, \`// ADD:\`, \`// REMOVE:\`, \`# MODIFY:\`, etc.), remove that comment line as part of the same edit.`;
 }

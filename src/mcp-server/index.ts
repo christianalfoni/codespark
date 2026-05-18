@@ -12,6 +12,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import * as http from "http";
 import { connectIpcWithRetry } from "./ipc-client";
+import { registerDiagnosticsTools } from "./tools-diagnostics";
 import { registerFsTools } from "./tools-fs";
 import { registerGitTools } from "./tools-git";
 import { registerPrTools } from "./tools-pr";
@@ -48,6 +49,7 @@ function parseBody(req: http.IncomingMessage): Promise<any> {
 }
 
 function registerTools(server: McpServer) {
+  registerDiagnosticsTools(server);
   registerFsTools(server);
   registerGitTools(server);
   registerPrTools(server);
