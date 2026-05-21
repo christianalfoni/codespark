@@ -111,4 +111,61 @@ The tool pushes the current branch to origin and creates the PR.`,
       }
     },
   );
+
+  server.registerTool(
+    "update_pr",
+    {
+      annotations: { title: "Update PR" },
+      description: `Push the current branch and update the open GitHub pull request's title and body.
+
+Use this when a PR already exists for the current branch and needs its description refreshed.
+
+Before calling this tool, compose the pr_description yourself using:
+  - git_log and git_diff to understand what commits have been made
+  - The session breakdown steps (if any were set)
+  - The conversation with the user
+
+**PR description** — use this format:
+
+${prTemplate}
+
+The tool pushes the current branch to origin and edits the existing PR.`,
+      inputSchema: {
+        pr_title: z.string().describe("New PR title"),
+        pr_description: z
+          .string()
+          .describe("Full PR body in Agent Contribution Report markdown format"),
+      },
+    },
+    async ({ pr_title, pr_description }) => {
+      try {
+        const branch = (await runGit(["branch", "--show-current"])).trim();
+
+        try {
+          await runGit(["push", "--set-upstream", "origin", branch]);
+        } catch {
+          await runGit(["push"]);
+        }
+
+        const prUrl = await runCommand("gh", [
+          "pr",
+          "edit",
+          "--title",
+          pr_title,
+          "--body",
+          pr_description,
+        ]);
+
+        return {
+          content: [{ type: "text" as const, text: `PR updated: ${prUrl}` }],
+        };
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return {
+          content: [{ type: "text" as const, text: `Error: ${msg}` }],
+          isError: true,
+        };
+      }
+    },
+  );
 }

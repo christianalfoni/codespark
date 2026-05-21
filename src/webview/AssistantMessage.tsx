@@ -15,7 +15,9 @@ const TOOL_DISPLAY_NAMES: Record<string, string> = {
   mcp__codespark__write_file: "Write",
   mcp__codespark__delete_file: "Delete File",
   mcp__codespark__create_pr: "Create PR",
+  mcp__codespark__update_pr: "Update PR",
   mcp__codespark__create_stacked_commits: "Creating Stacked Commits",
+  mcp__codespark__get_diagnostics: "Get Diagnostics",
 };
 
 interface ToolGroup {
@@ -61,7 +63,12 @@ function groupTools(tools: ToolEntry[]): ToolGroup[] {
 
 function InlineTools({ tools }: { tools: ToolEntry[] }) {
   if (tools.length === 0) return null;
-  const groups = groupTools(tools);
+  // Hide MCP tool calls that have no display name — these are unrecognized or
+  // hallucinated tool names (e.g. mcp_codespark) that would confuse the user.
+  const visibleTools = tools.filter(
+    (t) => !t.name.startsWith("mcp__") || t.name in TOOL_DISPLAY_NAMES,
+  );
+  const groups = groupTools(visibleTools);
   return (
     <span class="inline-tools">
       {groups.map((g, i) => (
